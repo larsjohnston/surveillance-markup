@@ -1,0 +1,22 @@
+# Customer data — never commit
+*.json
+saved_projects/
+client_data/
+
+# Imported floor plans
+*.pdf
+floor_plans/
+
+# Exported proposals
+proposal_*.pdf
+quote_*.pdf
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor stuff
+.vscode/
+.idea/
+*.swp
