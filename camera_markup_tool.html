@@ -195,6 +195,11 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 .proj-field input,.proj-field textarea { padding:6px 8px; border:1.5px solid var(--border); border-radius:3px; font:11px 'Courier New',monospace; }
 .proj-field textarea { min-height:55px; resize:vertical; }
 
+.export-opts label { display:block; padding:5px 0; font:700 11px 'Courier New',monospace; color:#1a1a2e; cursor:pointer; user-select:none; }
+.export-opts input[type=checkbox] { margin-right:9px; transform:scale(1.15); accent-color:var(--red); cursor:pointer; vertical-align:middle; }
+.export-opts #exp-plans-sub label { font-weight:400; font-size:10px; color:#6b7280; }
+.export-opts #exp-plans-sub.disabled { opacity:.4; pointer-events:none; }
+
 #zoom-bar { position:absolute; bottom:12px; left:12px; display:flex; gap:4px; z-index:10; }
 #zoom-bar.hidden { display:none; }
 .zbtn { width:28px; height:28px; background:rgba(17,24,39,.9); color:#fff; border:none; border-radius:3px; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
@@ -353,7 +358,7 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
   <button class="btn btn-gold"   id="btn-heatmap" onclick="toggleHeatmap()" disabled>&#128293; Heatmap</button>
   <button class="btn btn-gold"   id="btn-undo"   onclick="undoLast()"     disabled>&#8592; Undo</button>
   <button class="btn btn-dark"   id="btn-clear"  onclick="clearPage()"    disabled>Clear</button>
-  <button class="btn btn-green"  id="btn-pdf"    onclick="exportPDF()"    disabled>PDF</button>
+  <button class="btn btn-green"  id="btn-pdf"    onclick="openExportModal()" disabled>PDF</button>
   <button class="btn btn-purple" id="btn-csv"    onclick="exportCSV()"    disabled>CSV</button>
   <button class="btn btn-dark"   id="btn-project" onclick="openProjectModal()" disabled>&#128221; Project Info</button>
   <button class="btn btn-dark"   id="btn-bom"    onclick="toggleBom()"    disabled>&#128181; BOM</button>
@@ -598,6 +603,28 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeProjectModal()">Close</button>
       <button class="btn btn-green" onclick="saveProjectInfo()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export PDF Modal -->
+<div id="export-modal" class="big-modal">
+  <div class="modal-box" style="min-width:380px;">
+    <h3>&#128196; Export PDF</h3>
+    <p>Choose which sections to include in the PDF.</p>
+    <div class="export-opts">
+      <label><input type="checkbox" id="exp-cover"    checked> Cover Page</label>
+      <label><input type="checkbox" id="exp-schedule" checked> Camera Schedule</label>
+      <label><input type="checkbox" id="exp-bom"      checked> BOM / Pricing</label>
+      <label><input type="checkbox" id="exp-plans"    checked onchange="updateExportSubOpts()"> Floor Plan Pages</label>
+      <div id="exp-plans-sub" style="padding:4px 0 4px 22px;">
+        <label><input type="checkbox" id="exp-current-only"> Only the current page</label>
+      </div>
+    </div>
+    <p id="exp-warn" style="color:var(--red); font-size:10px; display:none; margin-top:8px;">Select at least one section to export.</p>
+    <div class="modal-actions">
+      <button class="btn btn-dark"  onclick="closeExportModal()">Cancel</button>
+      <button class="btn btn-green" id="btn-export-go" onclick="runExportPDF()">Export &rarr;</button>
     </div>
   </div>
 </div>
@@ -1939,7 +1966,33 @@ document.getElementById('json-input').addEventListener('change',function(e){
 });
 
 // ─── Export PDF ───────────────────────────────────────────────────────────────
-async function exportPDF(){
+function openExportModal(){
+  if(!pdfLoaded||!pages.length) return;
+  document.getElementById('exp-warn').style.display = 'none';
+  updateExportSubOpts();
+  document.getElementById('export-modal').classList.add('show');
+}
+function closeExportModal(){
+  document.getElementById('export-modal').classList.remove('show');
+}
+function updateExportSubOpts(){
+  var on = document.getElementById('exp-plans').checked;
+  document.getElementById('exp-plans-sub').classList.toggle('disabled', !on);
+}
+
+async function runExportPDF(){
+  var opts = {
+    cover:    document.getElementById('exp-cover').checked,
+    schedule: document.getElementById('exp-schedule').checked,
+    bom:      document.getElementById('exp-bom').checked,
+    plans:    document.getElementById('exp-plans').checked,
+    currentOnly: document.getElementById('exp-current-only').checked
+  };
+  if(!opts.cover && !opts.schedule && !opts.bom && !opts.plans){
+    document.getElementById('exp-warn').style.display = 'block';
+    return;
+  }
+  closeExportModal();
   if(!pdfLoaded||!pages.length) return;
   showProgress('Generating PDF\u2026',0);
   var jspdf=window.jspdf;
@@ -1949,49 +2002,78 @@ async function exportPDF(){
   var pageW = doc.internal.pageSize.getWidth();
   var pageH = doc.internal.pageSize.getHeight();
 
+  // jsPDF auto-creates a letter-portrait page 1. The first chosen section
+  // lands on it; sections of a different size swap it out so we never leave
+  // a blank page in front.
+  var firstUsed = false;
+  function startSection(format, orientation){
+    if(!firstUsed){
+      var isLetterPortrait = (format === 'letter' && orientation === 'portrait');
+      if(!isLetterPortrait){
+        doc.deletePage(1);
+        doc.addPage(format, orientation);
+      }
+      firstUsed = true;
+    } else {
+      doc.addPage(format, orientation);
+    }
+  }
+
   // ── Cover Page ───────────────────────────────────────────────────────
-  showProgress('Composing cover page\u2026',5);
-  drawProposalCover(doc, pageW, pageH);
+  if(opts.cover){
+    showProgress('Composing cover page\u2026',5);
+    startSection('letter','portrait');
+    drawProposalCover(doc, pageW, pageH);
+  }
 
   // ── Camera Schedule ──────────────────────────────────────────────────
-  if(cameras.length > 0){
+  if(opts.schedule && cameras.length > 0){
     showProgress('Composing camera schedule\u2026',10);
-    doc.addPage('letter','portrait');
+    startSection('letter','portrait');
     drawProposalSchedule(doc, pageW, pageH);
   }
 
   // ── BOM Page ─────────────────────────────────────────────────────────
-  if(cameras.length > 0){
+  if(opts.bom && cameras.length > 0){
     showProgress('Composing BOM\u2026',15);
-    doc.addPage('letter','portrait');
+    startSection('letter','portrait');
     drawProposalBOM(doc, pageW, pageH);
   }
 
   // ── Floor Plan Pages ─────────────────────────────────────────────────
-  for(var i=0;i<pages.length;i++){
-    showProgress('Composing plan page '+(i+1)+' of '+pages.length+'\u2026',20+Math.round(i/pages.length*75));
-    var pg=pages[i];
-    var tmp=document.createElement('canvas');
-    tmp.width=pg.offCanvas.width; tmp.height=pg.offCanvas.height;
-    var tc=tmp.getContext('2d');
-    tc.drawImage(pg.offCanvas,0,0);
-    var doriThisPage = doriMode && getPPM(i);
-    var savedPage=currentPage; currentPage=i;
-    if(cablesMode && headends[i]){
-      drawCableRunsToCanvas(tc, RENDER_SCALE, i);
+  if(opts.plans){
+    var planIndices = opts.currentOnly ? [currentPage] : pages.map(function(_,idx){return idx;});
+    for(var k=0;k<planIndices.length;k++){
+      var i = planIndices[k];
+      showProgress('Composing plan page '+(k+1)+' of '+planIndices.length+'\u2026',20+Math.round(k/planIndices.length*75));
+      var pg=pages[i];
+      var tmp=document.createElement('canvas');
+      tmp.width=pg.offCanvas.width; tmp.height=pg.offCanvas.height;
+      var tc=tmp.getContext('2d');
+      tc.drawImage(pg.offCanvas,0,0);
+      var doriThisPage = doriMode && getPPM(i);
+      var savedPage=currentPage; currentPage=i;
+      if(cablesMode && headends[i]){
+        drawCableRunsToCanvas(tc, RENDER_SCALE, i);
+      }
+      cameras.filter(function(c){return c.page===i;}).forEach(function(cam){
+        drawCam(tc,cam,RENDER_SCALE,false,doriThisPage);
+      });
+      if(headends[i]){
+        drawHeadEndToCanvas(tc, RENDER_SCALE, i);
+      }
+      currentPage=savedPage;
+      drawLegend(tc, pg.offCanvas.width, pg.offCanvas.height, i);
+      var imgData=tmp.toDataURL('image/jpeg',0.9);
+      var pxW=pg.logW, pxH=pg.logH;
+      startSection([pxW,pxH], pxW>pxH?'landscape':'portrait');
+      doc.addImage(imgData,'JPEG',0,0,pxW,pxH);
     }
-    cameras.filter(function(c){return c.page===i;}).forEach(function(cam){
-      drawCam(tc,cam,RENDER_SCALE,false,doriThisPage);
-    });
-    if(headends[i]){
-      drawHeadEndToCanvas(tc, RENDER_SCALE, i);
-    }
-    currentPage=savedPage;
-    drawLegend(tc, pg.offCanvas.width, pg.offCanvas.height, i);
-    var imgData=tmp.toDataURL('image/jpeg',0.9);
-    var pxW=pg.logW, pxH=pg.logH;
-    doc.addPage([pxW,pxH],pxW>pxH?'landscape':'portrait');
-    doc.addImage(imgData,'JPEG',0,0,pxW,pxH);
+  }
+  if(!firstUsed){
+    hideProgress();
+    alert('Nothing to export with the current selection. Place a camera first, or include Floor Plan Pages.');
+    return;
   }
   showProgress('Saving\u2026',95);
   var fname = (projectInfo.name || 'camera_proposal').replace(/[^a-z0-9]+/gi,'_').toLowerCase();
