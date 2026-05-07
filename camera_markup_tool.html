@@ -337,6 +337,36 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 #scale-ind.uncalibrated { color:#9ca3af; font-weight:400; font-style:italic; }
 
 #file-input,#json-input { display:none; }
+
+/* ── Right-panel mode toggle (Cameras / Access Control) ──── */
+#panel-toggle { display:flex; background:#1f2937; flex-shrink:0; border-bottom:2px solid var(--red); }
+.pmt-btn { flex:1; padding:9px 6px; background:transparent; border:none; color:#9ca3af; font:700 9px 'Courier New',monospace; letter-spacing:.07em; text-transform:uppercase; cursor:pointer; transition:all .12s; border-bottom:2px solid transparent; margin-bottom:-2px; }
+.pmt-btn:hover { color:#e5e7eb; background:#111827; }
+.pmt-btn.active { color:#fff; background:#111827; border-bottom-color:var(--red); }
+.pmt-btn[data-mode="access"].active { border-bottom-color:#1d4ed8; }
+.panel-body { display:flex; flex-direction:column; flex:1; overflow:hidden; }
+#panel[data-mode="cameras"] .panel-body[data-mode-section="access"] { display:none; }
+#panel[data-mode="access"]  .panel-body[data-mode-section="cameras"] { display:none; }
+
+/* ── Access Control: reader picker tree ──────────────────── */
+#ac-controls { padding:9px 13px; border-bottom:1px solid var(--border); }
+.ac-group { margin-bottom:9px; }
+.ac-group:last-child { margin-bottom:2px; }
+.ac-group-hdr { font:700 9px 'Courier New',monospace; letter-spacing:.09em; text-transform:uppercase; color:#1d4ed8; padding:3px 0 5px; border-bottom:1px solid #dbeafe; margin-bottom:5px; }
+.ac-model { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:6px 9px; margin:3px 0; border:1.5px solid var(--border); border-radius:3px; background:#fff; cursor:pointer; font:700 10px 'Courier New',monospace; color:#374151; transition:all .12s; }
+.ac-model:hover { border-color:#9ca3af; background:#f9fafb; }
+.ac-model.active { border-color:#1d4ed8; background:#eff6ff; color:#1d4ed8; box-shadow:0 0 0 2px rgba(29,78,216,.12); }
+.ac-model .ac-sku { font:400 8px 'Courier New',monospace; color:#9ca3af; letter-spacing:.04em; }
+.ac-model.active .ac-sku { color:#1d4ed8; }
+.ac-hint { font-size:9px; color:#9ca3af; line-height:1.6; margin-top:7px; background:#eff6ff; border:1px solid #dbeafe; border-radius:3px; padding:6px 8px; }
+.ac-hint b { color:#1e40af; }
+
+#ac-list { flex:1; overflow-y:auto; }
+.ac-item { display:flex; align-items:center; gap:7px; padding:5px 13px; cursor:pointer; border-left:3px solid transparent; }
+.ac-item:hover { background:#f9fafb; }
+.ac-item.sel { background:#eff6ff; border-left-color:#1d4ed8; }
+.dot-reader { background:#1d4ed8; border-radius:2px; }
+
 </style>
 </head>
 <body>
@@ -394,7 +424,12 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
     </div>
   </div>
 
-  <div id="panel">
+  <div id="panel" data-mode="cameras">
+    <div id="panel-toggle">
+      <button class="pmt-btn active" data-mode="cameras" onclick="setPanelMode('cameras')">Cameras</button>
+      <button class="pmt-btn"        data-mode="access"  onclick="setPanelMode('access')">Access Control</button>
+    </div>
+    <div class="panel-body" data-mode-section="cameras">
     <div class="phdr">Camera Model</div>
     <div id="controls">
       <!-- Brand picker grid -->
@@ -553,6 +588,32 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 
     <div class="phdr">Cameras &nbsp;<span id="cam-count" style="color:#9ca3af;font-weight:400"></span></div>
     <div id="cam-list"></div>
+    </div><!-- /panel-body cameras -->
+
+    <div class="panel-body" data-mode-section="access">
+      <div class="phdr">Brivo Smart Reader</div>
+      <div id="ac-controls">
+        <div class="ac-group">
+          <div class="ac-group-hdr">Mullion</div>
+          <div class="ac-model" data-model="B-BSPMF-B" onclick="pickReader('B-BSPMF-B')"><span>Tri-tech</span><span class="ac-sku">B-BSPMF-B</span></div>
+          <div class="ac-model" data-model="B-BSMF-B"  onclick="pickReader('B-BSMF-B')"><span>Dual-tech</span><span class="ac-sku">B-BSMF-B</span></div>
+        </div>
+        <div class="ac-group">
+          <div class="ac-group-hdr">Single-gang</div>
+          <div class="ac-model" data-model="B-BSPSF-B" onclick="pickReader('B-BSPSF-B')"><span>Tri-tech</span><span class="ac-sku">B-BSPSF-B</span></div>
+          <div class="ac-model" data-model="B-BSSF-B"  onclick="pickReader('B-BSSF-B')"><span>Dual-tech</span><span class="ac-sku">B-BSSF-B</span></div>
+          <div class="ac-model" data-model="B-BSPKF-B" onclick="pickReader('B-BSPKF-B')"><span>Tri-tech + Keypad</span><span class="ac-sku">B-BSPKF-B</span></div>
+          <div class="ac-model" data-model="B-BSKF-B"  onclick="pickReader('B-BSKF-B')"><span>Dual-tech + Keypad</span><span class="ac-sku">B-BSKF-B</span></div>
+        </div>
+        <p class="ac-hint">
+          <b>Pick a reader</b>, then click on the floor plan to place.<br>
+          All Brivo models shipped in <b>black</b> (white is discontinued).
+        </p>
+      </div>
+      <div class="phdr">Readers &nbsp;<span id="ac-count" style="color:#9ca3af;font-weight:400"></span></div>
+      <div id="ac-list"></div>
+    </div>
+
     <div id="footer">
       <span id="status">Import a PDF to begin</span>
       <span id="scale-ind" class="uncalibrated">Not calibrated</span>
@@ -830,6 +891,22 @@ var cablesMode = false;       // showing cable runs?
 var cableOverhead = 1.25;     // multiplier for cable routing (vs straight-line)
 var maxCableM = 90;           // PoE Cat6 max length
 
+// ─── Access Control State ────────────────────────────────────────────────────
+// Brivo Smart Reader catalog. Black-only (white discontinued).
+var BRIVO_READERS = {
+  'B-BSPMF-B': {model:'B-BSPMF-B', mount:'mullion',    keypad:false, tech:'tri',  desc:'Mullion · Tri-tech (Mobile + Smart + Prox 125 kHz) · OSDP · Black'},
+  'B-BSMF-B':  {model:'B-BSMF-B',  mount:'mullion',    keypad:false, tech:'dual', desc:'Mullion · Dual-tech (Mobile + Smart 13.56 MHz) · OSDP · Black'},
+  'B-BSPSF-B': {model:'B-BSPSF-B', mount:'singlegang', keypad:false, tech:'tri',  desc:'Single-gang · Tri-tech (Mobile + Smart + Prox 125 kHz) · OSDP · Black'},
+  'B-BSSF-B':  {model:'B-BSSF-B',  mount:'singlegang', keypad:false, tech:'dual', desc:'Single-gang · Dual-tech (Mobile + Smart 13.56 MHz) · OSDP · Black'},
+  'B-BSPKF-B': {model:'B-BSPKF-B', mount:'singlegang', keypad:true,  tech:'tri',  desc:'Single-gang · Tri-tech + Keypad · OSDP · Black'},
+  'B-BSKF-B':  {model:'B-BSKF-B',  mount:'singlegang', keypad:true,  tech:'dual', desc:'Single-gang · Dual-tech + Keypad · OSDP · Black'}
+};
+var acDevices = [];           // [{id, page, x, y, model, label}]
+var acSelectedId = null;
+var acCounters = {};          // pageIdx -> next counter
+var currentReaderModel = null;
+var panelMode = 'cameras';    // 'cameras' | 'access'
+
 // ─── BOM State ────────────────────────────────────────────────────────────────
 // Custom (manually-added) line items by section. Auto rows are derived live.
 var bomCustomLines = {
@@ -1054,6 +1131,7 @@ function routeFile(f){
 
 async function loadImage(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
+  acDevices=[];acCounters={};acSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
   document.getElementById('btn-blind').classList.remove('active');
   document.getElementById('btn-dori').classList.remove('active');
@@ -1097,6 +1175,7 @@ async function loadImage(file){
 
 async function loadPDF(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
+  acDevices=[];acCounters={};acSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
   document.getElementById('btn-blind').classList.remove('active');
   document.getElementById('btn-dori').classList.remove('active');
@@ -1140,9 +1219,9 @@ function hideProgress(){document.getElementById('progress-wrap').classList.add('
 // ─── Page switching ───────────────────────────────────────────────────────────
 function switchPage(idx){
   if(calibMode) cancelCalibrationFlow();
-  currentPage=idx; selectedId=null;
+  currentPage=idx; selectedId=null; acSelectedId=null;
   document.querySelectorAll('.tab').forEach(function(t,j){t.classList.toggle('active',j===idx);});
-  fitPage(); updateList(); updateScaleIndicator(); updateDoriInfo();
+  fitPage(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList();
 }
 
 // ─── Zoom ─────────────────────────────────────────────────────────────────────
@@ -1410,6 +1489,11 @@ function redraw(){
     drawCam(ctx,cam,viewScale,cam.id===selectedId,doriMode&&getPPM(currentPage));
   });
 
+  // Draw access-control readers (above cameras, below head-end)
+  acDevices.filter(function(d){return d.page===currentPage;}).forEach(function(dev){
+    drawReader(ctx, dev, viewScale, dev.id===acSelectedId);
+  });
+
   // Draw head-end marker on top
   if(headends[currentPage]){
     drawHeadEnd();
@@ -1666,6 +1750,12 @@ cv.addEventListener('mousedown',function(e){
   var p=canvasXY(e);
   if(calibMode){ handleCalibClick(p.cx,p.cy); return; }
   if(headendMode){ placeHeadend(p.cx,p.cy); return; }
+  if(panelMode === 'access'){
+    var dev = readerAt(p.cx, p.cy);
+    if(dev){ selectReader(dev.id); dragging = {id:dev.id, type:'reader-move'}; return; }
+    placeReader(p.cx, p.cy);
+    return;
+  }
   var tip=tipAt(p.cx,p.cy);
   if(tip){dragging={id:tip.id,type:'tip'}; return;}
   var cam=camAt(p.cx,p.cy);
@@ -1692,7 +1782,18 @@ cv.addEventListener('mousemove',function(e){
     return;
   }
   if(!dragging){
-    cv.style.cursor=tipAt(p.cx,p.cy)?'grab':(camAt(p.cx,p.cy)?'move':'crosshair');
+    if(panelMode === 'access'){
+      cv.style.cursor = readerAt(p.cx,p.cy) ? 'move' : 'crosshair';
+    } else {
+      cv.style.cursor=tipAt(p.cx,p.cy)?'grab':(camAt(p.cx,p.cy)?'move':'crosshair');
+    }
+    return;
+  }
+  if(dragging.type==='reader-move'){
+    var dev = acDevices.find(function(d){return d.id===dragging.id;});
+    if(!dev) return;
+    dev.x = p.cx/viewScale; dev.y = p.cy/viewScale;
+    redraw();
     return;
   }
   var cam=cameras.find(function(c){return c.id===dragging.id;});
@@ -1704,7 +1805,7 @@ cv.addEventListener('mousemove',function(e){
   } else {cam.x=p.cx/viewScale; cam.y=p.cy/viewScale;}
   redraw();
 });
-cv.addEventListener('mouseup', function(){dragging=null; cv.style.cursor='crosshair'; updateList();});
+cv.addEventListener('mouseup', function(){dragging=null; cv.style.cursor='crosshair'; updateList(); updateAcList();});
 cv.addEventListener('mouseleave',function(){dragging=null;});
 
 document.addEventListener('mousedown',function(e){
@@ -1717,11 +1818,15 @@ document.addEventListener('keydown',function(e){
     if(e.key==='Escape'&&calibMode){ cancelCalibrationFlow(); }
     return;
   }
-  if((e.key==='Delete'||e.key==='Backspace')&&selectedId){ deleteSelected(); }
+  if(e.key==='Delete'||e.key==='Backspace'){
+    if(selectedId){ deleteSelected(); }
+    else if(acSelectedId){ deleteReader(acSelectedId); }
+  }
   if(e.key==='Escape'){
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
-    selectedId=null; redraw(); updateList(); updateDoriInfo();
+    selectedId=null; acSelectedId=null;
+    redraw(); updateList(); updateAcList(); updateDoriInfo();
   }
 });
 
@@ -1743,6 +1848,154 @@ function deleteSelected(){
   hideCtxMenu(); if(!selectedId) return;
   cameras=cameras.filter(function(c){return c.id!==selectedId;});
   selectedId=null; redraw(); updateList(); updateDoriInfo();
+}
+
+// ─── Access Control ──────────────────────────────────────────────────────────
+function setPanelMode(mode){
+  panelMode = mode;
+  document.getElementById('panel').setAttribute('data-mode', mode);
+  document.querySelectorAll('.pmt-btn').forEach(function(b){
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  if(mode === 'access'){
+    selectedId = null;
+    updateAcList();
+  } else {
+    acSelectedId = null;
+  }
+  redraw();
+}
+
+function pickReader(sku){
+  if(!BRIVO_READERS[sku]) return;
+  currentReaderModel = sku;
+  document.querySelectorAll('.ac-model').forEach(function(el){
+    el.classList.toggle('active', el.dataset.model === sku);
+  });
+  if(acSelectedId){
+    var d = acDevices.find(function(x){return x.id === acSelectedId;});
+    if(d){ d.model = sku; redraw(); updateAcList(); }
+  }
+}
+
+function placeReader(cssX, cssY){
+  if(!currentReaderModel){
+    alert('Pick a reader from the panel first.');
+    return;
+  }
+  if(!acCounters[currentPage]) acCounters[currentPage] = 1;
+  var n = acCounters[currentPage]++;
+  var label = 'AC-P'+(currentPage+1)+'-'+n;
+  var dev = {
+    id: 'ac-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    page: currentPage,
+    x: cssX/viewScale, y: cssY/viewScale,
+    model: currentReaderModel,
+    label: label
+  };
+  acDevices.push(dev);
+  acSelectedId = dev.id;
+  redraw(); updateAcList();
+}
+
+function selectReader(id){
+  acSelectedId = id;
+  selectedId = null;
+  var d = acDevices.find(function(x){return x.id === id;});
+  if(d) pickReader(d.model);
+  redraw(); updateList(); updateAcList();
+}
+
+function deleteReader(id){
+  acDevices = acDevices.filter(function(d){return d.id !== id;});
+  if(acSelectedId === id) acSelectedId = null;
+  redraw(); updateAcList();
+}
+
+function updateAcList(){
+  var listEl = document.getElementById('ac-list'); if(!listEl) return;
+  var devOnPage = acDevices.filter(function(d){return d.page === currentPage;});
+  var countEl = document.getElementById('ac-count');
+  if(countEl) countEl.textContent = devOnPage.length ? '('+devOnPage.length+')' : '';
+  if(devOnPage.length === 0){
+    listEl.innerHTML = '<div style="padding:10px 13px;color:#9ca3af;font-size:9px;font-style:italic">No readers on this page.</div>';
+    return;
+  }
+  listEl.innerHTML = devOnPage.map(function(d){
+    var sel = (d.id === acSelectedId) ? ' sel' : '';
+    return '<div class="ac-item'+sel+'" onclick="selectReader(\''+d.id+'\')">'+
+           '<div class="dot dot-reader"></div>'+
+           '<div class="clabel">'+escapeHtml(d.label)+'</div>'+
+           '<div class="cmeta">'+escapeHtml(d.model||'')+'</div>'+
+           '<div class="cdel" onclick="event.stopPropagation();deleteReader(\''+d.id+'\')">&times;</div>'+
+           '</div>';
+  }).join('');
+}
+
+// Reader hit-test in CSS pixels (matches drawReader bounds)
+function readerAt(cssX, cssY){
+  var hits = acDevices.filter(function(d){return d.page === currentPage;});
+  for(var i = hits.length - 1; i >= 0; i--){
+    var dev = hits[i];
+    var spec = BRIVO_READERS[dev.model] || {mount:'singlegang', keypad:false};
+    var w = spec.mount === 'mullion' ? 8 : 14;
+    var h = spec.mount === 'mullion' ? 18 : (spec.keypad ? 20 : 14);
+    var dx = cssX - dev.x*viewScale;
+    var dy = cssY - dev.y*viewScale;
+    if(Math.abs(dx) <= w/2 + 2 && Math.abs(dy) <= h/2 + 2) return dev;
+  }
+  return null;
+}
+
+function drawReader(c, dev, vs, isSelected){
+  var spec = BRIVO_READERS[dev.model] || {mount:'singlegang', keypad:false};
+  var x = dev.x*vs, y = dev.y*vs;
+  var w = spec.mount === 'mullion' ? 8 : 14;
+  var h = spec.mount === 'mullion' ? 18 : (spec.keypad ? 20 : 14);
+  c.save();
+  // Body
+  c.fillStyle = '#1d4ed8';
+  c.strokeStyle = isSelected ? '#fbbf24' : '#fff';
+  c.lineWidth = isSelected ? 2.2 : 1.2;
+  acRoundRect(c, x - w/2, y - h/2, w, h, 2);
+  c.fill(); c.stroke();
+  // Card-swipe stripe
+  c.fillStyle = '#fff';
+  if(spec.keypad){
+    c.fillRect(x - 4, y - h/2 + 2.5, 8, 1.6);
+    // Keypad dots (3x3 grid in lower portion)
+    c.fillStyle = 'rgba(255,255,255,.85)';
+    var startY = y - 1;
+    for(var r = 0; r < 3; r++){
+      for(var col = 0; col < 3; col++){
+        c.fillRect(x - 3 + col*2.5, startY + r*2.5, 1.4, 1.4);
+      }
+    }
+  } else {
+    var stripeY = spec.mount === 'mullion' ? y - 4 : y - 1;
+    c.fillRect(x - (spec.mount==='mullion'?2.5:4), stripeY, spec.mount==='mullion'?5:8, 1.6);
+  }
+  // Label below
+  c.fillStyle = '#1d4ed8';
+  c.font = 'bold 9px Courier New';
+  c.textAlign = 'center';
+  c.fillText(dev.label, x, y + h/2 + 11);
+  c.textAlign = 'left';
+  c.restore();
+}
+
+function acRoundRect(c, x, y, w, h, r){
+  c.beginPath();
+  c.moveTo(x+r, y);
+  c.lineTo(x+w-r, y);
+  c.quadraticCurveTo(x+w, y, x+w, y+r);
+  c.lineTo(x+w, y+h-r);
+  c.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  c.lineTo(x+r, y+h);
+  c.quadraticCurveTo(x, y+h, x, y+h-r);
+  c.lineTo(x, y+r);
+  c.quadraticCurveTo(x, y, x+r, y);
+  c.closePath();
 }
 
 // ─── Camera management ────────────────────────────────────────────────────────
@@ -1916,12 +2169,14 @@ function saveJSON(){
     storMode:  document.getElementById('stor-mode').value
   };
   var data=JSON.stringify({
-    version:6,
+    version:7,
     cameras:cameras,
     calibrations:calibrations,
     headends:headends,
     projectInfo:projectInfo,
-    bom:{ customLines:bomCustomLines, autoOverrides:bomAutoOverrides, config:bomConfig }
+    bom:{ customLines:bomCustomLines, autoOverrides:bomAutoOverrides, config:bomConfig },
+    acDevices:acDevices,
+    acCounters:acCounters
   },null,2);
   var a=document.createElement('a');
   a.download='camera_layout.json';
@@ -1938,6 +2193,9 @@ document.getElementById('json-input').addEventListener('change',function(e){
       if(data.calibrations) calibrations=data.calibrations;
       if(data.headends) headends=data.headends;
       if(data.projectInfo) projectInfo=data.projectInfo;
+      acDevices  = data.acDevices  || [];
+      acCounters = data.acCounters || {};
+      acSelectedId = null;
       if(data.bom){
         if(data.bom.customLines) bomCustomLines = data.bom.customLines;
         if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
@@ -1958,7 +2216,7 @@ document.getElementById('json-input').addEventListener('change',function(e){
           var dot=document.createElement('span'); dot.className='tab-cal'; tab.appendChild(dot);
         }
       });
-      selectedId=null; redraw(); updateList(); updateScaleIndicator(); updateDoriInfo();
+      selectedId=null; redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList();
       if(bomOpen) recalcBom();
     } catch(err){alert('Invalid JSON file.');}
   };
