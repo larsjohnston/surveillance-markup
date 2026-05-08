@@ -487,17 +487,24 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #panel[data-mode="access"]  .panel-body[data-mode-section="cameras"] { display:none; }
 
 /* ── Access Control: reader picker tree ──────────────────── */
-#ac-controls { padding:9px 13px; border-bottom:1px solid var(--border); }
-.ac-group { margin-bottom:9px; }
-.ac-group:last-child { margin-bottom:2px; }
-.ac-group-hdr { font:700 9px var(--font-ui); letter-spacing:.09em; text-transform:uppercase; color:#1d4ed8; padding:3px 0 5px; border-bottom:1px solid #dbeafe; margin-bottom:5px; }
-.ac-model { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:6px 9px; margin:3px 0; border:1.5px solid var(--border); border-radius:3px; background:#fff; cursor:pointer; font:700 10px var(--font-ui); color:#374151; transition:all .12s; }
-.ac-model:hover { border-color:#9ca3af; background:#f9fafb; }
-.ac-model.active { border-color:#1d4ed8; background:#eff6ff; color:#1d4ed8; box-shadow:0 0 0 2px rgba(29,78,216,.12); }
-.ac-model .ac-sku { font:400 8px var(--font-ui); color:#9ca3af; letter-spacing:.04em; }
-.ac-model.active .ac-sku { color:#1d4ed8; }
-.ac-hint { font-size:9px; color:#9ca3af; line-height:1.6; margin-top:7px; background:#eff6ff; border:1px solid #dbeafe; border-radius:3px; padding:6px 8px; }
-.ac-hint b { color:#1e40af; }
+#ac-controls { padding:12px 16px; border-bottom:1px solid var(--border); }
+/* Reader form-factor tiles — mirrors .brand-tile aesthetic. Each tile also
+   carries .ac-model so the existing pickReader iteration keeps working. */
+#reader-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+.reader-tile {
+  border:1.5px solid var(--border); border-radius:6px; background:#fff;
+  padding:10px 6px 8px; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  transition:background-color .15s, border-color .15s, box-shadow .15s, transform .1s;
+}
+.reader-tile:hover:not(.active) { border-color:#9ca3af; background:var(--surface-soft); transform:translateY(-1px); }
+.reader-tile.active { border-color:var(--primary); background:var(--primary-faint); color:var(--primary); box-shadow:0 0 0 2px rgba(29,78,216,.12); }
+.reader-tile-icon { width:24px; height:24px; color:var(--text-muted); }
+.reader-tile.active .reader-tile-icon { color:var(--primary); }
+.reader-tile-label { font:700 10px var(--font-ui); text-transform:uppercase; letter-spacing:.04em; color:var(--text); text-align:center; }
+.reader-tile.active .reader-tile-label { color:var(--primary); }
+.reader-tile-sub { font:500 9px var(--font-ui); color:var(--text-faint); text-align:center; }
+.reader-hint { font:11px var(--font-ui); color:var(--text-muted); line-height:1.5; margin-top:8px; }
 
 #ac-list { flex:1; overflow-y:auto; }
 .ac-item { display:flex; align-items:center; gap:7px; padding:5px 13px; cursor:pointer; border-left:3px solid transparent; }
@@ -798,22 +805,37 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="panel-body" data-mode-section="access">
       <div class="phdr">Brivo Smart Reader</div>
       <div id="ac-controls">
-        <div class="ac-group">
-          <div class="ac-group-hdr">Mullion</div>
-          <div class="ac-model" data-model="B-BSPMF-B" onclick="pickReader('B-BSPMF-B')"><span>Tri-tech</span><span class="ac-sku">B-BSPMF-B</span></div>
-          <div class="ac-model" data-model="B-BSMF-B"  onclick="pickReader('B-BSMF-B')"><span>Dual-tech</span><span class="ac-sku">B-BSMF-B</span></div>
+        <div id="reader-grid">
+          <div class="reader-tile ac-model" data-model="B-BSMF-B" onclick="pickReader('B-BSMF-B')" title="B-BSMF-B">
+            <svg viewBox="0 0 24 24" class="reader-tile-icon" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="2" width="6" height="20" rx="1.5"/>
+              <circle cx="12" cy="8" r="1.2" fill="currentColor"/>
+            </svg>
+            <div class="reader-tile-label">Mullion</div>
+            <div class="reader-tile-sub">Dual-tech</div>
+          </div>
+          <div class="reader-tile ac-model" data-model="B-BSSF-B" onclick="pickReader('B-BSSF-B')" title="B-BSSF-B">
+            <svg viewBox="0 0 24 24" class="reader-tile-icon" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="1.5"/>
+              <circle cx="12" cy="9" r="1.4" fill="currentColor"/>
+              <path d="M7 14h10"/>
+            </svg>
+            <div class="reader-tile-label">Single-Gang</div>
+            <div class="reader-tile-sub">Dual-tech</div>
+          </div>
+          <div class="reader-tile ac-model" data-model="B-BSKF-B" onclick="pickReader('B-BSKF-B')" title="B-BSKF-B">
+            <svg viewBox="0 0 24 24" class="reader-tile-icon" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="3" width="16" height="18" rx="1.5"/>
+              <path d="M7 7h10"/>
+              <circle cx="9" cy="11.5" r=".7" fill="currentColor"/><circle cx="12" cy="11.5" r=".7" fill="currentColor"/><circle cx="15" cy="11.5" r=".7" fill="currentColor"/>
+              <circle cx="9" cy="14.5" r=".7" fill="currentColor"/><circle cx="12" cy="14.5" r=".7" fill="currentColor"/><circle cx="15" cy="14.5" r=".7" fill="currentColor"/>
+              <circle cx="9" cy="17.5" r=".7" fill="currentColor"/><circle cx="12" cy="17.5" r=".7" fill="currentColor"/><circle cx="15" cy="17.5" r=".7" fill="currentColor"/>
+            </svg>
+            <div class="reader-tile-label">Keypad</div>
+            <div class="reader-tile-sub">Dual-tech</div>
+          </div>
         </div>
-        <div class="ac-group">
-          <div class="ac-group-hdr">Single-gang</div>
-          <div class="ac-model" data-model="B-BSPSF-B" onclick="pickReader('B-BSPSF-B')"><span>Tri-tech</span><span class="ac-sku">B-BSPSF-B</span></div>
-          <div class="ac-model" data-model="B-BSSF-B"  onclick="pickReader('B-BSSF-B')"><span>Dual-tech</span><span class="ac-sku">B-BSSF-B</span></div>
-          <div class="ac-model" data-model="B-BSPKF-B" onclick="pickReader('B-BSPKF-B')"><span>Tri-tech + Keypad</span><span class="ac-sku">B-BSPKF-B</span></div>
-          <div class="ac-model" data-model="B-BSKF-B"  onclick="pickReader('B-BSKF-B')"><span>Dual-tech + Keypad</span><span class="ac-sku">B-BSKF-B</span></div>
-        </div>
-        <p class="ac-hint">
-          <b>Pick a reader</b>, then click on the floor plan to place.<br>
-          All Brivo models shipped in <b>black</b> (white is discontinued).
-        </p>
+        <p class="reader-hint">Brivo readers shown in black only. Click a form factor, then click on the floor plan to place.</p>
       </div>
       <div class="phdr">Readers &nbsp;<span id="ac-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="ac-list"></div>
@@ -1135,6 +1157,10 @@ var acDevices = [];           // [{id, page, x, y, model, label}]
 var acSelectedId = null;
 var acCounters = {};          // pageIdx -> next counter
 var currentReaderModel = null;
+// Tracks the last form-factor the user armed in AC mode. Used to restore
+// their pick when re-entering AC mode after the current SKU has been cleared.
+// Default chosen as the "neutral" Mullion dual-tech.
+var lastArmedReader = 'B-BSMF-B';
 var panelMode = 'cameras';    // 'cameras' | 'access'
 
 // ─── BOM State ────────────────────────────────────────────────────────────────
@@ -2305,6 +2331,10 @@ function setPanelMode(mode){
   });
   if(mode === 'access'){
     selectedId = null;
+    // Auto-arm a default reader on AC entry only when nothing is currently
+    // armed. If the user previously armed a tile then switched to camera
+    // mode and back, currentReaderModel persists and we leave it alone.
+    if(!currentReaderModel) pickReader(lastArmedReader);
     updateAcList();
   } else {
     acSelectedId = null;
@@ -2315,6 +2345,7 @@ function setPanelMode(mode){
 function pickReader(sku){
   if(!BRIVO_READERS[sku]) return;
   currentReaderModel = sku;
+  lastArmedReader = sku;
   document.querySelectorAll('.ac-model').forEach(function(el){
     el.classList.toggle('active', el.dataset.model === sku);
   });
