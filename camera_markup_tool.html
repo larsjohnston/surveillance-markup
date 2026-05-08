@@ -288,6 +288,63 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .modal-row select { padding:7px 10px; border:1.5px solid var(--border); border-radius:3px; font:700 11px var(--font-ui); background:#fff; }
 .modal-actions { display:flex; gap:7px; justify-content:flex-end; }
 
+/* Pass B: Tabbed calibrate-scale dialog */
+#calib-dialog { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; align-items:center; justify-content:center; z-index:30; }
+#calib-dialog.show { display:flex; }
+.calib-dialog-box { min-width:380px; max-width:440px; }
+.calib-tabs { display:flex; border-bottom:1.5px solid var(--border); margin:-2px -28px 14px; padding:0 28px; gap:0; }
+.calib-tab { background:none; border:0; padding:9px 16px; font:700 10px var(--font-ui); color:#6b7280; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1.5px; }
+.calib-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+.calib-tab:hover:not(.active) { color:#374151; }
+.calib-tab-pane.hidden { display:none; }
+.calib-units-row { display:flex; gap:14px; margin-bottom:10px; font-size:11px; color:#374151; }
+.calib-units-row label { display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
+.calib-units-row input[type=radio] { margin:0; }
+#calib-typed-input { width:100%; padding:8px 10px; border:1.5px solid var(--border); border-radius:6px; font:700 14px var(--font-mono); margin-bottom:6px; box-sizing:border-box; }
+#calib-typed-input:focus { outline:none; border-color:var(--primary); }
+.calib-error { color:#b91c1c; font-size:11px; min-height:14px; margin-bottom:8px; line-height:1.4; }
+
+/* Pass B: Floating auto-prompt for fresh-import calibration */
+#scale-prompt {
+  position:fixed; top:80px; right:24px; width:300px;
+  background:#fff; border:1px solid var(--border); border-radius:8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+  padding:14px 16px; z-index:40;
+  transform:translateX(calc(100% + 32px));
+  transition:transform .2s ease-out;
+}
+#scale-prompt.show { transform:translateX(0); }
+.sp-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:6px; }
+.sp-title { font:700 11px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--primary); margin:0; line-height:1.3; }
+.sp-close { background:none; border:0; cursor:pointer; font-size:18px; line-height:1; color:#6b7280; padding:0 4px; margin:-2px -4px 0 8px; }
+.sp-close:hover { color:var(--primary); }
+.sp-body { font-size:11px; color:#374151; line-height:1.4; margin:0 0 10px; }
+#scale-prompt .calib-units-row { margin-bottom:8px; font-size:11px; }
+#scale-prompt-input { width:100%; padding:7px 9px; border:1.5px solid var(--border); border-radius:6px; font:700 13px var(--font-mono); margin-bottom:4px; box-sizing:border-box; }
+#scale-prompt-input:focus { outline:none; border-color:var(--primary); }
+#scale-prompt-error { color:#b91c1c; font-size:10px; min-height:12px; margin-bottom:8px; line-height:1.3; }
+.sp-actions { display:flex; gap:6px; justify-content:flex-end; }
+.sp-actions .btn { font-size:10px; padding:6px 10px; }
+
+/* Pass B: Discoverability banner — shown over the canvas when current page is uncalibrated. */
+#uncalib-banner {
+  position:absolute; top:0; left:0; right:0;
+  background:#fef3c7; border-bottom:1px solid #fcd34d; color:#92400e;
+  font:600 11px var(--font-ui);
+  padding:8px 14px; z-index:25;
+  display:none; align-items:center; justify-content:center; gap:12px;
+  cursor:pointer; user-select:none;
+}
+#uncalib-banner.show { display:flex; }
+#uncalib-banner .ub-icon { font-size:13px; }
+#uncalib-banner .ub-action {
+  background:#f59e0b; color:#fff; border:0;
+  padding:4px 10px; border-radius:4px;
+  font:700 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase;
+  cursor:pointer;
+}
+#uncalib-banner .ub-action:hover { background:#d97706; }
+
 /* Big modal for project info */
 .big-modal { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; align-items:center; justify-content:center; z-index:30; }
 .big-modal.show { display:flex; }
@@ -693,6 +750,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
               onclick="document.getElementById('file-input').click()">Choose File &rarr;</button>
     </div>
     <canvas id="cv"></canvas>
+    <div id="uncalib-banner" onclick="openCalibDialog('type')">
+      <span class="ub-icon">&#9888;</span>
+      <span>Floor plan not calibrated. FOV ranges may be inaccurate.</span>
+      <button type="button" class="ub-action" onclick="event.stopPropagation();openCalibDialog('type')">Set Scale</button>
+    </div>
     <div id="calib-banner">
       <span id="calib-msg">Click first reference point</span>
       &nbsp; <kbd>Esc</kbd> to cancel
@@ -1019,6 +1081,37 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   <div class="ctx-item danger" onclick="deleteSelected()">&#10005; Delete</div>
 </div>
 
+<!-- Pass B: Tabbed calibration dialog (entry point) -->
+<div id="calib-dialog">
+  <div class="modal-box calib-dialog-box">
+    <h3>&#128207; Set Drawing Scale</h3>
+    <div class="calib-tabs">
+      <button class="calib-tab active" data-tab="type" onclick="setCalibTab('type')">Type Scale</button>
+      <button class="calib-tab" data-tab="measure" onclick="setCalibTab('measure')">Measure Two Points</button>
+    </div>
+    <div class="calib-tab-pane" data-pane="type">
+      <p>Find the printed scale on the drawing (usually in the title block) and type it below.</p>
+      <div class="calib-units-row">
+        <label><input type="radio" name="calib-units" value="imperial" checked onchange="updateTypedPlaceholder()"> Imperial</label>
+        <label><input type="radio" name="calib-units" value="metric" onchange="updateTypedPlaceholder()"> Metric</label>
+      </div>
+      <input type="text" id="calib-typed-input" placeholder='e.g. 1/8&quot; = 1&apos;-0&quot; or 1:96' oninput="clearTypedError()" onkeydown="if(event.key==='Enter'){event.preventDefault();applyTypedScaleFromDialog();}" autocomplete="off" spellcheck="false">
+      <div id="calib-typed-error" class="calib-error"></div>
+      <div class="modal-actions">
+        <button class="btn btn-dark"  onclick="closeCalibDialog()">Cancel</button>
+        <button class="btn btn-green" onclick="applyTypedScaleFromDialog()">Apply</button>
+      </div>
+    </div>
+    <div class="calib-tab-pane hidden" data-pane="measure">
+      <p>Click two points on the floor plan whose real-world distance you know (a labeled wall, a parking-stall stripe, a known door width). The dialog will close so you can click on the canvas.</p>
+      <div class="modal-actions">
+        <button class="btn btn-dark"  onclick="closeCalibDialog()">Cancel</button>
+        <button class="btn btn-green" onclick="startTwoPointFromDialog()">Calibrate by Measuring &rarr;</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="calib-modal">
   <div class="modal-box">
     <h3>&#128207; Set Drawing Scale</h3>
@@ -1034,6 +1127,26 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <button class="btn btn-dark"  onclick="cancelCalib()">Cancel</button>
       <button class="btn btn-green" onclick="saveCalib()">Save Scale</button>
     </div>
+  </div>
+</div>
+
+<!-- Pass B: Floating auto-prompt for fresh-import calibration -->
+<div id="scale-prompt">
+  <div class="sp-header">
+    <h4 class="sp-title" id="scale-prompt-title">Set Scale for Page 1 of 1</h4>
+    <button class="sp-close" type="button" onclick="closeCalibrationPrompt()" title="Dismiss">&times;</button>
+  </div>
+  <p class="sp-body">Find the printed scale on the drawing (usually in the title block).</p>
+  <div class="calib-units-row">
+    <label><input type="radio" name="scale-prompt-units" value="imperial" checked onchange="updateScalePromptPlaceholder()"> Imperial</label>
+    <label><input type="radio" name="scale-prompt-units" value="metric" onchange="updateScalePromptPlaceholder()"> Metric</label>
+  </div>
+  <input type="text" id="scale-prompt-input" placeholder='e.g. 1/8&quot; = 1&apos;-0&quot; or 1:96' oninput="clearScalePromptError()" onkeydown="if(event.key==='Enter'){event.preventDefault();applyScalePrompt();}" autocomplete="off" spellcheck="false">
+  <div id="scale-prompt-error"></div>
+  <div class="sp-actions">
+    <button class="btn btn-dark"  onclick="skipCalibrationPrompt()">Skip Page</button>
+    <button class="btn btn-blue"  onclick="applyScalePromptToAll()" title="Apply this scale to every remaining page in the queue (skipped pages are left alone)">Apply to All</button>
+    <button class="btn btn-green" onclick="applyScalePrompt()">Set &amp; Continue</button>
   </div>
 </div>
 
@@ -1334,6 +1447,10 @@ var APP_VERSION = '0.5';
 var sourceDocumentBytes = null;   // ArrayBuffer of the raw imported file
 var sourceDocumentName  = null;   // original filename
 var sourceDocumentMime  = null;   // 'application/pdf' | 'image/png' | 'image/jpeg'
+// Pass B: gate the auto-calibration prompt during project loads so loadPDF's
+// post-render trigger doesn't fire while applyProjectState is restoring the
+// calibrations. loadProjectFromFile flips this around its loadPDF/loadImage call.
+var SUPPRESS_AUTO_CALIBRATION_PROMPT = false;
 var DPR=window.devicePixelRatio||1, pages=[], cameras=[], currentPage=0;
 var selectedId=null, dragging=null, counters={}, viewScale=1, pdfLoaded=false;
 var currentType='dome', blindMode=false, doriMode=false, heatmapMode=false;
@@ -1594,6 +1711,7 @@ async function loadImage(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
+  skippedPages = new Set();
   document.getElementById('btn-blind').classList.remove('active');
   document.getElementById('btn-dori').classList.remove('active');
   document.getElementById('tabs').innerHTML='';
@@ -1638,12 +1756,14 @@ async function loadImage(file){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
+  maybeFireAutoCalibrationPrompt();
 }
 
 async function loadPDF(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
+  skippedPages = new Set();
   document.getElementById('btn-blind').classList.remove('active');
   document.getElementById('btn-dori').classList.remove('active');
   document.getElementById('tabs').innerHTML='';
@@ -1677,6 +1797,7 @@ async function loadPDF(file){
     document.getElementById(id).disabled=false;
   });
   switchPage(0);
+  maybeFireAutoCalibrationPrompt();
 }
 
 function showProgress(msg,pct){
@@ -1967,6 +2088,13 @@ function switchPage(idx){
   var floorInput = document.getElementById('inp-floor');
   if(floorInput) floorInput.value = pages.length ? ('Floor ' + (idx + 1)) : '';
   fitPage(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList();
+  // Pass B: a manual tab switch closes the auto-calibration prompt — the user
+  // has chosen to navigate themselves, so we yield. Internal advances set the
+  // flag to bypass this.
+  if(!_calibPromptAdvancing && isCalibrationPromptOpen()){
+    closeCalibrationPrompt();
+  }
+  if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
 }
 
 // ─── Zoom ─────────────────────────────────────────────────────────────────────
@@ -2002,13 +2130,236 @@ wrap.addEventListener('wheel',function(e){
 },{passive:false});
 
 // ─── Calibration ──────────────────────────────────────────────────────────────
+// Pass B: startCalibration now opens the tabbed dialog (Tab 1: Type Scale by
+// default). The legacy two-point flow is preserved verbatim as
+// startTwoPointCalibration() and is invoked from Tab 2.
 function startCalibration(){
+  if(!pdfLoaded) return;
+  openCalibDialog('type');
+}
+function startTwoPointCalibration(){
   if(!pdfLoaded) return;
   calibMode=true; calibPoints=[]; calibCursor=null;
   document.getElementById('calib-banner').classList.add('show');
   document.getElementById('calib-msg').textContent='Click first reference point';
   wrap.classList.add('calib-mode');
   redraw();
+}
+function openCalibDialog(initialTab){
+  setCalibTab(initialTab || 'type');
+  document.getElementById('calib-typed-error').textContent = '';
+  var input = document.getElementById('calib-typed-input');
+  input.value = '';
+  updateTypedPlaceholder();
+  document.getElementById('calib-dialog').classList.add('show');
+  setTimeout(function(){
+    if((initialTab || 'type') === 'type'){ input.focus(); }
+  }, 50);
+}
+function closeCalibDialog(){
+  document.getElementById('calib-dialog').classList.remove('show');
+}
+function setCalibTab(tab){
+  var tabs = document.querySelectorAll('#calib-dialog .calib-tab');
+  for(var i=0;i<tabs.length;i++){
+    tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tab') === tab);
+  }
+  var panes = document.querySelectorAll('#calib-dialog .calib-tab-pane');
+  for(var j=0;j<panes.length;j++){
+    panes[j].classList.toggle('hidden', panes[j].getAttribute('data-pane') !== tab);
+  }
+  if(tab === 'type'){
+    setTimeout(function(){
+      var inp = document.getElementById('calib-typed-input');
+      if(inp && document.getElementById('calib-dialog').classList.contains('show')) inp.focus();
+    }, 50);
+  }
+}
+function updateTypedPlaceholder(){
+  var units = getCalibDialogUnits();
+  var inp = document.getElementById('calib-typed-input');
+  inp.placeholder = (units === 'metric')
+    ? 'e.g. 1:100'
+    : 'e.g. 1/8" = 1\'-0" or 1:96';
+}
+function getCalibDialogUnits(){
+  var radios = document.querySelectorAll('input[name="calib-units"]');
+  for(var i=0;i<radios.length;i++){ if(radios[i].checked) return radios[i].value; }
+  return 'imperial';
+}
+function clearTypedError(){
+  document.getElementById('calib-typed-error').textContent = '';
+}
+function applyTypedScaleFromDialog(){
+  var raw   = document.getElementById('calib-typed-input').value;
+  var units = getCalibDialogUnits();
+  var result = parseTypedScale(raw, units);
+  if(result.error){
+    document.getElementById('calib-typed-error').textContent = result.error;
+    document.getElementById('calib-typed-input').focus();
+    return;
+  }
+  applyTypedScale(currentPage, result.ratio, units);
+  closeCalibDialog();
+}
+function startTwoPointFromDialog(){
+  closeCalibDialog();
+  startTwoPointCalibration();
+}
+
+// ─── Pass B: Floating auto-prompt (fresh-import calibration queue) ───────────
+var autoPromptQueue = [];
+var autoPromptCurrentIdx = 0;
+var skippedPages = new Set();
+var _calibPromptAdvancing = false;
+
+function isCalibrationPromptOpen(){
+  var el = document.getElementById('scale-prompt');
+  return !!(el && el.classList.contains('show'));
+}
+
+// Public entry: kick off a queue. pageIndices is an array of page indices that
+// need calibration. Step (f) wires this up from loadPDF / loadImage.
+function startCalibrationPrompt(pageIndices){
+  if(!pageIndices || !pageIndices.length){ closeCalibrationPrompt(); return; }
+  autoPromptQueue = pageIndices.slice();
+  autoPromptCurrentIdx = 0;
+  showCalibrationPromptForCurrent();
+}
+
+function showCalibrationPromptForCurrent(){
+  if(autoPromptCurrentIdx >= autoPromptQueue.length){
+    closeCalibrationPrompt();
+    return;
+  }
+  var pageIdx = autoPromptQueue[autoPromptCurrentIdx];
+  if(pageIdx !== currentPage){
+    _calibPromptAdvancing = true;
+    try { switchPage(pageIdx); } finally { _calibPromptAdvancing = false; }
+  }
+  document.getElementById('scale-prompt-title').textContent =
+    'Set Scale for Page ' + (pageIdx + 1) + ' of ' + pages.length;
+  document.getElementById('scale-prompt-input').value = '';
+  document.getElementById('scale-prompt-error').textContent = '';
+  // Default to imperial each new page (user can flip per-page).
+  var imp = document.querySelector('input[name="scale-prompt-units"][value="imperial"]');
+  if(imp) imp.checked = true;
+  updateScalePromptPlaceholder();
+  document.getElementById('scale-prompt').classList.add('show');
+  if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
+  setTimeout(function(){
+    var el = document.getElementById('scale-prompt-input');
+    if(el && isCalibrationPromptOpen()) el.focus();
+  }, 220);
+}
+
+function applyScalePrompt(){
+  if(!isCalibrationPromptOpen()) return;
+  var raw   = document.getElementById('scale-prompt-input').value;
+  var units = getScalePromptUnits();
+  var result = parseTypedScale(raw, units);
+  if(result.error){
+    document.getElementById('scale-prompt-error').textContent = result.error;
+    document.getElementById('scale-prompt-input').focus();
+    return;
+  }
+  var pageIdx = autoPromptQueue[autoPromptCurrentIdx];
+  applyTypedScale(pageIdx, result.ratio, units);
+  advanceCalibrationPrompt();
+}
+
+function skipCalibrationPrompt(){
+  if(!isCalibrationPromptOpen()) return;
+  var pageIdx = autoPromptQueue[autoPromptCurrentIdx];
+  skippedPages.add(pageIdx);
+  advanceCalibrationPrompt();
+}
+
+// Apply the typed scale to the current page AND every remaining queued page,
+// except those the user has already explicitly skipped. Closes the overlay
+// when done. Parse errors leave the queue untouched.
+function applyScalePromptToAll(){
+  if(!isCalibrationPromptOpen()) return;
+  var raw   = document.getElementById('scale-prompt-input').value;
+  var units = getScalePromptUnits();
+  var result = parseTypedScale(raw, units);
+  if(result.error){
+    document.getElementById('scale-prompt-error').textContent = result.error;
+    document.getElementById('scale-prompt-input').focus();
+    return;
+  }
+  for(var i = autoPromptCurrentIdx; i < autoPromptQueue.length; i++){
+    var pageIdx = autoPromptQueue[i];
+    if(skippedPages.has(pageIdx)) continue;
+    applyTypedScale(pageIdx, result.ratio, units);
+  }
+  closeCalibrationPrompt();
+}
+
+function advanceCalibrationPrompt(){
+  autoPromptCurrentIdx++;
+  if(autoPromptCurrentIdx >= autoPromptQueue.length){
+    closeCalibrationPrompt();
+  } else {
+    showCalibrationPromptForCurrent();
+  }
+}
+
+function closeCalibrationPrompt(){
+  var el = document.getElementById('scale-prompt');
+  if(el) el.classList.remove('show');
+  autoPromptQueue = [];
+  autoPromptCurrentIdx = 0;
+  if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
+}
+
+function updateScalePromptPlaceholder(){
+  var u = getScalePromptUnits();
+  var inp = document.getElementById('scale-prompt-input');
+  if(inp) inp.placeholder = (u === 'metric') ? 'e.g. 1:100' : 'e.g. 1/8" = 1\'-0" or 1:96';
+}
+
+function getScalePromptUnits(){
+  var rs = document.querySelectorAll('input[name="scale-prompt-units"]');
+  for(var i=0;i<rs.length;i++){ if(rs[i].checked) return rs[i].value; }
+  return 'imperial';
+}
+
+function clearScalePromptError(){
+  var el = document.getElementById('scale-prompt-error');
+  if(el) el.textContent = '';
+}
+
+// Pass B: discoverability banner over the canvas when the current page is
+// uncalibrated. Hidden when calibrated, when the user explicitly skipped the
+// page during the auto-prompt, or while the auto-prompt is itself open
+// (avoids stacking two calibration nags on the same page).
+function updateUncalibBanner(){
+  var el = document.getElementById('uncalib-banner');
+  if(!el) return;
+  if(!pdfLoaded || !pages.length){ el.classList.remove('show'); return; }
+  var c = calibrations[currentPage];
+  var hasCal  = !!(c && c.pixelsPerMeter);
+  var skipped = skippedPages && skippedPages.has && skippedPages.has(currentPage);
+  var promptOpen = isCalibrationPromptOpen();
+  el.classList.toggle('show', !hasCal && !skipped && !promptOpen);
+}
+
+// Called at the end of loadPDF/loadImage. Fires the prompt only when EVERY
+// page is uncalibrated (= a fresh import). Project loads call loadPDF with
+// SUPPRESS_AUTO_CALIBRATION_PROMPT=true so the restore can populate
+// calibrations after this checkpoint.
+function maybeFireAutoCalibrationPrompt(){
+  if(SUPPRESS_AUTO_CALIBRATION_PROMPT) return;
+  if(!pages.length) return;
+  var needs = [];
+  for(var i=0;i<pages.length;i++){
+    var c = calibrations[i];
+    if(!c || !c.pixelsPerMeter) needs.push(i);
+  }
+  if(needs.length === pages.length){
+    startCalibrationPrompt(needs);
+  }
 }
 function cancelCalibrationFlow(){
   calibMode=false; calibPoints=[]; calibCursor=null;
@@ -2044,8 +2395,178 @@ function saveCalib(){
   cancelCalibrationFlow();
   updateScaleIndicator(); updateDoriInfo();
   rebuildTabsDom();
+  if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
 }
 function cancelCalib(){ cancelCalibrationFlow(); }
+
+// ─── Pass B: Typed-scale calibration ─────────────────────────────────────────
+// Standalone parser. Returns { ratio, error }. Verifiable from the console
+// with testParseTypedScale() (defined below). No DOM access here.
+//
+// Imperial accepts:
+//   - "1:NNN" ratio
+//   - "<paper-inches> = <real>"  where paper can be "1/8" or "0.125"
+//                                and real can be "1'-0\"" / "1'" / plain ft
+// Metric accepts only "1:NNN".
+function parseTypedScale(input, units){
+  var s = (input == null ? '' : String(input)).trim();
+  var GENERIC_ERR = "Couldn't read that scale. Try formats like 1/8\" = 1'-0\" or 1:100.";
+  var ZERO_ERR    = "Scale can't have zero values.";
+  var RANGE_ERR   = "Scale ratio looks off. Common scales are 1:24 to 1:1000.";
+  if(!s) return { ratio: null, error: GENERIC_ERR };
+
+  // Pre-check obvious zero: "/0" or ":0" at a token boundary (allows "/0.5", ":0.5").
+  if(/[\/\:]\s*0(?![\.\d])/.test(s)){
+    return { ratio: null, error: ZERO_ERR };
+  }
+
+  // Form 1: ratio "1:N" (works for both metric and imperial).
+  var rm = s.match(/^1\s*:\s*(\d+(?:\.\d+)?)\s*$/);
+  if(rm){
+    var r = parseFloat(rm[1]);
+    if(!isFinite(r) || r === 0) return { ratio: null, error: ZERO_ERR };
+    if(r < 1 || r > 5000)       return { ratio: null, error: RANGE_ERR };
+    return { ratio: r, error: null };
+  }
+
+  if(units === 'metric'){
+    // Metric only accepts ratio form.
+    return { ratio: null, error: GENERIC_ERR };
+  }
+
+  // Imperial architectural notation: <paper> = <real>
+  var parts = s.split('=');
+  if(parts.length !== 2) return { ratio: null, error: GENERIC_ERR };
+
+  var paperIn = _parsePaperSide(parts[0]);
+  var realIn  = _parseRealSide(parts[1]);
+  if(paperIn === null || realIn === null){
+    return { ratio: null, error: GENERIC_ERR };
+  }
+  if(paperIn === 0 || realIn === 0){
+    return { ratio: null, error: ZERO_ERR };
+  }
+  var ratio = realIn / paperIn;
+  if(!isFinite(ratio) || ratio < 1 || ratio > 5000){
+    return { ratio: null, error: RANGE_ERR };
+  }
+  return { ratio: ratio, error: null };
+}
+
+// Paper side: inches. Strip optional trailing inch mark. Accept fraction or decimal.
+function _parsePaperSide(str){
+  var t = (str || '').trim().replace(/\s*"\s*$/, '').replace(/^\s+|\s+$/g, '');
+  if(!t) return null;
+  var fm = t.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+  if(fm){
+    var num = parseFloat(fm[1]);
+    var den = parseFloat(fm[2]);
+    if(den === 0) return 0;        // surface as zero error upstream
+    return num / den;
+  }
+  var n = parseFloat(t);
+  if(isNaN(n)) return null;
+  // Reject decimals with trailing junk: parseFloat is permissive, so re-check.
+  if(!/^\d+(?:\.\d+)?$/.test(t)) return null;
+  return n;
+}
+
+// Real side: returns total inches.
+//   "1'-0\"" / "1'-6\"" / "1'-0" / "1'" → ft × 12 + inches
+//   plain integer / decimal           → treat as feet (default in arch notation)
+function _parseRealSide(str){
+  var t = (str || '').trim();
+  if(!t) return null;
+  var m = t.match(/^(\d+(?:\.\d+)?)\s*'\s*(?:-\s*)?(?:(\d+(?:\.\d+)?)\s*"?)?\s*$/);
+  if(m){
+    var ft = parseFloat(m[1]);
+    var inches = m[2] != null ? parseFloat(m[2]) : 0;
+    if(isNaN(ft) || isNaN(inches)) return null;
+    return ft * 12 + inches;
+  }
+  // Plain feet number.
+  if(!/^\d+(?:\.\d+)?$/.test(t)) return null;
+  var n = parseFloat(t);
+  if(isNaN(n)) return null;
+  return n * 12;
+}
+
+// Apply a parsed scale ratio to the current PDF/image render.
+// Math: pixelsPerMeter = renderScale × 72 / (0.0254 × ratio)
+// (1 PDF point = 1/72", 1" = 0.0254m; pages render at RENDER_SCALE × base.)
+// `units` is 'imperial' or 'metric'; mapped to existing 'ft'/'m' for fmtDist.
+function applyTypedScale(pageIdx, ratio, units){
+  if(pageIdx < 0 || pageIdx >= pages.length) return;
+  if(!ratio || !isFinite(ratio) || ratio <= 0) return;
+  var pxPerM = RENDER_SCALE * 72 / (0.0254 * ratio);
+  calibrations[pageIdx] = {
+    pixelsPerMeter: pxPerM,
+    unit: (units === 'imperial' ? 'ft' : 'm')
+  };
+  rebuildTabsDom();
+  if(pageIdx === currentPage){
+    updateScaleIndicator();
+    updateDoriInfo();
+    redraw();
+  }
+  if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
+}
+
+// Console smoke-test for parseTypedScale. Pasteable: testParseTypedScale().
+function testParseTypedScale(){
+  var cases = [
+    // [input, units, expectedRatio (null = error expected)]
+    ['1/16" = 1\'-0"', 'imperial', 192],
+    ['1/16 = 1',       'imperial', 192],
+    ['1:192',          'imperial', 192],
+    ['1/8" = 1\'-0"',  'imperial', 96],
+    ['1/8" = 1\'',     'imperial', 96],
+    ['1/8 = 1',        'imperial', 96],
+    ['1/8"=1\'',       'imperial', 96],
+    ['1:96',           'imperial', 96],
+    [' 1/8 = 1 ',      'imperial', 96],
+    ['3/16" = 1\'-0"', 'imperial', 64],
+    ['3/16 = 1',       'imperial', 64],
+    ['1/4" = 1\'-0"',  'imperial', 48],
+    ['1/4 = 1',        'imperial', 48],
+    ['1:48',           'imperial', 48],
+    ['3/8" = 1\'-0"',  'imperial', 32],
+    ['3/8 = 1',        'imperial', 32],
+    ['1/2" = 1\'-0"',  'imperial', 24],
+    ['1/2 = 1',        'imperial', 24],
+    ['1:24',           'imperial', 24],
+    ['3/4" = 1\'-0"',  'imperial', 16],
+    ['3/4 = 1',        'imperial', 16],
+    ['1" = 1\'-0"',    'imperial', 12],
+    ['1 = 1',          'imperial', 12],
+    ['1:12',           'imperial', 12],
+    ['1:100',          'metric',   100],
+    ['1:50',           'metric',   50],
+    ['1 : 200',        'metric',   200],
+    ['1:1000',         'metric',   1000],
+    ['',               'imperial', null],
+    ['abc',            'imperial', null],
+    ['1/0',            'imperial', null],
+    ['1:0',            'imperial', null],
+    ['1:5000000',      'imperial', null],
+    ['1/8" = 0\'',     'imperial', null],
+    ['1cm = 1m',       'metric',   null]
+  ];
+  var pass = 0, fail = 0;
+  cases.forEach(function(c){
+    var r = parseTypedScale(c[0], c[1]);
+    var ok;
+    if(c[2] === null){
+      ok = !!r.error && r.ratio == null;
+    } else {
+      ok = !r.error && Math.abs((r.ratio || 0) - c[2]) < 0.001;
+    }
+    if(ok){ pass++; }
+    else { fail++; console.warn('FAIL', JSON.stringify(c[0]), c[1], '→', r, 'expected', c[2]); }
+  });
+  console.log(pass + ' pass / ' + fail + ' fail (of ' + cases.length + ')');
+  return { pass: pass, fail: fail };
+}
 
 // ─── Head-End Placement & Cable Runs ──────────────────────────────────────────
 function startHeadendPlacement(){
@@ -2697,6 +3218,8 @@ document.addEventListener('keydown',function(e){
       // input fields (otherwise we'd be trapped — the only other escape is
       // clicking Cancel). Calibration prompt also gets the same exception.
       if(document.getElementById('tab-edit-modal').classList.contains('show')){ closeTabEditModal(); return; }
+      if(document.getElementById('calib-dialog').classList.contains('show')){ closeCalibDialog(); return; }
+      if(isCalibrationPromptOpen()){ closeCalibrationPrompt(); return; }
       if(calibMode){ cancelCalibrationFlow(); }
     }
     // Enter inside the tab-edit modal name field: commit save.
@@ -2714,6 +3237,8 @@ document.addEventListener('keydown',function(e){
     if(openMenuEl){ closeAllMenus(); return; }
     if(document.getElementById('tab-edit-modal').classList.contains('show')){ closeTabEditModal(); return; }
     if(document.getElementById('help-modal').classList.contains('show')){ closeHelpModal(); return; }
+    if(document.getElementById('calib-dialog').classList.contains('show')){ closeCalibDialog(); return; }
+    if(isCalibrationPromptOpen()){ closeCalibrationPrompt(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
     // closeRightPanel handles the camera-selected case (clears selectedId,
@@ -3365,6 +3890,7 @@ function applyProjectState(data){
   rebuildTabsDom();
   selectedId = null;
   redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList(); refreshFloorSuggestions();
+  if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
   if(bomOpen) recalcBom();
 }
 
@@ -3397,17 +3923,26 @@ async function loadProjectFromFile(file){
       var mime = data.sourceDocument.mime || 'application/pdf';
       var name = data.sourceDocument.name || 'restored';
       var synth = new File([bytes], name, { type: mime });
-      if(data.sourceDocument.type === 'pdf'){
-        await loadPDF(synth);
-      } else {
-        await loadImage(synth);
+      // Suppress the fresh-import auto-prompt: applyProjectState will restore
+      // calibrations a moment later, and we don't want the prompt to appear
+      // for a project that already has them. Reset in finally so any throw
+      // doesn't leave the flag stuck on.
+      SUPPRESS_AUTO_CALIBRATION_PROMPT = true;
+      try {
+        if(data.sourceDocument.type === 'pdf'){
+          await loadPDF(synth);
+        } else {
+          await loadImage(synth);
+        }
+        // loadPDF/loadImage call hideProgress at their end, so re-show for the
+        // state-apply phase.
+        showProgress('Applying project state…', 90);
+        await new Promise(function(r){ setTimeout(r, 0); });
+        applyProjectState(data);
+        hideProgress();
+      } finally {
+        SUPPRESS_AUTO_CALIBRATION_PROMPT = false;
       }
-      // loadPDF/loadImage call hideProgress at their end, so re-show for the
-      // state-apply phase.
-      showProgress('Applying project state…', 90);
-      await new Promise(function(r){ setTimeout(r, 0); });
-      applyProjectState(data);
-      hideProgress();
     } else {
       // v9 or older: no embedded source. Need a PDF/image already loaded.
       hideProgress();
