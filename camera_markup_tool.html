@@ -592,7 +592,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 </head>
 <body class="no-pdf">
 
-<input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png">
+<input type="file" id="file-input" accept="application/pdf,image/png,image/jpeg,application/json,.pdf,.png,.jpg,.jpeg,.json">
 <input type="file" id="json-input" accept=".json">
 
 <header id="topbar">
@@ -680,7 +680,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div id="dropzone">
       <div class="dz-icon">&#128196;</div>
       <h2>Import a Floor Plan</h2>
-      <p>PDF, PNG, or JPG &middot; Click below or drag &amp; drop a file here</p>
+      <p>PDF, PNG, JPG, or saved Project (JSON) &middot; Click below or drag &amp; drop a file here</p>
       <button class="btn btn-blue" style="font-size:12px;padding:8px 20px;margin-top:4px"
               onclick="document.getElementById('file-input').click()">Choose File &rarr;</button>
     </div>
@@ -1257,6 +1257,11 @@ var FT_PER_METER = 3.28084;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 var APP_VERSION = '0.5';
+// Source document tracking — populated by loadPDF/loadImage, embedded in
+// JSON v10 saves so a teammate can drop the JSON alone and everything restores.
+var sourceDocumentBytes = null;   // ArrayBuffer of the raw imported file
+var sourceDocumentName  = null;   // original filename
+var sourceDocumentMime  = null;   // 'application/pdf' | 'image/png' | 'image/jpeg'
 var DPR=window.devicePixelRatio||1, pages=[], cameras=[], currentPage=0;
 var selectedId=null, dragging=null, counters={}, viewScale=1, pdfLoaded=false;
 var currentType='dome', blindMode=false, doriMode=false, heatmapMode=false;
@@ -1501,12 +1506,15 @@ wrap.addEventListener('drop',function(e){
 });
 
 function routeFile(f){
-  if(f.type==='application/pdf' || /\.pdf$/i.test(f.name)){
+  var ext = (f.name || '').toLowerCase().split('.').pop();
+  if(ext === 'json' || f.type === 'application/json'){
+    loadProjectFromFile(f);
+  } else if(f.type === 'application/pdf' || ext === 'pdf'){
     loadPDF(f);
   } else if(/^image\//.test(f.type) || /\.(png|jpe?g)$/i.test(f.name)){
     loadImage(f);
   } else {
-    alert('Unsupported file. Please use PDF, PNG, or JPG.');
+    alert('Unsupported file. Please use PDF, PNG, JPG, or saved Project (JSON).');
   }
 }
 
@@ -1518,6 +1526,11 @@ async function loadImage(file){
   document.getElementById('btn-dori').classList.remove('active');
   document.getElementById('tabs').innerHTML='';
   showProgress('Loading image\u2026',20);
+
+  // Capture the raw bytes for v10 saves (embedded source document).
+  sourceDocumentBytes = await file.arrayBuffer();
+  sourceDocumentName  = file.name;
+  sourceDocumentMime  = file.type || 'image/png';
 
   var reader=new FileReader();
   await new Promise(function(resolve, reject){
@@ -1564,6 +1577,11 @@ async function loadPDF(file){
   document.getElementById('tabs').innerHTML='';
   showProgress('Loading PDF\u2026',0);
   var buf=await file.arrayBuffer();
+  // Keep an independent copy for v10 saves \u2014 PDF.js may transfer/detach the
+  // original ArrayBuffer it gets, which would invalidate any later read.
+  sourceDocumentBytes = buf.slice(0);
+  sourceDocumentName  = file.name;
+  sourceDocumentMime  = file.type || 'application/pdf';
   var pdf=await pdfjsLib.getDocument({data:buf}).promise;
   var n=pdf.numPages;
   for(var i=1;i<=n;i++){
@@ -1762,6 +1780,7 @@ function rewindToNoPdf(){
   selectedId = null; acSelectedId = null;
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
+  sourceDocumentBytes = null; sourceDocumentName = null; sourceDocumentMime = null;
   currentPage = 0;
   pdfLoaded = false;
   pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {};
@@ -2926,7 +2945,23 @@ function updateList(){
 }
 
 // ─── Save / Load JSON ─────────────────────────────────────────────────────────
-function saveJSON(){
+// Encode an ArrayBuffer as base64 in 32 KB chunks (avoids stack overflow on
+// large buffers — String.fromCharCode.apply has argv limits in the millions).
+function bytesToBase64(buf){
+  var bytes = new Uint8Array(buf);
+  var chunk = 0x8000;
+  var binary = '';
+  for(var i = 0; i < bytes.length; i += chunk){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function saveJSON(){
+  showProgress('Saving project (this may take a moment for large files)…', 5);
+  // Yield once so the overlay paints before the encode work blocks the thread.
+  await new Promise(function(r){ setTimeout(r, 0); });
+
   var bomConfig = {
     laborRate: parseFloat(document.getElementById('bom-labor-rate').value)||0,
     laborHrs:  parseFloat(document.getElementById('bom-labor-hrs').value)||0,
@@ -2943,78 +2978,169 @@ function saveJSON(){
     for(var k in c){ if(c.hasOwnProperty(k) && k.indexOf('__') !== 0) clone[k] = c[k]; }
     return clone;
   });
-  // Per-page metadata: editable floor name. Canvases are not serializable
-  // and the user re-imports the same PDF/image at load time; we just persist
-  // the name so renamed tabs survive a session.
+  // Per-page metadata: editable floor name.
   var pagesForSave = pages.map(function(pg){ return { name: pg.name || pg.label || '' }; });
-  var data=JSON.stringify({
-    version:9,
-    cameras:camsForSave,
-    pages:pagesForSave,
-    calibrations:calibrations,
-    headends:headends,
-    projectInfo:projectInfo,
-    bom:{ customLines:bomCustomLines, autoOverrides:bomAutoOverrides, config:bomConfig },
-    acDevices:acDevices,
-    acCounters:acCounters
-  },null,2);
-  var a=document.createElement('a');
-  a.download='camera_layout.json';
-  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(data);
+
+  // Embed the source document if we have one. Defensive against the (shouldn't-
+  // happen) case where Save fires with no source — we'd still write a valid
+  // JSON; loaders will treat it as a v9-style "load PDF first" project.
+  var sourceDocument = null;
+  if(sourceDocumentBytes){
+    showProgress('Encoding source document…', 25);
+    await new Promise(function(r){ setTimeout(r, 0); });
+    sourceDocument = {
+      type: sourceDocumentMime === 'application/pdf' ? 'pdf' : 'image',
+      mime: sourceDocumentMime || 'application/pdf',
+      name: sourceDocumentName  || 'source',
+      data: bytesToBase64(sourceDocumentBytes)
+    };
+  }
+
+  showProgress('Building project file…', 80);
+  await new Promise(function(r){ setTimeout(r, 0); });
+
+  var data = JSON.stringify({
+    version: 10,
+    sourceDocument: sourceDocument,
+    cameras: camsForSave,
+    pages: pagesForSave,
+    calibrations: calibrations,
+    headends: headends,
+    projectInfo: projectInfo,
+    bom: { customLines: bomCustomLines, autoOverrides: bomAutoOverrides, config: bomConfig },
+    acDevices: acDevices,
+    acCounters: acCounters
+  }, null, 2);
+
+  showProgress('Saving file…', 95);
+  await new Promise(function(r){ setTimeout(r, 0); });
+
+  // Blob URL — handles ≥10 MB cleanly (data: URL + encodeURIComponent doesn't).
+  var fname = ((projectInfo.name || 'project').replace(/[^a-z0-9]+/gi, '_').toLowerCase() || 'project') + '.json';
+  var blob = new Blob([data], { type: 'application/json' });
+  var url  = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.download = fname;
+  a.href = url;
   a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+
+  hideProgress();
 }
-document.getElementById('json-input').addEventListener('change',function(e){
-  var f=e.target.files[0]; if(!f) return;
-  var r=new FileReader();
-  r.onload=function(ev){
-    try{
-      var data=JSON.parse(ev.target.result);
-      if(data.cameras) cameras=data.cameras;
-      if(data.calibrations) calibrations=data.calibrations;
-      if(data.headends) headends=data.headends;
-      if(data.projectInfo) projectInfo=data.projectInfo;
-      // Backward compat: pre-floor saves had `zone`; pre-zone saves had nothing.
-      // Also strip transient riser-export decorations that may have leaked into older saves.
-      cameras.forEach(function(c){
-        if(c.floor === undefined) c.floor = c.zone || '';
-        delete c.zone;
-        delete c.__cableId;
-        delete c.__cableLenDisplay;
-      });
-      // Backward compat: projects saved before proposalSections
-      if(!projectInfo.proposalSections){
-        projectInfo.proposalSections = { cover:true, bom:true, riser:true, plans:true };
+// Decode a base64 string to an ArrayBuffer. Pair to bytesToBase64.
+function base64ToArrayBuffer(b64){
+  var binary = atob(b64);
+  var bytes  = new Uint8Array(binary.length);
+  for(var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+// Apply parsed project JSON to the running app state. Assumes the source
+// document (PDF/image) is already loaded — pages[] is populated, canvases
+// rendered, currentPage at 0. Caller is responsible for the right ordering.
+function applyProjectState(data){
+  if(data.cameras) cameras = data.cameras;
+  if(data.calibrations) calibrations = data.calibrations;
+  if(data.headends) headends = data.headends;
+  if(data.projectInfo) projectInfo = data.projectInfo;
+  // Backward compat: pre-floor saves had `zone`; pre-zone saves had nothing.
+  // Also strip transient riser-export decorations that may have leaked in.
+  cameras.forEach(function(c){
+    if(c.floor === undefined) c.floor = c.zone || '';
+    delete c.zone;
+    delete c.__cableId;
+    delete c.__cableLenDisplay;
+  });
+  if(!projectInfo.proposalSections){
+    projectInfo.proposalSections = { cover:true, bom:true, riser:true, plans:true };
+  }
+  acDevices    = data.acDevices  || [];
+  acCounters   = data.acCounters || {};
+  acSelectedId = null;
+  // v9+ persists per-page floor names; v8 has no `pages` array — defaults stay.
+  if(Array.isArray(data.pages)){
+    data.pages.forEach(function(saved, i){
+      if(pages[i] && saved && saved.name) pages[i].name = saved.name;
+    });
+  }
+  if(data.bom){
+    if(data.bom.customLines) bomCustomLines = data.bom.customLines;
+    if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
+    if(data.bom.config){
+      if(data.bom.config.laborRate !== undefined) document.getElementById('bom-labor-rate').value = data.bom.config.laborRate;
+      if(data.bom.config.laborHrs  !== undefined) document.getElementById('bom-labor-hrs').value  = data.bom.config.laborHrs;
+      if(data.bom.config.marginPct !== undefined) document.getElementById('bom-margin-pct').value = data.bom.config.marginPct;
+      if(data.bom.config.taxPct    !== undefined) document.getElementById('bom-tax-pct').value    = data.bom.config.taxPct;
+      if(data.bom.config.storDays  !== undefined) document.getElementById('stor-days').value      = data.bom.config.storDays;
+      if(data.bom.config.storFps   !== undefined) document.getElementById('stor-fps').value       = data.bom.config.storFps;
+      if(data.bom.config.storCodec !== undefined) document.getElementById('stor-codec').value     = data.bom.config.storCodec;
+      if(data.bom.config.storMode  !== undefined) document.getElementById('stor-mode').value      = data.bom.config.storMode;
+    }
+  }
+  rebuildTabsDom();
+  selectedId = null;
+  redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList(); refreshFloorSuggestions();
+  if(bomOpen) recalcBom();
+}
+
+// Single entry point for "the user gave us a project file" — handles both
+// v10 (embedded source document) and v9-or-older (no source) flows. Used by
+// the dropzone, the file-picker (when a JSON is picked), and File → Load
+// Project. Confirms before clobbering an active session.
+async function loadProjectFromFile(file){
+  if(pdfLoaded){
+    if(!confirm('Loading this saved project will replace your current work. Continue?')) return;
+  }
+  showProgress('Loading project…', 5);
+  await new Promise(function(r){ setTimeout(r, 0); });
+  try {
+    var text = await file.text();
+    var data;
+    try { data = JSON.parse(text); }
+    catch(e){ throw new Error('File is not valid JSON.'); }
+    if(!data || typeof data !== 'object'){
+      throw new Error('Project file is missing top-level data.');
+    }
+
+    if(data.version >= 10 && data.sourceDocument && data.sourceDocument.data){
+      // v10+: embedded source. Restore the PDF/image first, then state.
+      showProgress('Restoring source document…', 20);
+      await new Promise(function(r){ setTimeout(r, 0); });
+      var bytes;
+      try { bytes = base64ToArrayBuffer(data.sourceDocument.data); }
+      catch(e){ throw new Error('Embedded source document is corrupted.'); }
+      var mime = data.sourceDocument.mime || 'application/pdf';
+      var name = data.sourceDocument.name || 'restored';
+      var synth = new File([bytes], name, { type: mime });
+      if(data.sourceDocument.type === 'pdf'){
+        await loadPDF(synth);
+      } else {
+        await loadImage(synth);
       }
-      acDevices  = data.acDevices  || [];
-      acCounters = data.acCounters || {};
-      acSelectedId = null;
-      // v9+ persists per-page floor names. Apply them to the already-loaded
-      // pages by index. v8 saves have no `pages` array — defaults stay.
-      if(Array.isArray(data.pages)){
-        data.pages.forEach(function(saved, i){
-          if(pages[i] && saved && saved.name) pages[i].name = saved.name;
-        });
+      // loadPDF/loadImage call hideProgress at their end, so re-show for the
+      // state-apply phase.
+      showProgress('Applying project state…', 90);
+      await new Promise(function(r){ setTimeout(r, 0); });
+      applyProjectState(data);
+      hideProgress();
+    } else {
+      // v9 or older: no embedded source. Need a PDF/image already loaded.
+      hideProgress();
+      if(!pdfLoaded){
+        alert('This is an older save. Load the matching PDF or image file first, then load this project file again.');
+        return;
       }
-      if(data.bom){
-        if(data.bom.customLines) bomCustomLines = data.bom.customLines;
-        if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
-        if(data.bom.config){
-          if(data.bom.config.laborRate !== undefined) document.getElementById('bom-labor-rate').value = data.bom.config.laborRate;
-          if(data.bom.config.laborHrs  !== undefined) document.getElementById('bom-labor-hrs').value  = data.bom.config.laborHrs;
-          if(data.bom.config.marginPct !== undefined) document.getElementById('bom-margin-pct').value = data.bom.config.marginPct;
-          if(data.bom.config.taxPct    !== undefined) document.getElementById('bom-tax-pct').value    = data.bom.config.taxPct;
-          if(data.bom.config.storDays  !== undefined) document.getElementById('stor-days').value     = data.bom.config.storDays;
-          if(data.bom.config.storFps   !== undefined) document.getElementById('stor-fps').value      = data.bom.config.storFps;
-          if(data.bom.config.storCodec !== undefined) document.getElementById('stor-codec').value    = data.bom.config.storCodec;
-          if(data.bom.config.storMode  !== undefined) document.getElementById('stor-mode').value     = data.bom.config.storMode;
-        }
-      }
-      rebuildTabsDom();
-      selectedId=null; redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList(); refreshFloorSuggestions();
-      if(bomOpen) recalcBom();
-    } catch(err){alert('Invalid JSON file.');}
-  };
-  r.readAsText(f); e.target.value='';
+      applyProjectState(data);
+    }
+  } catch(err){
+    hideProgress();
+    alert('Could not load project: ' + (err && err.message ? err.message : err));
+  }
+}
+
+document.getElementById('json-input').addEventListener('change', function(e){
+  var f = e.target.files[0]; if(f) loadProjectFromFile(f);
+  e.target.value = '';
 });
 
 // ─── Export PDF ───────────────────────────────────────────────────────────────
