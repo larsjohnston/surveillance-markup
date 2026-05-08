@@ -8,22 +8,110 @@
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 :root {
-  --ink:#1a1a2e; --red:#c8202c; --gold:#e8a020;
-  --panel:#fff; --border:#d0cec8; --blue:#2563eb;
+  /* Smart MF brand palette */
+  --primary:#1d4ed8; --primary-dark:#1e40af; --primary-soft:#dbeafe; --primary-faint:#eff6ff;
+  /* Selection (semantically distinct from brand) — also used for bullet camera body */
+  --blue:#2563eb;
+  /* Neutrals */
+  --ink:#111827; --text:#111827; --text-muted:#6b7280; --text-faint:#9ca3af;
+  --border:#e5e7eb; --surface:#ffffff; --surface-soft:#f9fafb; --panel:#fff;
+  /* Camera type colors — semantic, do not change */
   --dome:#c8202c; --bullet:#2563eb; --ptz:#7c3aed; --lpr:#d97706;
   --turret:#0891b2; --fisheye:#16a34a;
+  /* Type stacks */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
-body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+body { font-family:var(--font-ui); background:var(--surface-soft); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; font-size:13px; }
+/* Chrome disabled while no PDF is loaded */
+body.no-pdf #menubar, body.no-pdf .topbar-icon-btn { opacity:.4; pointer-events:none; }
+body.no-pdf #icon-strip { opacity:.4; pointer-events:none; }
 
-#topbar { display:flex; align-items:center; gap:7px; flex-wrap:wrap; background:#111827; color:#fff; padding:7px 12px; flex-shrink:0; border-bottom:3px solid var(--red); }
-#topbar h1 { font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; margin-right:6px; }
-.spacer { flex:1; }
-.btn { padding:5px 11px; border:none; border-radius:3px; cursor:pointer; font:700 10px 'Courier New',monospace; letter-spacing:.04em; text-transform:uppercase; transition:opacity .15s; white-space:nowrap; }
-.btn:hover { opacity:.82; } .btn:disabled { opacity:.3; cursor:default; }
-.btn-red { background:var(--red); color:#fff; }
+/* ── Top bar ───────────────────────────────────────────── */
+#topbar {
+  display:flex; align-items:center; gap:4px;
+  background:var(--surface); color:var(--text);
+  padding:0 16px; height:48px; flex-shrink:0;
+  box-shadow:0 1px 0 var(--border);
+  position:relative; z-index:30;
+}
+#logo {
+  font:800 14px var(--font-ui); letter-spacing:.06em;
+  color:var(--primary); padding-right:24px; user-select:none;
+}
+#menubar { display:flex; align-items:center; gap:0; }
+.menu { position:relative; }
+.menu-trigger {
+  background:transparent; border:none; cursor:pointer;
+  padding:8px 12px; font:500 13px var(--font-ui);
+  color:var(--text); border-radius:6px;
+  transition:background-color .15s, color .15s;
+}
+.menu-trigger:hover { background:var(--primary-faint); }
+.menu.open > .menu-trigger { background:var(--primary-soft); color:var(--primary); }
+
+.menu-dropdown {
+  display:none;
+  position:absolute; top:calc(100% + 4px); left:0;
+  background:var(--surface); border-radius:6px; min-width:220px;
+  padding:4px;
+  box-shadow:0 4px 16px rgba(0,0,0,.1), 0 0 0 1px rgba(0,0,0,.06);
+  z-index:40;
+}
+.menu.open > .menu-dropdown { display:block; }
+
+.menu-item {
+  display:flex; align-items:center; gap:8px; width:100%;
+  padding:8px 12px;
+  background:transparent; border:none; cursor:pointer;
+  font:500 13px var(--font-ui); color:var(--text);
+  text-align:left; border-radius:4px;
+  transition:background-color .15s, color .15s;
+}
+.menu-item:hover:not(:disabled) { background:var(--primary-faint); }
+.menu-item:disabled { color:var(--text-faint); cursor:default; }
+.menu-item .menu-check { width:14px; color:var(--primary); visibility:hidden; font-size:11px; line-height:1; }
+/* ✓ check only renders in the View menu (toggleable items). Other menus may
+   set .active on items for unrelated state — those should NOT show a check. */
+.menu[data-menu="view"] .menu-item.active .menu-check { visibility:visible; }
+.menu-item .menu-label { flex:1; }
+.menu-item[data-shortcut]::after {
+  content:"Ctrl+" attr(data-shortcut);
+  color:var(--text-faint); font:500 11px var(--font-mono);
+  margin-left:auto; padding-left:24px; letter-spacing:.02em;
+}
+body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcut); }
+
+.menu-divider { height:1px; background:#f3f4f6; margin:4px 0; }
+
+.submenu { position:relative; width:100%; }
+.submenu-trigger { padding-right:8px; }
+.submenu-arrow { color:var(--text-faint); font-size:10px; }
+.submenu > .submenu-dropdown {
+  display:none;
+  position:absolute; top:-4px; left:calc(100% + 6px);
+  min-width:180px;
+}
+.submenu:hover > .submenu-dropdown,
+.submenu:focus-within > .submenu-dropdown { display:block; }
+
+.topbar-spacer { flex:1; }
+.topbar-icon-btn {
+  background:transparent; border:none; cursor:pointer;
+  width:36px; height:36px; padding:6px;
+  border-radius:6px; color:var(--text-muted);
+  display:flex; align-items:center; justify-content:center;
+  transition:background-color .15s, color .15s;
+}
+.topbar-icon-btn:hover:not(:disabled) { background:var(--primary-faint); color:var(--primary); }
+.topbar-icon-btn:disabled { opacity:.4; cursor:default; }
+.topbar-icon-btn svg { width:20px; height:20px; }
+.btn { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font:600 12px var(--font-ui); letter-spacing:.01em; transition:background-color .15s, opacity .15s, box-shadow .15s, transform .1s; white-space:nowrap; }
+.btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 2px 4px rgba(0,0,0,.08); }
+.btn:disabled { opacity:.4; cursor:default; }
 .btn-dark { background:#374151; color:#fff; }
-.btn-gold { background:var(--gold); color:#fff; }
-.btn-blue { background:var(--blue); color:#fff; }
+.btn-blue { background:var(--primary); color:#fff; }
+.btn-blue:hover:not(:disabled) { background:var(--primary-dark); }
 .btn-green { background:#15803d; color:#fff; }
 .btn-purple { background:#7c3aed; color:#fff; }
 #btn-blind.active { background:#f59e0b; color:#000; }
@@ -37,7 +125,7 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 /* ── BOM Drawer ────────────────────────────────────────────── */
 #bom-drawer {
   position: fixed; top:0; right:0; width: 580px; max-width:96vw; height:100vh;
-  background:#fff; box-shadow:-8px 0 24px rgba(0,0,0,.4);
+  background:#fff; box-shadow:-8px 0 30px rgba(0,0,0,.10);
   z-index: 50; display:flex; flex-direction:column;
   transform: translateX(100%); transition: transform .25s ease-out;
 }
@@ -47,11 +135,11 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 
 #bom-header {
   background:#111827; color:#fff; padding:11px 16px;
-  display:flex; align-items:center; gap:10px; border-bottom:3px solid var(--red);
+  display:flex; align-items:center; gap:10px; border-bottom:3px solid var(--primary);
 }
 #bom-header h2 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; flex:1; }
 #bom-close { background:transparent; color:#fff; border:none; font-size:20px; cursor:pointer; padding:0 6px; }
-#bom-close:hover { color:var(--red); }
+#bom-close:hover { color:var(--primary); }
 
 #bom-summary {
   padding: 12px 16px; background:#f9fafb; border-bottom:1px solid var(--border);
@@ -59,8 +147,8 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 }
 .bom-stat { display:flex; justify-content:space-between; align-items:baseline; }
 .bom-stat .lbl { color:#6b7280; font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
-.bom-stat .val { font:700 13px 'Courier New',monospace; color:#111; }
-.bom-stat.total .val { color:var(--red); font-size:16px; }
+.bom-stat .val { font:700 13px var(--font-mono); color:#111; }
+.bom-stat.total .val { color:var(--primary); font-size:16px; }
 
 #bom-config {
   padding: 10px 16px; background:#fffbeb; border-bottom:1px solid #fde68a;
@@ -68,7 +156,7 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 }
 .bom-cfg { display:flex; align-items:center; gap:6px; font-size:10px; }
 .bom-cfg label { color:#78350f; text-transform:uppercase; letter-spacing:.04em; min-width:90px; font-weight:700; }
-.bom-cfg input { flex:1; padding:3px 6px; border:1px solid #e5e7eb; border-radius:2px; font:700 11px 'Courier New',monospace; }
+.bom-cfg input { flex:1; padding:3px 6px; border:1px solid #e5e7eb; border-radius:2px; font:700 11px var(--font-mono); }
 
 #bom-body { flex:1; overflow-y:auto; }
 
@@ -77,12 +165,12 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 }
 .bom-sec-hdr {
   padding: 6px 16px; font-size:9px; letter-spacing:.12em;
-  text-transform:uppercase; color:var(--red); font-weight:700;
+  text-transform:uppercase; color:var(--primary); font-weight:700;
   display:flex; align-items:center; gap:8px;
 }
 .bom-sec-hdr .add-btn {
   background:#374151; color:#fff; border:none; border-radius:2px;
-  font:700 9px 'Courier New',monospace; padding:2px 8px; cursor:pointer;
+  font:700 9px var(--font-ui); padding:2px 8px; cursor:pointer;
   text-transform:uppercase; letter-spacing:.04em;
 }
 .bom-sec-hdr .add-btn:hover { background:#1f2937; }
@@ -94,36 +182,37 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 }
 .bom-row:hover { background:#f9fafb; }
 .bom-row.col-hdr {
-  background:#f3f4f6; color:#6b7280; font:700 8px 'Courier New',monospace;
+  background:#f3f4f6; color:#6b7280; font:700 8px var(--font-ui);
   text-transform:uppercase; letter-spacing:.04em; padding-top:5px; padding-bottom:5px;
 }
 .bom-row input, .bom-row .bom-desc {
   padding:2px 4px; border:1px solid transparent; border-radius:2px;
-  font:11px 'Courier New',monospace; background:transparent; min-width:0;
+  font:11px var(--font-ui); background:transparent; min-width:0;
 }
 .bom-row input:hover, .bom-row .bom-desc:hover { background:#fff; border-color:#e5e7eb; }
 .bom-row input:focus, .bom-row .bom-desc:focus { background:#fff; border-color:var(--blue); outline:none; }
 .bom-row input[type=number] { text-align:right; font-weight:700; }
-.bom-row .bom-line-total { font:700 11px 'Courier New',monospace; text-align:right; padding-right:4px; color:#111; }
+.bom-row .bom-line-total { font:700 11px var(--font-mono); text-align:right; padding-right:4px; color:#111; }
 .bom-row .bom-line-total.zero { color:#d1d5db; }
 .bom-row .bom-del { color:#d1d5db; cursor:pointer; font-size:14px; text-align:center; }
-.bom-row .bom-del:hover { color:var(--red); }
+.bom-row .bom-del:hover { color:var(--primary); }
 .bom-row.auto-row .bom-desc { color:#6b7280; font-style:italic; }
 
 .bom-empty { padding:14px 16px; color:#9ca3af; font-size:10px; font-style:italic; }
 
 .tier-btn {
-  padding:3px 8px; border:1.5px solid var(--border); border-radius:3px;
-  background:#fff; font:700 9px 'Courier New',monospace; text-transform:uppercase;
-  letter-spacing:.04em; cursor:pointer; color:#6b7280;
+  padding:4px 10px; border:1.5px solid var(--border); border-radius:999px;
+  background:#fff; font:600 10px var(--font-ui); text-transform:uppercase;
+  letter-spacing:.04em; cursor:pointer; color:var(--text-muted);
+  transition:background-color .15s, border-color .15s, color .15s;
 }
-.tier-btn.active { border-color:var(--red); background:#fff5f5; color:var(--red); }
-.tier-btn:hover { background:#f9fafb; }
+.tier-btn.active { border-color:var(--primary); background:var(--primary-faint); color:var(--primary); }
+.tier-btn:hover:not(.active) { background:var(--surface-soft); }
 
 /* Tier badge in camera list */
 .tier-badge {
   display:inline-block; padding:1px 5px; border-radius:2px;
-  font:700 7px 'Courier New',monospace; text-transform:uppercase;
+  font:700 7px var(--font-ui); text-transform:uppercase;
   letter-spacing:.03em; margin-right:4px;
 }
 .tier-essential   { background:#dbeafe; color:#1e40af; }
@@ -132,12 +221,12 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 
 /* Storage Calculator */
 #bom-storage { padding: 10px 16px; background:#eff6ff; border-bottom:1px solid #bfdbfe; }
-.storage-hdr { font:700 9px 'Courier New',monospace; color:#1e3a8a; letter-spacing:.12em; text-transform:uppercase; margin-bottom:7px; }
+.storage-hdr { font:700 9px var(--font-ui); color:#1e3a8a; letter-spacing:.12em; text-transform:uppercase; margin-bottom:7px; }
 .storage-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin-bottom:8px; }
 .storage-grid .bom-cfg label { color:#1e3a8a; }
 #storage-result {
-  font:11px 'Courier New',monospace; color:#1e3a8a;
-  padding:7px 9px; background:#fff; border-radius:3px; border:1px solid #bfdbfe;
+  font:11px var(--font-mono); color:#1e3a8a;
+  padding:8px 12px; background:#fff; border-radius:6px; border:1px solid #bfdbfe;
   line-height:1.6;
 }
 #storage-result .stor-row { display:flex; justify-content:space-between; padding:1px 0; }
@@ -145,43 +234,54 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 #storage-result .stor-total { border-top:1px dashed #bfdbfe; margin-top:4px; padding-top:5px; font-weight:700; color:#dc2626; font-size:13px; }
 #storage-result.empty { color:#6b7280; font-style:italic; padding:10px 9px; }
 
-#tabs { display:flex; background:#1f2937; border-bottom:1px solid #374151; flex-shrink:0; overflow-x:auto; }
-.tab { padding:7px 16px; font:700 10px 'Courier New',monospace; letter-spacing:.05em; text-transform:uppercase; white-space:nowrap; cursor:pointer; border-right:1px solid #374151; color:#6b7280; flex-shrink:0; }
-.tab:hover { background:#374151; color:#e5e7eb; }
-.tab.active { background:var(--panel); color:var(--red); border-bottom:2px solid var(--red); margin-bottom:-1px; }
-.tab-cal { display:inline-block; width:5px; height:5px; border-radius:50%; background:#10b981; margin-left:5px; vertical-align:middle; }
+#tabs { display:flex; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; overflow-x:auto; height:36px; align-items:flex-end; padding:0 8px; }
+.tab { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; font:500 12px var(--font-ui); white-space:nowrap; cursor:pointer; color:var(--text-muted); flex-shrink:0; border-radius:6px 6px 0 0; transition:background-color .15s, color .15s; }
+.tab:hover { background:var(--primary-faint); color:var(--text); }
+.tab.active { background:var(--primary-soft); color:var(--primary); }
+.tab-label { line-height:1; }
+.tab-cal { display:inline-block; width:6px; height:6px; border-radius:50%; background:#10b981; vertical-align:middle; }
+.tab-close { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:4px; color:var(--text-faint); font-size:14px; line-height:1; opacity:0; transition:opacity .15s, background-color .15s, color .15s; }
+.tab:hover .tab-close { opacity:1; }
+.tab-close:hover { background:#fee2e2; color:#b91c1c; }
 
 #main { display:flex; flex:1; overflow:hidden; }
-#canvas-wrap { flex:1; overflow:auto; background:#374151; position:relative; cursor:crosshair; user-select:none; }
+#icon-strip { order:0; }
+#panel { order:1; }
+#canvas-wrap { order:2; flex:1; overflow:auto; background:var(--surface-soft); position:relative; cursor:crosshair; user-select:none; }
 #canvas-wrap.calib-mode { cursor:crosshair !important; }
 #cv { display:block; }
 
-#dropzone { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:#1f2937; color:#9ca3af; }
+#dropzone { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:var(--surface-soft); color:var(--text-muted); }
 #dropzone.hidden { display:none; }
-#dropzone.drag-over { outline:3px dashed var(--red); }
-#dropzone .dz-icon { font-size:56px; opacity:.5; }
-#dropzone h2 { font-size:18px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#e5e7eb; }
-#dropzone p { font-size:12px; }
+#dropzone.drag-over { outline:3px dashed var(--primary); outline-offset:-12px; background:var(--primary-faint); }
+#dropzone .dz-icon { font-size:56px; opacity:.5; color:var(--primary); }
+#dropzone h2 { font:700 22px var(--font-ui); letter-spacing:-.01em; color:var(--ink); }
+#dropzone p { font:13px var(--font-ui); }
 
-#progress-wrap { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.65); z-index:20; }
+#progress-wrap { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(15,23,42,.65); z-index:20; }
 #progress-wrap.hidden { display:none; }
-#progress-box { background:#111827; color:#fff; border-radius:6px; padding:24px 32px; min-width:280px; text-align:center; border:1px solid #374151; }
-#progress-box p { font-size:11px; letter-spacing:.06em; margin-bottom:12px; }
-#pbar-outer { background:#374151; border-radius:3px; height:5px; }
-#pbar-inner { background:var(--red); height:5px; border-radius:3px; width:0; transition:width .2s; }
+#progress-box { background:#fff; color:var(--text); border-radius:8px; padding:24px 32px; min-width:280px; text-align:center; box-shadow:0 20px 40px rgba(0,0,0,.2), 0 0 0 1px rgba(0,0,0,.05); }
+#progress-box p { font:500 13px var(--font-ui); margin-bottom:12px; }
+#pbar-outer { background:var(--border); border-radius:999px; height:6px; overflow:hidden; }
+#pbar-inner { background:var(--primary); height:6px; border-radius:999px; width:0; transition:width .2s; }
 
-#calib-banner { position:absolute; top:12px; left:50%; transform:translateX(-50%); background:#fbbf24; color:#1a1a2e; padding:8px 16px; border-radius:4px; font:700 11px 'Courier New',monospace; letter-spacing:.05em; text-transform:uppercase; z-index:15; box-shadow:0 4px 12px rgba(0,0,0,.4); display:none; }
+#calib-banner { position:absolute; top:12px; left:50%; transform:translateX(-50%); background:#fbbf24; color:#1a1a2e; padding:8px 16px; border-radius:4px; font:700 11px var(--font-ui); letter-spacing:.05em; text-transform:uppercase; z-index:15; box-shadow:0 4px 12px rgba(0,0,0,.4); display:none; }
 #calib-banner.show { display:block; }
 #calib-banner kbd { background:#1a1a2e; color:#fbbf24; padding:1px 5px; border-radius:2px; font-size:9px; margin:0 3px; }
 
 #calib-modal { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; align-items:center; justify-content:center; z-index:30; }
 #calib-modal.show { display:flex; }
-.modal-box { background:#fff; border-radius:6px; padding:22px 26px; min-width:340px; box-shadow:0 8px 30px rgba(0,0,0,.5); }
-.modal-box h3 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--red); margin-bottom:12px; }
+.modal-box { background:#fff; border-radius:8px; padding:24px 28px; min-width:340px; box-shadow:0 20px 40px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.05); }
+.help-shortcuts { width:100%; border-collapse:collapse; font:13px var(--font-ui); margin-bottom:16px; }
+.help-shortcuts td { padding:6px 4px; vertical-align:middle; }
+.help-shortcuts td:first-child { white-space:nowrap; padding-right:16px; }
+.help-shortcuts kbd { display:inline-block; padding:2px 6px; border:1px solid var(--border); border-radius:4px; background:var(--surface-soft); font:600 11px var(--font-mono); color:var(--text); line-height:1.2; min-width:14px; text-align:center; }
+.help-version { font:11px var(--font-mono); color:var(--text-faint); margin-top:8px; margin-bottom:12px; padding-top:12px; border-top:1px solid var(--border); }
+.modal-box h3 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--primary); margin-bottom:12px; }
 .modal-box p { font-size:11px; color:#374151; margin-bottom:14px; line-height:1.5; }
 .modal-row { display:flex; gap:8px; margin-bottom:14px; }
-.modal-row input[type=number] { flex:1; padding:7px 10px; border:1.5px solid var(--border); border-radius:3px; font:700 14px 'Courier New',monospace; }
-.modal-row select { padding:7px 10px; border:1.5px solid var(--border); border-radius:3px; font:700 11px 'Courier New',monospace; background:#fff; }
+.modal-row input[type=number] { flex:1; padding:7px 10px; border:1.5px solid var(--border); border-radius:6px; font:700 14px var(--font-mono); }
+.modal-row select { padding:7px 10px; border:1.5px solid var(--border); border-radius:3px; font:700 11px var(--font-ui); background:#fff; }
 .modal-actions { display:flex; gap:7px; justify-content:flex-end; }
 
 /* Big modal for project info */
@@ -191,12 +291,12 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 .proj-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
 .proj-field { display:flex; flex-direction:column; gap:4px; }
 .proj-field.full { grid-column:1 / -1; }
-.proj-field label { font:700 9px 'Courier New',monospace; text-transform:uppercase; letter-spacing:.06em; color:#6b7280; }
-.proj-field input,.proj-field textarea { padding:6px 8px; border:1.5px solid var(--border); border-radius:3px; font:11px 'Courier New',monospace; }
+.proj-field label { font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.06em; color:#6b7280; }
+.proj-field input,.proj-field textarea { padding:6px 8px; border:1.5px solid var(--border); border-radius:3px; font:11px var(--font-ui); }
 .proj-field textarea { min-height:55px; resize:vertical; }
 
-.export-opts label { display:block; padding:5px 0; font:700 11px 'Courier New',monospace; color:#1a1a2e; cursor:pointer; user-select:none; }
-.export-opts input[type=checkbox] { margin-right:9px; transform:scale(1.15); accent-color:var(--red); cursor:pointer; vertical-align:middle; }
+.export-opts label { display:block; padding:5px 0; font:700 11px var(--font-ui); color:#1a1a2e; cursor:pointer; user-select:none; }
+.export-opts input[type=checkbox] { margin-right:9px; transform:scale(1.15); accent-color:var(--primary); cursor:pointer; vertical-align:middle; }
 
 #zoom-bar { position:absolute; bottom:12px; left:12px; display:flex; gap:4px; z-index:10; }
 #zoom-bar.hidden { display:none; }
@@ -206,13 +306,41 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 
 #ctx-menu { position:fixed; background:#1f2937; border:1px solid #374151; border-radius:4px; overflow:hidden; z-index:100; min-width:140px; box-shadow:0 4px 12px rgba(0,0,0,.4); }
 #ctx-menu.hidden { display:none; }
-.ctx-item { padding:8px 14px; color:#e5e7eb; font:700 10px 'Courier New',monospace; text-transform:uppercase; letter-spacing:.05em; cursor:pointer; }
+.ctx-item { padding:8px 14px; color:#e5e7eb; font:700 10px var(--font-ui); text-transform:uppercase; letter-spacing:.05em; cursor:pointer; }
 .ctx-item:hover { background:#374151; }
 .ctx-item.danger:hover { background:#7f1d1d; color:#fca5a5; }
 .ctx-sep { height:1px; background:#374151; }
 
-#panel { width:268px; flex-shrink:0; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
-.phdr { font-size:9px; letter-spacing:.12em; text-transform:uppercase; padding:9px 13px 6px; border-bottom:1px solid var(--border); color:var(--red); font-weight:700; }
+/* ── Icon strip (left of panel) ─────────────────────────── */
+#icon-strip {
+  width:56px; flex-shrink:0;
+  background:var(--primary-soft); color:var(--primary);
+  display:flex; flex-direction:column; align-items:stretch;
+  padding:8px 0 8px 0; gap:4px;
+  box-shadow:1px 0 0 var(--border);
+}
+.strip-btn {
+  position:relative; width:56px; height:48px;
+  background:transparent; border:none; cursor:pointer;
+  color:var(--text-muted);
+  display:flex; align-items:center; justify-content:center;
+  transition:background-color .15s, color .15s;
+}
+.strip-btn:hover:not(.active) { background:var(--primary-faint); color:var(--primary); }
+.strip-btn.active {
+  background:var(--surface); color:var(--primary);
+}
+.strip-btn.active::before {
+  content:""; position:absolute; left:0; top:8px; bottom:8px;
+  width:2px; border-radius:2px; background:var(--primary);
+}
+.strip-btn svg { width:24px; height:24px; }
+.strip-divider { height:1px; background:var(--border); margin:4px 12px; }
+.strip-spacer { flex:1; }
+
+/* ── Property panel (left of canvas) ────────────────────── */
+#panel { width:280px; flex-shrink:0; background:var(--surface); display:flex; flex-direction:column; overflow:hidden; box-shadow:1px 0 0 var(--border); }
+.phdr { font:700 10px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; padding:12px 16px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); }
 
 #controls { padding:10px 13px; border-bottom:1px solid var(--border); }
 
@@ -224,12 +352,12 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
   display:flex; flex-direction:column; align-items:center; gap:5px;
 }
 .brand-tile:hover { border-color:#9ca3af; background:#f9fafb; transform:translateY(-1px); }
-.brand-tile.active { border-color:var(--red); background:#fff5f5; box-shadow:0 0 0 2px rgba(200,32,44,.12); }
-.brand-name { font:700 9px 'Courier New',monospace; text-transform:uppercase; letter-spacing:.05em; color:#374151; }
-.brand-tile.active .brand-name { color:var(--red); }
+.brand-tile.active { border-color:var(--primary); background:#fff5f5; box-shadow:0 0 0 2px rgba(29,78,216,.12); }
+.brand-name { font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.05em; color:#374151; }
+.brand-tile.active .brand-name { color:var(--primary); }
 .brand-logo {
   width:34px; height:34px; border-radius:5px; display:flex; align-items:center; justify-content:center;
-  font:800 12px 'Courier New',monospace; letter-spacing:.04em; color:#fff;
+  font:800 12px var(--font-ui); letter-spacing:.04em; color:#fff;
 }
 .brand-een    { background:linear-gradient(135deg,#0891b2 0%,#0e7490 100%); }
 .brand-hwa    { background:linear-gradient(135deg,#1e40af 0%,#1e3a8a 100%); }
@@ -237,15 +365,15 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 
 #model-info { font-size:9px; color:#374151; padding:6px 8px; background:#f9fafb; border-radius:3px; border:1px solid #e5e7eb; line-height:1.4; margin-bottom:9px; min-height:32px; }
 #model-info.empty { color:#9ca3af; font-style:italic; }
-#model-info b { color:var(--red); }
+#model-info b { color:var(--primary); }
 #model-info .clear-model { float:right; color:#9ca3af; cursor:pointer; font-size:11px; padding:0 4px; }
-#model-info .clear-model:hover { color:var(--red); }
+#model-info .clear-model:hover { color:var(--primary); }
 
 /* ── Camera style buttons (with flat SVG icons) ──────────── */
 #type-row { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-bottom:9px; }
 .type-btn {
   padding:7px 4px 5px; border:2px solid var(--border); border-radius:4px; background:#fff;
-  font:700 8px 'Courier New',monospace; text-transform:uppercase; letter-spacing:.04em;
+  font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
   cursor:pointer; text-align:center; color:#6b7280;
   display:flex; flex-direction:column; align-items:center; gap:3px;
   transition:all .12s;
@@ -258,23 +386,26 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 .type-btn.active-fisheye { border-color:var(--fisheye); background:#f0fdf4; color:var(--fisheye); }
 .type-btn.active-ptz     { border-color:var(--ptz);     background:#f5f3ff; color:var(--ptz); }
 .type-btn.active-lpr     { border-color:var(--lpr);     background:#fffbeb; color:var(--lpr); }
+/* CMVR / NVR is a head-end placement entry point, styled charcoal to match the canvas head-end marker. */
+.type-btn-cmvr { font-size:7.5px; }
+.type-btn-cmvr.active     { border-color:#1e3a8a;        background:#eef2ff; color:#1e3a8a; }
 
 /* ── Style filter chips (in modal) ───────────────────────── */
 #style-filter-row { display:flex; gap:5px; margin-bottom:14px; flex-wrap:wrap; }
 .style-chip {
-  padding:5px 11px; border:1.5px solid var(--border); border-radius:14px; background:#fff;
-  font:700 9px 'Courier New',monospace; text-transform:uppercase; letter-spacing:.04em;
-  cursor:pointer; color:#6b7280; transition:all .12s;
+  padding:6px 12px; border:1.5px solid var(--border); border-radius:999px; background:#fff;
+  font:600 11px var(--font-ui); letter-spacing:.01em;
+  cursor:pointer; color:var(--text-muted); transition:background-color .15s, border-color .15s, color .15s;
 }
-.style-chip:hover { border-color:#9ca3af; background:#f9fafb; }
-.style-chip.active { border-color:var(--red); background:#fff5f5; color:var(--red); }
+.style-chip:hover:not(.active) { border-color:#9ca3af; background:var(--surface-soft); }
+.style-chip.active { border-color:var(--primary); background:var(--primary-faint); color:var(--primary); }
 
 /* ── Model browser modal: list ──────────────────────────── */
 #brand-model-list { max-height:60vh; overflow-y:auto; padding-right:4px; }
 .style-group { margin-bottom:14px; }
 .style-group-hdr {
   display:flex; align-items:center; gap:8px; padding:6px 8px; margin-bottom:5px;
-  border-radius:4px; font:700 10px 'Courier New',monospace; text-transform:uppercase; letter-spacing:.06em;
+  border-radius:4px; font:700 10px var(--font-ui); text-transform:uppercase; letter-spacing:.06em;
 }
 .style-group-hdr svg { width:18px; height:18px; }
 .style-group-hdr .style-count { margin-left:auto; font-size:9px; opacity:0.7; }
@@ -288,21 +419,24 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 .model-row {
   display:grid; grid-template-columns:32px 100px 1fr auto; gap:10px; align-items:center;
   padding:7px 8px; border-radius:3px; cursor:pointer; transition:background .1s;
-  font:11px 'Courier New',monospace; border-bottom:1px solid #f3f4f6;
+  font:11px var(--font-ui); border-bottom:1px solid #f3f4f6;
 }
 .model-row:hover { background:#f9fafb; }
 .model-row.selected { background:#eff6ff; outline:2px solid var(--blue); }
 .model-row .ts-icon { width:24px; height:24px; }
 .model-row .m-name { font-weight:700; color:#111; }
 .model-row .m-desc { color:#6b7280; font-size:10px; }
-.model-row .m-spec { font:700 9px 'Courier New',monospace; color:#9ca3af; text-align:right; white-space:nowrap; }
+.model-row .m-spec { font:700 9px var(--font-ui); color:#9ca3af; text-align:right; white-space:nowrap; }
 
 .ctrl { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
 .ctrl label { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:#9ca3af; min-width:50px; }
-.ctrl input[type=range] { flex:1; accent-color:var(--red); }
+.ctrl input[type=range] { flex:1; accent-color:var(--primary); }
 .ctrl .val { font-size:10px; font-weight:700; min-width:44px; text-align:right; color:#111; }
-.ctrl input[type=text],.ctrl select { flex:1; padding:3px 5px; border:1px solid var(--border); border-radius:2px; font:700 11px 'Courier New',monospace; background:#fff; }
-.ctrl textarea { flex:1; padding:3px 5px; border:1px solid var(--border); border-radius:2px; font:10px 'Courier New',monospace; resize:none; height:36px; }
+.ctrl input[type=text],.ctrl select { flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font:500 12px var(--font-ui); background:#fff; transition:border-color .15s, box-shadow .15s; }
+.ctrl input[type=text]:focus,.ctrl select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-faint); }
+.ctrl textarea { flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font:12px var(--font-ui); resize:none; height:48px; transition:border-color .15s, box-shadow .15s; }
+.ctrl textarea:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-faint); }
+.ctrl input[type=number] { padding:6px 8px; border:1px solid var(--border); border-radius:6px; font:600 12px var(--font-mono); background:#fff; }
 
 .hint { font-size:9px; color:#9ca3af; line-height:1.7; margin-top:7px; background:#f9fafb; border-radius:3px; padding:6px 8px; border:1px solid #e5e7eb; }
 .hint b { color:#374151; }
@@ -310,6 +444,7 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 #dori-info { padding:8px 13px; border-bottom:1px solid var(--border); background:#fafaf8; font-size:10px; }
 #dori-info .di-title { font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#9ca3af; margin-bottom:5px; font-weight:700; }
 #dori-info .di-row { display:flex; justify-content:space-between; padding:1px 0; }
+#dori-info .di-row b { font:600 11px var(--font-mono); }
 #dori-info .di-row .di-swatch { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:middle; }
 #dori-info.empty { color:#9ca3af; font-style:italic; padding:8px 13px; font-size:10px; }
 
@@ -318,10 +453,10 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 .cam-item:hover { background:#f9fafb; }
 .cam-item.sel { background:#eff6ff; border-left-color:var(--blue); }
 .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
-.clabel { font:700 11px 'Courier New',monospace; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.clabel { font:700 11px var(--font-ui); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cmeta { font-size:8px; color:#9ca3af; }
 .cdel { color:#d1d5db; cursor:pointer; font-size:13px; padding:0 2px; flex-shrink:0; }
-.cdel:hover { color:var(--red); }
+.cdel:hover { color:var(--primary); }
 .dot-dome    { background:var(--dome); }
 .dot-bullet  { background:var(--bullet); border-radius:2px; }
 .dot-turret  { background:var(--turret); }
@@ -329,18 +464,18 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 .dot-ptz     { background:var(--ptz); }
 .dot-lpr     { background:var(--lpr); border-radius:2px; }
 
-#footer { padding:6px 13px; border-top:1px solid var(--border); display:flex; justify-content:space-between; font-size:9px; color:#9ca3af; gap:6px; }
-#status { color:var(--red); font-weight:700; font-size:9px; }
-#scale-ind { color:#10b981; font-weight:700; font-size:9px; }
-#scale-ind.uncalibrated { color:#9ca3af; font-weight:400; font-style:italic; }
+#footer { padding:8px 16px; border-top:1px solid var(--border); display:flex; justify-content:space-between; font:500 11px var(--font-ui); color:var(--text-muted); gap:8px; flex-shrink:0; background:var(--surface-soft); }
+#status { color:var(--text); font:500 11px var(--font-ui); }
+#scale-ind { color:#10b981; font:600 11px var(--font-mono); }
+#scale-ind.uncalibrated { color:var(--text-faint); font-weight:400; font-style:italic; }
 
 #file-input,#json-input { display:none; }
 
 /* ── Right-panel mode toggle (Cameras / Access Control) ──── */
-#panel-toggle { display:flex; background:#1f2937; flex-shrink:0; border-bottom:2px solid var(--red); }
-.pmt-btn { flex:1; padding:9px 6px; background:transparent; border:none; color:#9ca3af; font:700 9px 'Courier New',monospace; letter-spacing:.07em; text-transform:uppercase; cursor:pointer; transition:all .12s; border-bottom:2px solid transparent; margin-bottom:-2px; }
+#panel-toggle { display:flex; background:#1f2937; flex-shrink:0; border-bottom:2px solid var(--primary); }
+.pmt-btn { flex:1; padding:9px 6px; background:transparent; border:none; color:#9ca3af; font:700 9px var(--font-ui); letter-spacing:.07em; text-transform:uppercase; cursor:pointer; transition:all .12s; border-bottom:2px solid transparent; margin-bottom:-2px; }
 .pmt-btn:hover { color:#e5e7eb; background:#111827; }
-.pmt-btn.active { color:#fff; background:#111827; border-bottom-color:var(--red); }
+.pmt-btn.active { color:#fff; background:#111827; border-bottom-color:var(--primary); }
 .pmt-btn[data-mode="access"].active { border-bottom-color:#1d4ed8; }
 .panel-body { display:flex; flex-direction:column; flex:1; overflow:hidden; }
 #panel[data-mode="cameras"] .panel-body[data-mode-section="access"] { display:none; }
@@ -350,11 +485,11 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 #ac-controls { padding:9px 13px; border-bottom:1px solid var(--border); }
 .ac-group { margin-bottom:9px; }
 .ac-group:last-child { margin-bottom:2px; }
-.ac-group-hdr { font:700 9px 'Courier New',monospace; letter-spacing:.09em; text-transform:uppercase; color:#1d4ed8; padding:3px 0 5px; border-bottom:1px solid #dbeafe; margin-bottom:5px; }
-.ac-model { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:6px 9px; margin:3px 0; border:1.5px solid var(--border); border-radius:3px; background:#fff; cursor:pointer; font:700 10px 'Courier New',monospace; color:#374151; transition:all .12s; }
+.ac-group-hdr { font:700 9px var(--font-ui); letter-spacing:.09em; text-transform:uppercase; color:#1d4ed8; padding:3px 0 5px; border-bottom:1px solid #dbeafe; margin-bottom:5px; }
+.ac-model { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:6px 9px; margin:3px 0; border:1.5px solid var(--border); border-radius:3px; background:#fff; cursor:pointer; font:700 10px var(--font-ui); color:#374151; transition:all .12s; }
 .ac-model:hover { border-color:#9ca3af; background:#f9fafb; }
 .ac-model.active { border-color:#1d4ed8; background:#eff6ff; color:#1d4ed8; box-shadow:0 0 0 2px rgba(29,78,216,.12); }
-.ac-model .ac-sku { font:400 8px 'Courier New',monospace; color:#9ca3af; letter-spacing:.04em; }
+.ac-model .ac-sku { font:400 8px var(--font-ui); color:#9ca3af; letter-spacing:.04em; }
 .ac-model.active .ac-sku { color:#1d4ed8; }
 .ac-hint { font-size:9px; color:#9ca3af; line-height:1.6; margin-top:7px; background:#eff6ff; border:1px solid #dbeafe; border-radius:3px; padding:6px 8px; }
 .ac-hint b { color:#1e40af; }
@@ -367,34 +502,98 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 
 </style>
 </head>
-<body>
+<body class="no-pdf">
 
 <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png">
 <input type="file" id="json-input" accept=".json">
 
-<div id="topbar">
-  <h1>Camera Markup</h1>
-  <button class="btn btn-blue"   onclick="document.getElementById('file-input').click()">&#128196; PDF</button>
-  <button class="btn btn-dark"   onclick="saveJSON()"  id="btn-save"   disabled>&#128190; Save</button>
-  <button class="btn btn-dark"   onclick="document.getElementById('json-input').click()" id="btn-load">&#128194; Load</button>
-  <button class="btn btn-dark"   id="btn-calib"  onclick="startCalibration()" disabled>&#128207; Calibrate</button>
-  <button class="btn btn-dark"   id="btn-headend" onclick="startHeadendPlacement()" disabled>&#127960; Head-End</button>
-  <button class="btn btn-dark"   id="btn-cables"  onclick="toggleCables()" disabled>&#128279; Cables</button>
-  <div class="spacer"></div>
-  <button class="btn btn-gold"   id="btn-dori"   onclick="toggleDori()"   disabled>&#127919; DORI</button>
-  <button class="btn btn-gold"   id="btn-blind"  onclick="toggleBlind()"  disabled>&#128065; Blind Spots</button>
-  <button class="btn btn-gold"   id="btn-heatmap" onclick="toggleHeatmap()" disabled>&#128293; Heatmap</button>
-  <button class="btn btn-gold"   id="btn-undo"   onclick="undoLast()"     disabled>&#8592; Undo</button>
-  <button class="btn btn-dark"   id="btn-clear"  onclick="clearPage()"    disabled>Clear</button>
-  <button class="btn btn-green"  id="btn-pdf"    onclick="openExportModal()" disabled>PDF</button>
-  <button class="btn btn-purple" id="btn-csv"    onclick="exportCSV()"    disabled>CSV</button>
-  <button class="btn btn-dark"   id="btn-project" onclick="openProjectModal()" disabled>&#128221; Project Info</button>
-  <button class="btn btn-dark"   id="btn-bom"    onclick="toggleBom()"    disabled>&#128181; BOM</button>
-</div>
+<header id="topbar">
+  <div id="logo">SMART MF</div>
+  <nav id="menubar">
+    <div class="menu" data-menu="file">
+      <button class="menu-trigger">File</button>
+      <div class="menu-dropdown">
+        <button class="menu-item" onclick="document.getElementById('file-input').click()" data-shortcut="O"><span class="menu-check">&#10003;</span><span class="menu-label">Open PDF&hellip;</span></button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="btn-save" onclick="saveJSON()" data-shortcut="S" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save Project</span></button>
+        <button class="menu-item" id="btn-load" onclick="document.getElementById('json-input').click()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Project&hellip;</span></button>
+      </div>
+    </div>
+    <div class="menu" data-menu="view">
+      <button class="menu-trigger">View</button>
+      <div class="menu-dropdown">
+        <button class="menu-item" id="btn-dori" onclick="toggleDori()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">DORI Zones</span></button>
+        <button class="menu-item" id="btn-blind" onclick="toggleBlind()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Blind Spots</span></button>
+        <button class="menu-item" id="btn-heatmap" onclick="toggleHeatmap()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Heatmap</span></button>
+        <div class="menu-divider"></div>
+        <div class="submenu">
+          <button class="menu-item submenu-trigger"><span class="menu-check">&#10003;</span><span class="menu-label">Toggles</span><span class="submenu-arrow">&#9656;</span></button>
+          <div class="menu-dropdown submenu-dropdown">
+            <button class="menu-item" id="btn-cables" onclick="toggleCables()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Cables</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="menu" data-menu="tools">
+      <button class="menu-trigger">Tools</button>
+      <div class="menu-dropdown">
+        <button class="menu-item" id="btn-calib" onclick="startCalibration()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Calibrate Scale</span></button>
+        <button class="menu-item" id="btn-headend" onclick="startHeadendPlacement()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Place Head-End</span></button>
+      </div>
+    </div>
+    <div class="menu" data-menu="proposal">
+      <button class="menu-trigger">Proposal</button>
+      <div class="menu-dropdown">
+        <button class="menu-item" id="btn-project" onclick="openProjectModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Project Info&hellip;</span></button>
+        <button class="menu-item" id="btn-bom" onclick="toggleBom()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Bill of Materials</span></button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="btn-pdf" onclick="openExportModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Export Proposal PDF</span></button>
+        <button class="menu-item" onclick="exportBomCSV()"><span class="menu-check">&#10003;</span><span class="menu-label">Export BOM as CSV</span></button>
+      </div>
+    </div>
+  </nav>
+  <div class="topbar-spacer"></div>
+  <button id="btn-undo" class="topbar-icon-btn" title="Undo" onclick="undoLast()" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 10h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-7"/>
+      <path d="M7 6l-4 4 4 4"/>
+    </svg>
+  </button>
+  <button id="btn-clear" class="topbar-icon-btn" title="Clear page" onclick="clearPage()" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 6h18"/>
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    </svg>
+  </button>
+</header>
 
 <div id="tabs"></div>
 
 <div id="main">
+  <aside id="icon-strip">
+    <button class="strip-btn active" data-mode-btn="cameras" title="Cameras" onclick="setPanelMode('cameras')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 6h6l1 2h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3l1-2z"/>
+        <circle cx="12" cy="13" r="3.2"/>
+      </svg>
+    </button>
+    <button class="strip-btn" data-mode-btn="access" title="Access Control" onclick="setPanelMode('access')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="3" width="12" height="18" rx="2"/>
+        <path d="M9 8h6M9 12h6M9 16h6"/>
+      </svg>
+    </button>
+    <div class="strip-spacer"></div>
+    <button class="strip-btn" id="strip-btn-help" title="Help" onclick="openHelpModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 4"/>
+        <circle cx="12" cy="17" r=".7" fill="currentColor"/>
+      </svg>
+    </button>
+  </aside>
+
   <div id="canvas-wrap">
     <div id="dropzone">
       <div class="dz-icon">&#128196;</div>
@@ -423,10 +622,6 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
   </div>
 
   <div id="panel" data-mode="cameras" style="display:none">
-    <div id="panel-toggle">
-      <button class="pmt-btn active" data-mode="cameras" onclick="setPanelMode('cameras')">Cameras</button>
-      <button class="pmt-btn"        data-mode="access"  onclick="setPanelMode('access')">Access Control</button>
-    </div>
     <div class="panel-body" data-mode-section="cameras">
     <div class="phdr">Camera Model</div>
     <div id="controls">
@@ -474,6 +669,10 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
         <div class="type-btn" id="tb-lpr" onclick="setType('lpr')" title="LPR / License Plate">
           <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="9" rx="1.5"/><path d="M7 12h2M11 12h2M15 12h2"/></svg>
           LPR
+        </div>
+        <div class="type-btn type-btn-cmvr" id="tb-cmvr" onclick="startHeadendPlacement()" title="Place CMVR / NVR head-end on this page">
+          <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><circle cx="8" cy="7" r=".7" fill="currentColor"/><circle cx="8" cy="17" r=".7" fill="currentColor"/><path d="M12 7h4M12 17h4"/></svg>
+          CMVR / NVR
         </div>
       </div>
       <div class="ctrl">
@@ -528,8 +727,12 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
         <label>Notes</label>
         <textarea id="inp-notes" placeholder="e.g. IP66, WDR, IR..." oninput="updateSelected()"></textarea>
       </div>
-      <details style="margin:6px 0 4px 0; font-size:9px;">
-        <summary style="cursor:pointer; color:var(--red); letter-spacing:.06em; text-transform:uppercase; font-weight:700; padding:3px 0;">&#128270; Site Survey Details</summary>
+      <!-- Site Survey Details: hidden from the editor pane; data still flows
+           through the camera object for proposal-side use. The inputs remain
+           in the DOM so addCamera/selectCamera/updateSelected/save/load are
+           untouched. To resurface, drop the display:none on this <details>. -->
+      <details style="display:none; margin:6px 0 4px 0; font-size:9px;">
+        <summary style="cursor:pointer; color:var(--primary); letter-spacing:.06em; text-transform:uppercase; font-weight:700; padding:3px 0;">&#128270; Site Survey Details</summary>
         <div style="padding:5px 0 4px;">
           <div class="ctrl">
             <label>Mount</label>
@@ -689,10 +892,30 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
     <div class="export-opts">
       <label><input type="checkbox" id="exp-current-only"> Only export the current floor plan page</label>
     </div>
-    <p id="exp-warn" style="color:var(--red); font-size:10px; display:none; margin-top:8px;"></p>
+    <p id="exp-warn" style="color:var(--primary); font-size:10px; display:none; margin-top:8px;"></p>
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeExportModal()">Cancel</button>
       <button class="btn btn-green" id="btn-export-go" onclick="runExportPDF()">Export &rarr;</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help / About Modal -->
+<div id="help-modal" class="big-modal">
+  <div class="modal-box" style="min-width:420px;">
+    <h3>Help</h3>
+    <p style="margin-bottom:12px;">Keyboard shortcuts:</p>
+    <table class="help-shortcuts">
+      <tr><td><kbd>Esc</kbd></td><td>Deselect / cancel current operation</td></tr>
+      <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Remove selected device</td></tr>
+      <tr><td><kbd class="kbd-mod">Ctrl</kbd> + <kbd>S</kbd></td><td>Save project</td></tr>
+      <tr><td><kbd class="kbd-mod">Ctrl</kbd> + <kbd>O</kbd></td><td>Open PDF</td></tr>
+      <tr><td><kbd>1</kbd></td><td>Cameras mode</td></tr>
+      <tr><td><kbd>2</kbd></td><td>Access Control mode</td></tr>
+    </table>
+    <p id="help-version" class="help-version"></p>
+    <div class="modal-actions">
+      <button class="btn btn-dark" onclick="closeHelpModal()">Close</button>
     </div>
   </div>
 </div>
@@ -888,6 +1111,7 @@ var CAM_R=11, LENS_R=5, RENDER_SCALE=4;
 var FT_PER_METER = 3.28084;
 
 // ─── State ────────────────────────────────────────────────────────────────────
+var APP_VERSION = '0.5';
 var DPR=window.devicePixelRatio||1, pages=[], cameras=[], currentPage=0;
 var selectedId=null, dragging=null, counters={}, viewScale=1, pdfLoaded=false;
 var currentType='dome', blindMode=false, doriMode=false, heatmapMode=false;
@@ -1164,19 +1388,16 @@ async function loadImage(file){
   off.width=img.naturalWidth; off.height=img.naturalHeight;
   off.getContext('2d').drawImage(img,0,0);
   // Treat logical size = native size
-  pages.push({offCanvas:off, logW:img.naturalWidth, logH:img.naturalHeight});
-
-  var t=document.createElement('div');
-  t.className='tab active'; t.dataset.idx=0;
-  t.textContent=file.name.length>30?file.name.slice(0,28)+'…':file.name;
-  t.addEventListener('click',function(){switchPage(0);});
-  document.getElementById('tabs').appendChild(t);
+  var imgLabel = file.name.length>30 ? file.name.slice(0,28)+'…' : file.name;
+  pages.push({offCanvas:off, logW:img.naturalWidth, logH:img.naturalHeight, label:imgLabel});
+  rebuildTabsDom();
 
   hideProgress(); pdfLoaded=true;
   dz.classList.add('hidden');
   document.getElementById('panel').style.display = '';
+  document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-csv','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -1201,20 +1422,16 @@ async function loadPDF(file){
     var off=document.createElement('canvas');
     off.width=Math.round(renderVp.width); off.height=Math.round(renderVp.height);
     await page.render({canvasContext:off.getContext('2d'),viewport:renderVp}).promise;
-    pages.push({offCanvas:off,logW:baseVp.width,logH:baseVp.height});
-    var t=document.createElement('div');
-    t.className='tab'+(i===1?' active':'');
-    t.dataset.idx=i-1;
-    t.textContent='Page '+i;
-    (function(idx){t.addEventListener('click',function(){switchPage(idx);});})(i-1);
-    document.getElementById('tabs').appendChild(t);
+    pages.push({offCanvas:off,logW:baseVp.width,logH:baseVp.height,label:'Page '+i});
   }
+  rebuildTabsDom();
   refreshFloorSuggestions();
   hideProgress(); pdfLoaded=true;
   dz.classList.add('hidden');
   document.getElementById('panel').style.display = '';
+  document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-csv','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
     document.getElementById(id).disabled=false;
   });
   switchPage(0);
@@ -1228,10 +1445,134 @@ function showProgress(msg,pct){
 function hideProgress(){document.getElementById('progress-wrap').classList.add('hidden');}
 
 // ─── Page switching ───────────────────────────────────────────────────────────
+// ─── Tabs ────────────────────────────────────────────────────────────────────
+// Single source of truth for the tabs DOM. Called after import, JSON load,
+// calibration save, and page deletion.
+function rebuildTabsDom(){
+  var tabsEl = document.getElementById('tabs');
+  if(!tabsEl) return;
+  tabsEl.innerHTML = '';
+  pages.forEach(function(pg, idx){
+    var t = document.createElement('div');
+    t.className = 'tab' + (idx === currentPage ? ' active' : '');
+    t.dataset.idx = idx;
+
+    var lab = document.createElement('span');
+    lab.className = 'tab-label';
+    lab.textContent = pg.label || ('Page ' + (idx + 1));
+    t.appendChild(lab);
+
+    if(calibrations[idx]){
+      var dot = document.createElement('span');
+      dot.className = 'tab-cal';
+      t.appendChild(dot);
+    }
+
+    var close = document.createElement('span');
+    close.className = 'tab-close';
+    close.title = 'Delete page';
+    close.textContent = '×';
+    (function(targetIdx){
+      close.addEventListener('click', function(e){
+        e.stopPropagation();
+        if(confirm('Delete this page and all its cameras and readers? This cannot be undone.')){
+          deletePage(targetIdx);
+        }
+      });
+    })(idx);
+    t.appendChild(close);
+
+    (function(targetIdx){
+      t.addEventListener('click', function(){ switchPage(targetIdx); });
+    })(idx);
+    tabsEl.appendChild(t);
+  });
+}
+
+// Drop a page-keyed object's matching key, decrement higher-numeric keys.
+function remapPageKeys(obj, removedIdx){
+  var out = {};
+  Object.keys(obj).forEach(function(k){
+    var n = parseInt(k, 10);
+    if(isNaN(n) || n === removedIdx) return;
+    out[n > removedIdx ? n - 1 : n] = obj[k];
+  });
+  return out;
+}
+
+function deletePage(idx){
+  if(idx < 0 || idx >= pages.length) return;
+  // Cascade
+  pages.splice(idx, 1);
+  cameras = cameras.filter(function(c){return c.page !== idx;});
+  cameras.forEach(function(c){ if(c.page > idx) c.page--; });
+  acDevices = acDevices.filter(function(d){return d.page !== idx;});
+  acDevices.forEach(function(d){ if(d.page > idx) d.page--; });
+  calibrations = remapPageKeys(calibrations, idx);
+  headends     = remapPageKeys(headends, idx);
+  acCounters   = remapPageKeys(acCounters, idx);
+
+  // Last-page rewind: full reset to no-PDF state
+  if(pages.length === 0){
+    rewindToNoPdf();
+    return;
+  }
+
+  // Reindex currentPage
+  if(currentPage === idx) currentPage = Math.max(0, idx - 1);
+  else if(currentPage > idx) currentPage--;
+
+  selectedId = null; acSelectedId = null;
+  rebuildTabsDom();
+  fitPage(); redraw();
+  updateList(); updateAcList();
+  updateScaleIndicator(); updateDoriInfo();
+  refreshFloorSuggestions();
+}
+
+// Full rewind when the last page is deleted: clean fresh state, all modals
+// closed, chrome disabled, dropzone visible. Drag-drop on canvas-wrap stays
+// wired (those handlers were attached once at script load and aren't removed).
+function rewindToNoPdf(){
+  // Reset state
+  selectedId = null; acSelectedId = null;
+  currentPage = 0;
+  pdfLoaded = false;
+  pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {};
+  blindMode = false; doriMode = false; heatmapMode = false;
+  cablesMode = false; calibMode = false; calibPoints = []; calibCursor = null;
+  headendMode = false; bomOpen = false;
+  // Clear active toggles on (now-disabled) menu items
+  ['btn-blind','btn-dori','btn-heatmap','btn-cables','btn-calib','btn-headend','btn-bom'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.classList.remove('active');
+  });
+  // Close any open modals / overlays
+  ['project-modal','export-modal','brand-modal','help-modal','calib-modal'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.classList.remove('show');
+  });
+  document.getElementById('bom-drawer').classList.remove('open');
+  document.getElementById('bom-backdrop').classList.remove('show');
+  document.getElementById('ctx-menu').classList.add('hidden');
+  closeAllMenus();
+  // Hide chrome bits, show dropzone
+  document.getElementById('panel').style.display = 'none';
+  document.getElementById('zoom-bar').classList.add('hidden');
+  document.getElementById('calib-banner').classList.remove('show');
+  document.getElementById('dropzone').classList.remove('hidden');
+  document.getElementById('tabs').innerHTML = '';
+  // Disable menu items + corner icons
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.disabled = true;
+  });
+  document.body.classList.add('no-pdf');
+  var statusEl = document.getElementById('status');
+  if(statusEl) statusEl.textContent = 'Import a PDF to begin';
+}
+
 function switchPage(idx){
   if(calibMode) cancelCalibrationFlow();
   currentPage=idx; selectedId=null; acSelectedId=null;
-  document.querySelectorAll('.tab').forEach(function(t,j){t.classList.toggle('active',j===idx);});
+  rebuildTabsDom();
   // Pre-fill the Floor input with the current page's floor (page N → Floor N).
   // User can still type to override before placing the next camera.
   var floorInput = document.getElementById('inp-floor');
@@ -1275,7 +1616,6 @@ wrap.addEventListener('wheel',function(e){
 function startCalibration(){
   if(!pdfLoaded) return;
   calibMode=true; calibPoints=[]; calibCursor=null;
-  document.getElementById('btn-calib').classList.add('active');
   document.getElementById('calib-banner').classList.add('show');
   document.getElementById('calib-msg').textContent='Click first reference point';
   wrap.classList.add('calib-mode');
@@ -1283,7 +1623,6 @@ function startCalibration(){
 }
 function cancelCalibrationFlow(){
   calibMode=false; calibPoints=[]; calibCursor=null;
-  document.getElementById('btn-calib').classList.remove('active');
   document.getElementById('calib-banner').classList.remove('show');
   document.getElementById('calib-modal').classList.remove('show');
   wrap.classList.remove('calib-mode');
@@ -1315,10 +1654,7 @@ function saveCalib(){
   calibrations[currentPage]={pixelsPerMeter:pxPerM,unit:unit};
   cancelCalibrationFlow();
   updateScaleIndicator(); updateDoriInfo();
-  var tab=document.querySelector('.tab[data-idx="'+currentPage+'"]');
-  if(tab&&!tab.querySelector('.tab-cal')){
-    var dot=document.createElement('span'); dot.className='tab-cal'; tab.appendChild(dot);
-  }
+  rebuildTabsDom();
 }
 function cancelCalib(){ cancelCalibrationFlow(); }
 
@@ -1327,15 +1663,15 @@ function startHeadendPlacement(){
   if(!pdfLoaded) return;
   if(calibMode) cancelCalibrationFlow();
   headendMode = true;
-  document.getElementById('btn-headend').classList.add('active');
+  var cmvr = document.getElementById('tb-cmvr'); if(cmvr) cmvr.classList.add('active');
   document.getElementById('calib-banner').classList.add('show');
-  document.getElementById('calib-msg').textContent = 'Click to place NVR / head-end on this page';
+  document.getElementById('calib-msg').textContent = 'Click to place CMVR / NVR head-end on this page';
   redraw();
 }
 
 function cancelHeadendPlacement(){
   headendMode = false;
-  document.getElementById('btn-headend').classList.remove('active');
+  var cmvr = document.getElementById('tb-cmvr'); if(cmvr) cmvr.classList.remove('active');
   document.getElementById('calib-banner').classList.remove('show');
   redraw();
 }
@@ -1456,7 +1792,7 @@ function redraw(){
     var ov=document.createElement('canvas');
     ov.width=cv.width; ov.height=cv.height;
     var oc=ov.getContext('2d');
-    oc.fillStyle='rgba(0,0,30,0.6)';
+    oc.fillStyle='rgba(15,23,42,0.55)';
     oc.fillRect(0,0,ov.width,ov.height);
     oc.globalCompositeOperation='destination-out';
     cameras.filter(function(c){return c.page===currentPage;}).forEach(function(cam){
@@ -1785,6 +2121,9 @@ cv.addEventListener('mousedown',function(e){
   var p=canvasXY(e);
   if(calibMode){ handleCalibClick(p.cx,p.cy); return; }
   if(headendMode){ placeHeadend(p.cx,p.cy); return; }
+  // Head-end is drawn on top of everything; hit-test it first so a click on
+  // the CMVR/NVR icon starts a drag in either panel mode.
+  if(headendAt(p.cx, p.cy)){ dragging = {type:'head-end-move'}; return; }
   if(panelMode === 'access'){
     var dev = readerAt(p.cx, p.cy);
     if(dev){ selectReader(dev.id); dragging = {id:dev.id, type:'reader-move'}; return; }
@@ -1797,6 +2136,16 @@ cv.addEventListener('mousedown',function(e){
   if(cam){selectCamera(cam.id); dragging={id:cam.id,type:'move'}; return;}
   selectedId=null; addCamera(p.cx,p.cy);
 });
+
+// Hit-test the head-end marker on the current page. Matches drawHeadEnd's
+// 16px square with a small padding for finger forgiveness.
+function headendAt(cssX, cssY){
+  var he = headends[currentPage];
+  if(!he) return false;
+  var dx = cssX - he.x*viewScale;
+  var dy = cssY - he.y*viewScale;
+  return Math.abs(dx) <= 10 && Math.abs(dy) <= 10;
+}
 
 cv.addEventListener('contextmenu',function(e){
   e.preventDefault();
@@ -1817,11 +2166,18 @@ cv.addEventListener('mousemove',function(e){
     return;
   }
   if(!dragging){
-    if(panelMode === 'access'){
+    if(headendAt(p.cx, p.cy)){
+      cv.style.cursor = 'move';
+    } else if(panelMode === 'access'){
       cv.style.cursor = readerAt(p.cx,p.cy) ? 'move' : 'crosshair';
     } else {
       cv.style.cursor=tipAt(p.cx,p.cy)?'grab':(camAt(p.cx,p.cy)?'move':'crosshair');
     }
+    return;
+  }
+  if(dragging.type==='head-end-move'){
+    var he = headends[currentPage];
+    if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; redraw(); }
     return;
   }
   if(dragging.type==='reader-move'){
@@ -1847,7 +2203,55 @@ document.addEventListener('mousedown',function(e){
   if(!document.getElementById('ctx-menu').contains(e.target)) hideCtxMenu();
 });
 
+// ─── Menubar (top-bar dropdowns) ─────────────────────────────────────────────
+// Detect Mac so menu-item shortcut hints render with ⌘ instead of Ctrl+.
+if(/Mac/.test(navigator.platform || '')) document.body.classList.add('is-mac');
+
+var openMenuEl = null;
+function closeAllMenus(){
+  if(openMenuEl){ openMenuEl.classList.remove('open'); openMenuEl = null; }
+}
+document.querySelectorAll('#menubar .menu > .menu-trigger').forEach(function(trigger){
+  trigger.addEventListener('click', function(e){
+    e.stopPropagation();
+    var menu = trigger.parentElement;
+    if(menu === openMenuEl){ closeAllMenus(); return; }
+    closeAllMenus();
+    menu.classList.add('open');
+    openMenuEl = menu;
+  });
+  trigger.addEventListener('mouseenter', function(){
+    // If a menu is already open, hovering another trigger swaps to it (Office/Mac pattern).
+    if(openMenuEl && openMenuEl !== trigger.parentElement){
+      closeAllMenus();
+      trigger.parentElement.classList.add('open');
+      openMenuEl = trigger.parentElement;
+    }
+  });
+});
+// Close when a menu item is clicked (let its onclick run first), or when clicking outside.
+document.querySelectorAll('#menubar .menu-item').forEach(function(item){
+  if(item.classList.contains('submenu-trigger')) return;
+  item.addEventListener('click', function(){ closeAllMenus(); });
+});
+document.addEventListener('mousedown', function(e){
+  if(!openMenuEl) return;
+  if(!openMenuEl.contains(e.target)) closeAllMenus();
+});
+
 document.addEventListener('keydown',function(e){
+  // Ctrl/Cmd + O — open file picker. Works without a PDF (it's the way in).
+  if((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'O')){
+    e.preventDefault();
+    document.getElementById('file-input').click();
+    return;
+  }
+  // Ctrl/Cmd + S — save project. Only when a PDF is loaded (matches Save Project menu state).
+  if((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')){
+    e.preventDefault();
+    if(pdfLoaded) saveJSON();
+    return;
+  }
   if(!pdfLoaded) return;
   if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT'){
     if(e.key==='Escape'&&calibMode){ cancelCalibrationFlow(); }
@@ -1858,11 +2262,16 @@ document.addEventListener('keydown',function(e){
     else if(acSelectedId){ deleteReader(acSelectedId); }
   }
   if(e.key==='Escape'){
+    if(openMenuEl){ closeAllMenus(); return; }
+    if(document.getElementById('help-modal').classList.contains('show')){ closeHelpModal(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
     selectedId=null; acSelectedId=null;
     redraw(); updateList(); updateAcList(); updateDoriInfo();
   }
+  // Panel-mode shortcuts
+  if(e.key === '1'){ setPanelMode('cameras'); }
+  if(e.key === '2'){ setPanelMode('access'); }
 });
 
 function showCtxMenu(x,y){
@@ -1891,6 +2300,9 @@ function setPanelMode(mode){
   document.getElementById('panel').setAttribute('data-mode', mode);
   document.querySelectorAll('.pmt-btn').forEach(function(b){
     b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  document.querySelectorAll('#icon-strip .strip-btn[data-mode-btn]').forEach(function(b){
+    b.classList.toggle('active', b.dataset.modeBtn === mode);
   });
   if(mode === 'access'){
     selectedId = null;
@@ -2283,12 +2695,7 @@ document.getElementById('json-input').addEventListener('change',function(e){
           if(data.bom.config.storMode  !== undefined) document.getElementById('stor-mode').value     = data.bom.config.storMode;
         }
       }
-      Object.keys(calibrations).forEach(function(k){
-        var tab=document.querySelector('.tab[data-idx="'+k+'"]');
-        if(tab&&!tab.querySelector('.tab-cal')){
-          var dot=document.createElement('span'); dot.className='tab-cal'; tab.appendChild(dot);
-        }
-      });
+      rebuildTabsDom();
       selectedId=null; redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList(); refreshFloorSuggestions();
       if(bomOpen) recalcBom();
     } catch(err){alert('Invalid JSON file.');}
@@ -2459,9 +2866,9 @@ function drawHeadEndToCanvas(tc, vs, pageIdx){
 }
 
 function drawProposalCover(doc, W, H){
-  // Top accent bar
-  doc.setFillColor(200, 32, 44); doc.rect(0, 0, W, 8, 'F');
-  doc.setFillColor(26, 26, 46);  doc.rect(0, 8, W, 90, 'F');
+  // Top accent bar (charcoal + dark-gray hierarchy — see redesign spec)
+  doc.setFillColor(55, 65, 81); doc.rect(0, 0, W, 8, 'F');
+  doc.setFillColor(31, 41, 55); doc.rect(0, 8, W, 90, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('courier','bold');
@@ -2473,7 +2880,7 @@ function drawProposalCover(doc, W, H){
   doc.text((projectInfo.company || 'Your Company'), 50, 78);
 
   // Project block
-  doc.setTextColor(26, 26, 46);
+  doc.setTextColor(31, 41, 55);
   doc.setFont('courier','bold'); doc.setFontSize(16);
   doc.text(projectInfo.name || '(Project Name)', 50, 145);
 
@@ -2490,7 +2897,7 @@ function drawProposalCover(doc, W, H){
   rows.forEach(function(r){
     doc.setFont('courier','bold'); doc.setTextColor(120, 120, 140);
     doc.text(r[0].toUpperCase(), 50, y);
-    doc.setFont('courier','normal'); doc.setTextColor(26, 26, 46);
+    doc.setFont('courier','normal'); doc.setTextColor(31, 41, 55);
     doc.text(String(r[1]), 160, y);
     y += 18;
   });
@@ -2498,7 +2905,7 @@ function drawProposalCover(doc, W, H){
   // Scope
   if(projectInfo.scope){
     y += 14;
-    doc.setFont('courier','bold'); doc.setTextColor(200, 32, 44); doc.setFontSize(10);
+    doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(10);
     doc.text('SCOPE & NOTES', 50, y); y += 14;
     doc.setFont('courier','normal'); doc.setTextColor(60, 60, 70); doc.setFontSize(10);
     var lines = doc.splitTextToSize(projectInfo.scope, W - 100);
@@ -2510,7 +2917,7 @@ function drawProposalCover(doc, W, H){
   doc.setFillColor(245, 244, 240); doc.rect(50, y, W-100, 130, 'F');
   doc.setDrawColor(208, 206, 200); doc.rect(50, y, W-100, 130);
 
-  doc.setFont('courier','bold'); doc.setTextColor(200, 32, 44); doc.setFontSize(11);
+  doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(11);
   doc.text('PROPOSAL SUMMARY', 65, y + 22);
 
   doc.setFontSize(9); doc.setTextColor(120, 120, 140);
@@ -2518,7 +2925,7 @@ function drawProposalCover(doc, W, H){
   doc.text('PAGES', 65, y+65);
   doc.text('SCALE CALIBRATED', 65, y+85);
 
-  doc.setFont('courier','bold'); doc.setTextColor(26, 26, 46); doc.setFontSize(12);
+  doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(12);
   doc.text(String(cameras.length), 250, y+45);
   doc.text(String(pages.length), 250, y+65);
   var calCount = Object.keys(calibrations).length;
@@ -2541,14 +2948,14 @@ function drawProposalCover(doc, W, H){
     var afterMargin = subtotal + marginAmt;
     var taxAmt = afterMargin * taxPct / 100;
     var grand = afterMargin + taxAmt;
-    doc.setFont('courier','bold'); doc.setTextColor(200, 32, 44); doc.setFontSize(16);
+    doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(16);
     doc.text('$' + formatMoney(grand), 250, y+108);
   }
 
   // Footer
   doc.setFont('courier','normal'); doc.setFontSize(8);
   doc.setTextColor(160, 160, 170);
-  doc.text('Generated by Camera Markup Tool', 50, H - 30);
+  doc.text(projectInfo.company || '', 50, H - 30);
   doc.text('Page 1', W - 80, H - 30);
 }
 
@@ -2573,7 +2980,7 @@ function drawProposalBOM(doc, W, H){
       drawPageHeader(doc, W, 'Bill of Materials (cont.)');
       y = 110;
     }
-    doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(200, 32, 44);
+    doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
     doc.text(sec.title.toUpperCase(), 40, y); y += 16;
     doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(120, 120, 140);
     doc.text('DESCRIPTION', 45, y);
@@ -2583,7 +2990,7 @@ function drawProposalBOM(doc, W, H){
     y += 12;
     doc.setDrawColor(208,206,200); doc.line(40, y-4, W-40, y-4);
 
-    doc.setFont('courier','normal'); doc.setTextColor(26, 26, 46);
+    doc.setFont('courier','normal'); doc.setTextColor(31, 41, 55);
     sec.items.forEach(function(r){
       if(y > H - 60){
         doc.addPage('letter','portrait');
@@ -2631,8 +3038,8 @@ function drawProposalBOM(doc, W, H){
 }
 
 function drawPageHeader(doc, W, title){
-  doc.setFillColor(200, 32, 44); doc.rect(0, 0, W, 4, 'F');
-  doc.setFillColor(26, 26, 46);  doc.rect(0, 4, W, 56, 'F');
+  doc.setFillColor(55, 65, 81); doc.rect(0, 0, W, 4, 'F');
+  doc.setFillColor(31, 41, 55); doc.rect(0, 4, W, 56, 'F');
   doc.setTextColor(255,255,255);
   doc.setFont('courier','bold'); doc.setFontSize(13);
   doc.text(title.toUpperCase(), 40, 32);
@@ -2800,7 +3207,7 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
 function drawRiserZoneBand(doc, x0, y0, w, h, zone, trunkX){
   // Zone label on the far left
   doc.setFont('courier','bold'); doc.setFontSize(8);
-  doc.setTextColor(200, 32, 44);
+  doc.setTextColor(31, 41, 55);
   var labelText = (zone.name || 'Unassigned').toUpperCase();
   doc.text(labelText, x0 + 4, y0 + 12);
 
@@ -2988,13 +3395,13 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
   ];
   var rowH = 10.5;
 
-  doc.setFont('courier','bold'); doc.setFontSize(9); doc.setTextColor(26, 26, 46);
+  doc.setFont('courier','bold'); doc.setFontSize(9); doc.setTextColor(31, 41, 55);
   doc.text('EQUIPMENT SCHEDULE', x0, y0 + 2);
   var y = y0 + 8;
 
   function drawHeaderRow(){
     doc.setFont('courier','bold'); doc.setFontSize(7);
-    doc.setFillColor(26, 26, 46); doc.setTextColor(255, 255, 255);
+    doc.setFillColor(31, 41, 55); doc.setTextColor(255, 255, 255);
     doc.rect(x0, y, w, 11, 'F');
     cols.forEach(function(c){ doc.text(c.label, x0 + c.x + 2, y + 7.5); });
     y += 11;
@@ -3005,7 +3412,7 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
     drawPageHeader(doc, pageW, 'System Riser — Schedule (cont.)');
     drawPageFooter(doc, pageW, pageH);
     y = 80;
-    doc.setFont('courier','bold'); doc.setFontSize(9); doc.setTextColor(26, 26, 46);
+    doc.setFont('courier','bold'); doc.setFontSize(9); doc.setTextColor(31, 41, 55);
     doc.text('EQUIPMENT SCHEDULE (continued)', 40, y); y += 8;
     drawHeaderRow();
   }
@@ -3568,6 +3975,17 @@ function openProjectModal(){
 function closeProjectModal(){
   document.getElementById('project-modal').classList.remove('show');
 }
+
+function openHelpModal(){
+  // Render Mac modifier text on .kbd-mod elements (Help table)
+  var modText = (/Mac/.test(navigator.platform || '')) ? '⌘' : 'Ctrl';
+  document.querySelectorAll('#help-modal .kbd-mod').forEach(function(el){ el.textContent = modText; });
+  document.getElementById('help-version').textContent = 'Surveillance Markup Tool · v' + APP_VERSION + ' · Smart MF Edition';
+  document.getElementById('help-modal').classList.add('show');
+}
+function closeHelpModal(){
+  document.getElementById('help-modal').classList.remove('show');
+}
 function saveProjectInfo(){
   projectInfo = {
     name:    document.getElementById('proj-name').value,
@@ -3606,12 +4024,12 @@ window.addEventListener('load', function(){
     if (typeof window.jspdf === 'undefined') missing.push('jspdf.umd.min.js');
     if (missing.length === 0) return;
     var ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:Courier New,monospace;padding:30px;';
-    ov.innerHTML = '<div style="max-width:560px;background:#fff;color:#1a1a2e;padding:32px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.5);">'+
-      '<div style="background:#c8202c;color:#fff;padding:6px 12px;border-radius:3px;display:inline-block;font:700 10px Courier New,monospace;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px;">First-Time Setup Required</div>'+
-      '<h2 style="font:700 18px Courier New,monospace;margin:0 0 12px;color:#c8202c;">Library files missing</h2>'+
-      '<p style="font-size:13px;line-height:1.6;margin-bottom:14px;">The tool needs these support files in a folder named <code style="background:#f3f4f6;padding:1px 6px;border-radius:2px;">lib</code> next to this HTML:</p>'+
-      '<ul style="font:12px Courier New,monospace;background:#f9fafb;padding:12px 12px 12px 32px;border-radius:4px;border:1px solid #e5e7eb;line-height:1.8;">'+
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.85);color:#fff;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:30px;';
+    ov.innerHTML = '<div style="max-width:560px;background:#fff;color:#111827;padding:32px;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.5);">'+
+      '<div style="background:#1d4ed8;color:#fff;padding:6px 12px;border-radius:6px;display:inline-block;font:600 11px system-ui;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;">First-Time Setup Required</div>'+
+      '<h2 style="font:700 20px system-ui;margin:0 0 12px;color:#111827;">Library files missing</h2>'+
+      '<p style="font-size:13px;line-height:1.6;margin-bottom:14px;">The tool needs these support files in a folder named <code style="background:#f3f4f6;padding:1px 6px;border-radius:4px;font-family:ui-monospace,Menlo,monospace;">lib</code> next to this HTML:</p>'+
+      '<ul style="font:12px ui-monospace,Menlo,monospace;background:#f9fafb;padding:12px 12px 12px 32px;border-radius:6px;border:1px solid #e5e7eb;line-height:1.8;">'+
         missing.map(function(f){ return '<li>'+f+'</li>'; }).join('')+
       '</ul>'+
       '<p style="font-size:13px;line-height:1.6;margin-top:14px;"><b>Fastest fix:</b> Run the included setup script (<code>setup-windows.bat</code> on Windows, <code>setup-mac-linux.sh</code> on Mac/Linux). It will download the libraries automatically.</p>'+
