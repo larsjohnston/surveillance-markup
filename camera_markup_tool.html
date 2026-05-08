@@ -241,6 +241,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .tab-label { line-height:1; }
 .tab-cal { display:inline-block; width:6px; height:6px; border-radius:50%; background:#10b981; vertical-align:middle; }
 .tab-close { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:4px; color:var(--text-faint); font-size:14px; line-height:1; opacity:0; transition:opacity .15s, background-color .15s, color .15s; }
+.tab-rename { background:#fff; border:1px solid var(--primary); border-radius:4px; padding:2px 6px; font:inherit; color:inherit; outline:none; box-shadow:0 0 0 3px var(--primary-faint); width:auto; min-width:60px; max-width:180px; }
 .tab:hover .tab-close { opacity:1; }
 .tab-close:hover { background:#fee2e2; color:#b91c1c; }
 
@@ -345,6 +346,81 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 
 /* ── Property panel (left of canvas) ────────────────────── */
 #panel { width:280px; flex-shrink:0; background:var(--surface); display:flex; flex-direction:column; overflow:hidden; box-shadow:1px 0 0 var(--border); }
+
+/* ── Right-side details panel (camera selection) ─────────── */
+/* Slides in from the right by animating width 0 → 300px. The canvas reflows
+   (shrinks) as the panel opens — overlaying would hide camera positions on
+   the right edge of the floor plan. */
+#right-panel {
+  order:3; flex-shrink:0;
+  width:0; overflow:hidden;
+  background:var(--surface);
+  display:flex; flex-direction:column;
+  transition:width .15s ease-out, box-shadow .15s ease-out;
+}
+#right-panel.open { width:300px; box-shadow:-8px 0 30px rgba(0,0,0,.10); }
+#right-panel .rp-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 16px; border-bottom:1px solid var(--border); flex-shrink:0;
+  background:var(--surface);
+}
+#right-panel .rp-header h3 { font:700 12px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:0; }
+.rp-close {
+  background:transparent; border:none; cursor:pointer;
+  width:24px; height:24px; border-radius:6px;
+  color:var(--text-muted); font-size:18px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  transition:background-color .15s, color .15s;
+}
+.rp-close:hover { background:var(--primary-faint); color:var(--primary); }
+.rp-body { flex:1; overflow-y:auto; padding:16px 20px; min-width:300px; }
+.rp-field { margin-bottom:16px; }
+.rp-field:last-child { margin-bottom:8px; }
+.rp-label { display:block; font:700 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; }
+.rp-readout { background:var(--surface-soft); border:1px solid var(--border); border-radius:6px; padding:10px 12px; }
+.rp-model-name { font:600 13px var(--font-ui); color:var(--text); }
+.rp-model-desc { font:11px var(--font-ui); color:var(--text-muted); margin-top:2px; line-height:1.4; }
+.rp-spec-row { display:flex; justify-content:space-between; align-items:baseline; padding:2px 0; font:11px var(--font-ui); color:var(--text-muted); }
+.rp-spec-row b { font:600 12px var(--font-mono); color:var(--text); }
+.rp-custom-specs { margin-top:8px; }
+/* Relocated inputs from the (former) .ctrl rows. Match the .ctrl input
+   styling but stretched to full slot width and slightly larger for the
+   roomier right-panel context. */
+.rp-slot input[type=text],
+.rp-slot input[type=number],
+.rp-slot select {
+  width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px;
+  font:500 13px var(--font-ui); background:#fff;
+  transition:border-color .15s, box-shadow .15s;
+}
+.rp-slot input[type=number] { font-family:var(--font-mono); font-weight:600; }
+.rp-slot input[type=text]:focus,
+.rp-slot input[type=number]:focus,
+.rp-slot select:focus,
+.rp-slot textarea:focus {
+  outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-faint);
+}
+.rp-slot textarea {
+  width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px;
+  font:13px var(--font-ui); resize:vertical; min-height:64px;
+  transition:border-color .15s, box-shadow .15s;
+}
+.rp-slot input[type=range] { flex:1; accent-color:var(--primary); }
+
+/* Slider row: range input flexed left, numeric value pinned right. */
+.rp-slider { display:flex; align-items:center; gap:10px; }
+.rp-slider-val { font:600 12px var(--font-mono); color:var(--text); min-width:48px; text-align:right; }
+
+/* Number-input + unit (e.g. mount height + m/ft). */
+.rp-input-with-unit { display:flex; align-items:center; gap:10px; }
+.rp-input-with-unit input { flex:1; }
+.rp-input-with-unit .rp-input-unit { font:500 11px var(--font-ui); color:var(--text-muted); min-width:24px; }
+
+/* Sub-fields inside the custom-specs collapse (Resolution / FOV / Reach). */
+.rp-sub-field { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.rp-sub-field:last-child { margin-bottom:0; }
+.rp-sub-label { font:500 11px var(--font-ui); color:var(--text-muted); min-width:72px; flex-shrink:0; }
+.rp-sub-field .rp-slot { flex:1; }
 .phdr { font:700 10px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; padding:12px 16px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); }
 
 #controls { padding:10px 13px; border-bottom:1px solid var(--border); }
@@ -681,41 +757,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           CMVR / NVR
         </div>
       </div>
-      <div class="ctrl">
-        <label>Label</label>
-        <input type="text" id="inp-label" value="CAM-01" oninput="updateSelected()">
-      </div>
-      <div class="ctrl">
-        <label>Resolution</label>
-        <select id="inp-resolution" onchange="updateSelected()">
-          <option value="1920">2 MP / 1080p</option>
-          <option value="2560" selected>4 MP / 1440p</option>
-          <option value="2592">5 MP</option>
-          <option value="3072">6 MP</option>
-          <option value="3840">8 MP / 4K</option>
-          <option value="4000">12 MP</option>
-        </select>
-      </div>
-      <div class="ctrl">
-        <label>Angle</label>
-        <input type="range" id="inp-angle" min="0" max="359" value="270" oninput="updateSelected()">
-        <span class="val" id="v-angle">270&deg;</span>
-      </div>
-      <div class="ctrl">
-        <label>FOV</label>
-        <input type="range" id="inp-fov" min="20" max="180" value="75" oninput="updateSelected()">
-        <span class="val" id="v-fov">75&deg;</span>
-      </div>
-      <div class="ctrl">
-        <label>Reach</label>
-        <input type="range" id="inp-reach" min="20" max="600" value="150" oninput="updateSelected()">
-        <span class="val" id="v-reach">150</span>
-      </div>
-      <div class="ctrl">
-        <label>Mount Ht</label>
-        <input type="number" id="inp-mount" min="0" max="20" step="0.1" value="3.0" oninput="updateSelected()">
-        <span id="v-mount-unit" style="font-size:9px;color:#9ca3af;min-width:40px">m</span>
-      </div>
+      <!-- Editable detail fields (Label / Resolution / Angle / FOV / Reach /
+           Mount / Notes) live in #right-panel now. Tier and Floor remain
+           hidden in the DOM so existing JS reads/writes don't error. -->
       <div class="ctrl" style="display:none">
         <label>Tier</label>
         <select id="inp-tier" onchange="updateSelected()">
@@ -724,15 +768,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           <option value="premium">Premium</option>
         </select>
       </div>
-      <div class="ctrl">
+      <div class="ctrl" style="display:none">
         <label>Floor</label>
         <input type="text" id="inp-floor" list="floor-suggestions" placeholder="e.g. Floor 1" oninput="updateSelected()" onfocus="refreshFloorSuggestions()">
       </div>
       <datalist id="floor-suggestions"></datalist>
-      <div class="ctrl">
-        <label>Notes</label>
-        <textarea id="inp-notes" placeholder="e.g. IP66, WDR, IR..." oninput="updateSelected()"></textarea>
-      </div>
       <!-- Site Survey Details: hidden from the editor pane; data still flows
            through the camera object for proposal-side use. The inputs remain
            in the DOM so addCamera/selectCamera/updateSelected/save/load are
@@ -846,6 +886,90 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <span id="scale-ind" class="uncalibrated">Not calibrated</span>
     </div>
   </div>
+
+  <aside id="right-panel" aria-hidden="true">
+    <header class="rp-header">
+      <h3>Camera Details</h3>
+      <button class="rp-close" type="button" onclick="closeRightPanel()" title="Close" aria-label="Close panel">&times;</button>
+    </header>
+    <div class="rp-body">
+      <div class="rp-field">
+        <label class="rp-label">Label</label>
+        <div class="rp-slot" data-rp-slot="label">
+          <input type="text" id="inp-label" value="CAM-01" oninput="updateSelected()">
+        </div>
+      </div>
+
+      <div class="rp-field">
+        <label class="rp-label">Manufacturer &amp; Model</label>
+        <div class="rp-readout" id="rp-model-readout">
+          <div class="rp-model-name">Custom Camera</div>
+          <div class="rp-model-desc"></div>
+        </div>
+      </div>
+
+      <div class="rp-field">
+        <label class="rp-label">Specs</label>
+        <div class="rp-readout" id="rp-specs-readout">
+          <div class="rp-spec-row"><span>Resolution</span><b id="rp-spec-res">&mdash;</b></div>
+          <div class="rp-spec-row"><span>FOV</span><b id="rp-spec-fov">&mdash;</b></div>
+          <div class="rp-spec-row"><span>Reach</span><b id="rp-spec-reach">&mdash;</b></div>
+        </div>
+        <div class="rp-custom-specs" id="rp-custom-specs" style="display:none">
+          <div class="rp-sub-field">
+            <span class="rp-sub-label">Resolution</span>
+            <div class="rp-slot" data-rp-slot="resolution">
+              <select id="inp-resolution" onchange="updateSelected()">
+                <option value="1920">2 MP / 1080p</option>
+                <option value="2560" selected>4 MP / 1440p</option>
+                <option value="2592">5 MP</option>
+                <option value="3072">6 MP</option>
+                <option value="3840">8 MP / 4K</option>
+                <option value="4000">12 MP</option>
+              </select>
+            </div>
+          </div>
+          <div class="rp-sub-field">
+            <span class="rp-sub-label">FOV</span>
+            <div class="rp-slot rp-slider" data-rp-slot="fov">
+              <input type="range" id="inp-fov" min="20" max="180" value="75" oninput="updateSelected()">
+              <span class="rp-slider-val" id="v-fov">75&deg;</span>
+            </div>
+          </div>
+          <div class="rp-sub-field">
+            <span class="rp-sub-label">Reach</span>
+            <div class="rp-slot rp-slider" data-rp-slot="reach">
+              <input type="range" id="inp-reach" min="20" max="600" value="150" oninput="updateSelected()">
+              <span class="rp-slider-val" id="v-reach">150</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rp-field">
+        <label class="rp-label">Mount Height</label>
+        <div class="rp-slot rp-input-with-unit" data-rp-slot="mount">
+          <input type="number" id="inp-mount" min="0" max="20" step="0.1" value="3.0" oninput="updateSelected()">
+          <span class="rp-input-unit" id="v-mount-unit">m</span>
+        </div>
+      </div>
+
+      <div class="rp-field">
+        <label class="rp-label">Angle</label>
+        <div class="rp-slot rp-slider" data-rp-slot="angle">
+          <input type="range" id="inp-angle" min="0" max="359" value="270" oninput="updateSelected()">
+          <span class="rp-slider-val" id="v-angle">270&deg;</span>
+        </div>
+      </div>
+
+      <div class="rp-field">
+        <label class="rp-label">Notes</label>
+        <div class="rp-slot" data-rp-slot="notes">
+          <textarea id="inp-notes" placeholder="e.g. IP66, WDR, IR..." oninput="updateSelected()"></textarea>
+        </div>
+      </div>
+    </div>
+  </aside>
 </div>
 
 <div id="ctx-menu" class="hidden">
@@ -1414,7 +1538,10 @@ async function loadImage(file){
   off.getContext('2d').drawImage(img,0,0);
   // Treat logical size = native size
   var imgLabel = file.name.length>30 ? file.name.slice(0,28)+'…' : file.name;
-  pages.push({offCanvas:off, logW:img.naturalWidth, logH:img.naturalHeight, label:imgLabel});
+  // Floor name defaults to filename without extension; fall back to Floor 1.
+  var baseName = file.name.replace(/\.[^.]+$/, '').trim();
+  var imgFloorName = baseName ? (baseName.length > 30 ? baseName.slice(0,28)+'…' : baseName) : 'Floor 1';
+  pages.push({offCanvas:off, logW:img.naturalWidth, logH:img.naturalHeight, label:imgLabel, name:imgFloorName});
   rebuildTabsDom();
 
   hideProgress(); pdfLoaded=true;
@@ -1447,7 +1574,7 @@ async function loadPDF(file){
     var off=document.createElement('canvas');
     off.width=Math.round(renderVp.width); off.height=Math.round(renderVp.height);
     await page.render({canvasContext:off.getContext('2d'),viewport:renderVp}).promise;
-    pages.push({offCanvas:off,logW:baseVp.width,logH:baseVp.height,label:'Page '+i});
+    pages.push({offCanvas:off,logW:baseVp.width,logH:baseVp.height,label:'Page '+i,name:'Floor '+i});
   }
   rebuildTabsDom();
   refreshFloorSuggestions();
@@ -1484,7 +1611,15 @@ function rebuildTabsDom(){
 
     var lab = document.createElement('span');
     lab.className = 'tab-label';
-    lab.textContent = pg.label || ('Page ' + (idx + 1));
+    lab.textContent = pg.name || pg.label || ('Floor ' + (idx + 1));
+    // Double-click the label to enter rename mode. Single clicks still bubble
+    // up to .tab and run switchPage as before.
+    (function(targetIdx){
+      lab.addEventListener('dblclick', function(e){
+        e.stopPropagation();
+        beginTabRename(targetIdx);
+      });
+    })(idx);
     t.appendChild(lab);
 
     if(calibrations[idx]){
@@ -1512,6 +1647,68 @@ function rebuildTabsDom(){
     })(idx);
     tabsEl.appendChild(t);
   });
+}
+
+// Replace a tab's label with a small text input for inline rename.
+// Enter / blur saves; Esc or empty input reverts. Validation: 1–30 chars,
+// alphanumeric + space + dash + slash.
+function beginTabRename(idx){
+  if(idx < 0 || idx >= pages.length) return;
+  var tabsEl = document.getElementById('tabs');
+  if(!tabsEl) return;
+  var tab = tabsEl.querySelector('.tab[data-idx="' + idx + '"]');
+  if(!tab) return;
+  var lab = tab.querySelector('.tab-label');
+  if(!lab) return;
+  // Bail if already in edit mode (a stray dblclick during edit shouldn't restart).
+  if(tab.querySelector('.tab-rename')) return;
+
+  var current = pages[idx].name || pages[idx].label || ('Floor ' + (idx + 1));
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tab-rename';
+  input.value = current;
+  input.maxLength = 30;
+  input.spellcheck = false;
+
+  var settled = false;
+  var cancelled = false;
+
+  function commit(){
+    if(settled) return;
+    settled = true;
+    var v = input.value.trim();
+    var valid = v.length > 0 && v.length <= 30 && /^[A-Za-z0-9 \-\/]+$/.test(v);
+    if(valid && v !== current){
+      pages[idx].name = v;
+      // Cascade the new name to all cameras on this page so legacy code that
+      // reads cam.floor (riser zone fallback, BOM lookups, etc.) stays consistent.
+      cameras.forEach(function(c){ if(c.page === idx) c.floor = v; });
+    }
+    rebuildTabsDom();
+  }
+  function cancel(){
+    if(settled) return;
+    settled = true;
+    rebuildTabsDom();
+  }
+
+  input.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); commit(); }
+    else if(e.key === 'Escape'){ e.preventDefault(); cancelled = true; cancel(); }
+  });
+  input.addEventListener('blur', function(){
+    if(cancelled) return;
+    commit();
+  });
+  // Don't let stray clicks inside the input trigger switchPage on the parent.
+  ['click','mousedown','dblclick'].forEach(function(ev){
+    input.addEventListener(ev, function(e){ e.stopPropagation(); });
+  });
+
+  lab.replaceWith(input);
+  input.focus();
+  input.select();
 }
 
 // Drop a page-keyed object's matching key, decrement higher-numeric keys.
@@ -1548,6 +1745,8 @@ function deletePage(idx){
   else if(currentPage > idx) currentPage--;
 
   selectedId = null; acSelectedId = null;
+  var rp = document.getElementById('right-panel');
+  if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
   rebuildTabsDom();
   fitPage(); redraw();
   updateList(); updateAcList();
@@ -1561,6 +1760,8 @@ function deletePage(idx){
 function rewindToNoPdf(){
   // Reset state
   selectedId = null; acSelectedId = null;
+  var rp = document.getElementById('right-panel');
+  if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
   currentPage = 0;
   pdfLoaded = false;
   pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {};
@@ -1597,7 +1798,13 @@ function rewindToNoPdf(){
 function switchPage(idx){
   if(calibMode) cancelCalibrationFlow();
   currentPage=idx; selectedId=null; acSelectedId=null;
-  rebuildTabsDom();
+  // Just toggle the active class. Don't replace the tab DOM — we need each
+  // .tab-label node to survive long enough for a dblclick event to register
+  // on it (browser fires dblclick only when both clicks land on the same
+  // node). Structural changes (rename, delete, reload) call rebuildTabsDom.
+  document.querySelectorAll('#tabs .tab').forEach(function(el){
+    el.classList.toggle('active', parseInt(el.dataset.idx, 10) === idx);
+  });
   // Pre-fill the Floor input with the current page's floor (page N → Floor N).
   // User can still type to override before placing the next camera.
   var floorInput = document.getElementById('inp-floor');
@@ -2152,6 +2359,9 @@ cv.addEventListener('mousedown',function(e){
   if(panelMode === 'access'){
     var dev = readerAt(p.cx, p.cy);
     if(dev){ selectReader(dev.id); dragging = {id:dev.id, type:'reader-move'}; return; }
+    // Deselect-on-empty-click when something is selected (matches drawing-app
+    // convention; second click in empty space then places).
+    if(acSelectedId){ acSelectedId = null; redraw(); updateAcList(); return; }
     placeReader(p.cx, p.cy);
     return;
   }
@@ -2159,7 +2369,9 @@ cv.addEventListener('mousedown',function(e){
   if(tip){dragging={id:tip.id,type:'tip'}; return;}
   var cam=camAt(p.cx,p.cy);
   if(cam){selectCamera(cam.id); dragging={id:cam.id,type:'move'}; return;}
-  selectedId=null; addCamera(p.cx,p.cy);
+  // Deselect-on-empty-click. A second empty-click then places.
+  if(selectedId){ closeRightPanel(); return; }
+  addCamera(p.cx,p.cy);
 });
 
 // Hit-test the head-end marker on the current page. Matches drawHeadEnd's
@@ -2291,8 +2503,11 @@ document.addEventListener('keydown',function(e){
     if(document.getElementById('help-modal').classList.contains('show')){ closeHelpModal(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
-    selectedId=null; acSelectedId=null;
-    redraw(); updateList(); updateAcList(); updateDoriInfo();
+    // closeRightPanel handles the camera-selected case (clears selectedId,
+    // hides the panel, redraws). Always reset acSelectedId too.
+    acSelectedId = null;
+    closeRightPanel();
+    updateAcList();
   }
   // Panel-mode shortcuts
   if(e.key === '1'){ setPanelMode('cameras'); }
@@ -2316,7 +2531,7 @@ function duplicateCam(){
 function deleteSelected(){
   hideCtxMenu(); if(!selectedId) return;
   cameras=cameras.filter(function(c){return c.id!==selectedId;});
-  selectedId=null; redraw(); updateList(); updateDoriInfo();
+  closeRightPanel();
 }
 
 // ─── Access Control ──────────────────────────────────────────────────────────
@@ -2331,6 +2546,9 @@ function setPanelMode(mode){
   });
   if(mode === 'access'){
     selectedId = null;
+    // Right panel is camera-only; close it when entering AC mode.
+    var rp = document.getElementById('right-panel');
+    if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
     // Auto-arm a default reader on AC entry only when nothing is currently
     // armed. If the user previously armed a tile then switched to camera
     // mode and back, currentReaderModel persists and we leave it alone.
@@ -2494,12 +2712,65 @@ function addCamera(cssX,cssY){
     environ:document.getElementById('inp-environ').value,
     conduit:document.getElementById('inp-conduit').value,
     hazards:document.getElementById('inp-hazards').value.trim(),
-    floor:document.getElementById('inp-floor').value.trim(),
+    // Derived from the current page's tab name. Tab rename cascades the
+    // new value to all cameras on that page (see beginTabRename).
+    floor:(pages[currentPage] && (pages[currentPage].name || pages[currentPage].label)) || ('Floor ' + (currentPage + 1)),
     notes:document.getElementById('inp-notes').value.trim()});
   selectedId=id;
   var m=label.match(/^(.*?)([0-9]+)$/);
   if(m) document.getElementById('inp-label').value=m[1]+(parseInt(m[2])+1);
   redraw(); updateList(); updateDoriInfo();
+}
+
+function closeRightPanel(){
+  selectedId = null;
+  var rp = document.getElementById('right-panel');
+  if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
+  redraw(); updateList(); updateDoriInfo();
+}
+
+// Update the camera-details readouts (model name, description, specs) and
+// flip between read-only (when cam.model is set) and editable (custom) panels.
+function updateRightPanelDisplay(cam){
+  if(!cam) return;
+  var nameEl    = document.querySelector('#rp-model-readout .rp-model-name');
+  var descEl    = document.querySelector('#rp-model-readout .rp-model-desc');
+  var specsRO   = document.getElementById('rp-specs-readout');
+  var specsEdit = document.getElementById('rp-custom-specs');
+  if(!nameEl || !descEl || !specsRO || !specsEdit) return;
+
+  if(cam.model && CAMERA_DB[cam.model]){
+    var m = CAMERA_DB[cam.model];
+    nameEl.textContent = m.brand + ' ' + m.model;
+    descEl.textContent = m.desc || '';
+    descEl.style.display = m.desc ? '' : 'none';
+    specsRO.style.display = '';
+    specsEdit.style.display = 'none';
+    var resTxt = (function(r){
+      if(!r) return '—';
+      if(r >= 3840) return '4K (3840px)';
+      if(r >= 2592) return '5MP (' + r + 'px)';
+      if(r >= 2560) return '4MP (' + r + 'px)';
+      if(r >= 1920) return '2MP (' + r + 'px)';
+      return r + 'px';
+    })(cam.resolution || 0);
+    document.getElementById('rp-spec-res').textContent   = resTxt;
+    document.getElementById('rp-spec-fov').textContent   = (cam.fov || 0) + '°';
+    document.getElementById('rp-spec-reach').textContent = (cam.reach || 0);
+  } else {
+    nameEl.textContent = 'Custom Camera';
+    descEl.textContent = '';
+    descEl.style.display = 'none';
+    specsRO.style.display = 'none';
+    specsEdit.style.display = '';
+  }
+}
+
+function openRightPanelForCamera(cam){
+  if(!cam) return;
+  updateRightPanelDisplay(cam);
+  var rp = document.getElementById('right-panel');
+  if(rp){ rp.classList.add('open'); rp.setAttribute('aria-hidden', 'false'); }
 }
 
 function selectCamera(id){
@@ -2537,6 +2808,7 @@ function selectCamera(id){
   }
   setType(cam.type||'dome', true);
   syncLabels(); redraw(); updateList(); updateDoriInfo();
+  openRightPanelForCamera(cam);
 }
 
 function updateSelected(){
@@ -2635,8 +2907,8 @@ function updateList(){
       e.stopPropagation();
       var id=parseFloat(this.dataset.id);
       cameras=cameras.filter(function(c){return c.id!==id;});
-      if(selectedId===id) selectedId=null;
-      redraw(); updateList(); updateDoriInfo();
+      if(selectedId===id){ closeRightPanel(); }
+      else { redraw(); updateList(); updateDoriInfo(); }
     });
     d.addEventListener('click',function(){
       selectCamera(cam.id);
@@ -2671,9 +2943,14 @@ function saveJSON(){
     for(var k in c){ if(c.hasOwnProperty(k) && k.indexOf('__') !== 0) clone[k] = c[k]; }
     return clone;
   });
+  // Per-page metadata: editable floor name. Canvases are not serializable
+  // and the user re-imports the same PDF/image at load time; we just persist
+  // the name so renamed tabs survive a session.
+  var pagesForSave = pages.map(function(pg){ return { name: pg.name || pg.label || '' }; });
   var data=JSON.stringify({
-    version:8,
+    version:9,
     cameras:camsForSave,
+    pages:pagesForSave,
     calibrations:calibrations,
     headends:headends,
     projectInfo:projectInfo,
@@ -2711,6 +2988,13 @@ document.getElementById('json-input').addEventListener('change',function(e){
       acDevices  = data.acDevices  || [];
       acCounters = data.acCounters || {};
       acSelectedId = null;
+      // v9+ persists per-page floor names. Apply them to the already-loaded
+      // pages by index. v8 saves have no `pages` array — defaults stay.
+      if(Array.isArray(data.pages)){
+        data.pages.forEach(function(saved, i){
+          if(pages[i] && saved && saved.name) pages[i].name = saved.name;
+        });
+      }
       if(data.bom){
         if(data.bom.customLines) bomCustomLines = data.bom.customLines;
         if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
