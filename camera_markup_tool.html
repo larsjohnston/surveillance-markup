@@ -197,8 +197,6 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 
 .export-opts label { display:block; padding:5px 0; font:700 11px 'Courier New',monospace; color:#1a1a2e; cursor:pointer; user-select:none; }
 .export-opts input[type=checkbox] { margin-right:9px; transform:scale(1.15); accent-color:var(--red); cursor:pointer; vertical-align:middle; }
-.export-opts #exp-plans-sub label { font-weight:400; font-size:10px; color:#6b7280; }
-.export-opts #exp-plans-sub.disabled { opacity:.4; pointer-events:none; }
 
 #zoom-bar { position:absolute; bottom:12px; left:12px; display:flex; gap:4px; z-index:10; }
 #zoom-bar.hidden { display:none; }
@@ -424,7 +422,7 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
     </div>
   </div>
 
-  <div id="panel" data-mode="cameras">
+  <div id="panel" data-mode="cameras" style="display:none">
     <div id="panel-toggle">
       <button class="pmt-btn active" data-mode="cameras" onclick="setPanelMode('cameras')">Cameras</button>
       <button class="pmt-btn"        data-mode="access"  onclick="setPanelMode('access')">Access Control</button>
@@ -513,7 +511,7 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
         <input type="number" id="inp-mount" min="0" max="20" step="0.1" value="3.0" oninput="updateSelected()">
         <span id="v-mount-unit" style="font-size:9px;color:#9ca3af;min-width:40px">m</span>
       </div>
-      <div class="ctrl">
+      <div class="ctrl" style="display:none">
         <label>Tier</label>
         <select id="inp-tier" onchange="updateSelected()">
           <option value="essential">Essential</option>
@@ -521,6 +519,11 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
           <option value="premium">Premium</option>
         </select>
       </div>
+      <div class="ctrl">
+        <label>Floor</label>
+        <input type="text" id="inp-floor" list="floor-suggestions" placeholder="e.g. Floor 1" oninput="updateSelected()" onfocus="refreshFloorSuggestions()">
+      </div>
+      <datalist id="floor-suggestions"></datalist>
       <div class="ctrl">
         <label>Notes</label>
         <textarea id="inp-notes" placeholder="e.g. IP66, WDR, IR..." oninput="updateSelected()"></textarea>
@@ -661,6 +664,16 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
       <div class="proj-field"><label>Company</label><input type="text" id="proj-company" placeholder="Your company name"></div>
       <div class="proj-field full"><label>Scope / Notes</label><textarea id="proj-scope" placeholder="Brief project description, scope of work, special requirements..."></textarea></div>
     </div>
+
+    <h3 style="margin-top:8px;">&#128196; Proposal Sections</h3>
+    <p style="font-size:10px; color:#6b7280; margin-bottom:10px;">Toggle which sections the PDF export includes. Page order is fixed: Cover &rarr; BOM &rarr; Riser &rarr; Floor Plans.</p>
+    <div class="export-opts" style="margin-bottom:10px;">
+      <label><input type="checkbox" id="proj-sec-cover" checked> Cover Page</label>
+      <label><input type="checkbox" id="proj-sec-bom"   checked> Bill of Materials</label>
+      <label><input type="checkbox" id="proj-sec-riser" checked> Riser Diagram</label>
+      <label><input type="checkbox" id="proj-sec-plans" checked> Floor Plan Pages</label>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeProjectModal()">Close</button>
       <button class="btn btn-green" onclick="saveProjectInfo()">Save</button>
@@ -672,17 +685,11 @@ body { font-family:'Courier New',monospace; background:#1a1a2e; color:var(--ink)
 <div id="export-modal" class="big-modal">
   <div class="modal-box" style="min-width:380px;">
     <h3>&#128196; Export PDF</h3>
-    <p>Choose which sections to include in the PDF.</p>
+    <p style="margin-bottom:10px;">Section toggles live in <b>Project Info &rarr; Proposal Sections</b>. The page order is Cover &rarr; BOM &rarr; Riser &rarr; Floor Plans.</p>
     <div class="export-opts">
-      <label><input type="checkbox" id="exp-cover"    checked> Cover Page</label>
-      <label><input type="checkbox" id="exp-schedule" checked> Camera Schedule</label>
-      <label><input type="checkbox" id="exp-bom"      checked> BOM / Pricing</label>
-      <label><input type="checkbox" id="exp-plans"    checked onchange="updateExportSubOpts()"> Floor Plan Pages</label>
-      <div id="exp-plans-sub" style="padding:4px 0 4px 22px;">
-        <label><input type="checkbox" id="exp-current-only"> Only the current page</label>
-      </div>
+      <label><input type="checkbox" id="exp-current-only"> Only export the current floor plan page</label>
     </div>
-    <p id="exp-warn" style="color:var(--red); font-size:10px; display:none; margin-top:8px;">Select at least one section to export.</p>
+    <p id="exp-warn" style="color:var(--red); font-size:10px; display:none; margin-top:8px;"></p>
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeExportModal()">Cancel</button>
       <button class="btn btn-green" id="btn-export-go" onclick="runExportPDF()">Export &rarr;</button>
@@ -921,7 +928,8 @@ var bomOpen = false;
 var bomTierFilter = 'all';
 var projectInfo = {
   name:'', ref:'', client:'', address:'', date:'', valid:'',
-  sales:'', company:'', scope:''
+  sales:'', company:'', scope:'',
+  proposalSections: { cover:true, bom:true, riser:true, plans:true }
 };
 
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -1166,6 +1174,7 @@ async function loadImage(file){
 
   hideProgress(); pdfLoaded=true;
   dz.classList.add('hidden');
+  document.getElementById('panel').style.display = '';
   document.getElementById('zoom-bar').classList.remove('hidden');
   ['btn-save','btn-undo','btn-clear','btn-pdf','btn-csv','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
@@ -1200,8 +1209,10 @@ async function loadPDF(file){
     (function(idx){t.addEventListener('click',function(){switchPage(idx);});})(i-1);
     document.getElementById('tabs').appendChild(t);
   }
+  refreshFloorSuggestions();
   hideProgress(); pdfLoaded=true;
   dz.classList.add('hidden');
+  document.getElementById('panel').style.display = '';
   document.getElementById('zoom-bar').classList.remove('hidden');
   ['btn-save','btn-undo','btn-clear','btn-pdf','btn-csv','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
     document.getElementById(id).disabled=false;
@@ -1221,6 +1232,10 @@ function switchPage(idx){
   if(calibMode) cancelCalibrationFlow();
   currentPage=idx; selectedId=null; acSelectedId=null;
   document.querySelectorAll('.tab').forEach(function(t,j){t.classList.toggle('active',j===idx);});
+  // Pre-fill the Floor input with the current page's floor (page N → Floor N).
+  // User can still type to override before placing the next camera.
+  var floorInput = document.getElementById('inp-floor');
+  if(floorInput) floorInput.value = pages.length ? ('Floor ' + (idx + 1)) : '';
   fitPage(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList();
 }
 
@@ -1485,8 +1500,15 @@ function redraw(){
     drawCableRuns();
   }
 
-  cameras.filter(function(c){return c.page===currentPage;}).forEach(function(cam){
-    drawCam(ctx,cam,viewScale,cam.id===selectedId,doriMode&&getPPM(currentPage));
+  // Two-pass: cones for every camera first, then bodies on top so icons stay
+  // visible when multiple FOV cones overlap.
+  var pageCams = cameras.filter(function(c){return c.page===currentPage;});
+  var useDoriHere = doriMode && getPPM(currentPage);
+  pageCams.forEach(function(cam){
+    drawCamCone(ctx, cam, viewScale, cam.id===selectedId, useDoriHere);
+  });
+  pageCams.forEach(function(cam){
+    drawCamBody(ctx, cam, viewScale, cam.id===selectedId);
   });
 
   // Draw access-control readers (above cameras, below head-end)
@@ -1515,7 +1537,15 @@ function getCameraReachPx(cam,pageIdx){
 }
 function typeColor(type,isSel){return isSel?'#2563eb':(TYPE_COLORS[type]||TYPE_COLORS.dome);}
 
+// drawCam is split into cone+arrow vs body+label so the live canvas can
+// render in two passes (all cones, then all bodies on top) — keeps body
+// icons visible when multiple FOV cones overlap.
 function drawCam(tc,cam,vs,isSel,useDori){
+  drawCamCone(tc,cam,vs,isSel,useDori);
+  drawCamBody(tc,cam,vs,isSel);
+}
+
+function drawCamCone(tc,cam,vs,isSel,useDori){
   var sx=cam.x*vs, sy=cam.y*vs;
   var col=typeColor(cam.type||'dome',isSel);
   function toR(a){return a*Math.PI/180;}
@@ -1558,7 +1588,12 @@ function drawCam(tc,cam,vs,isSel,useDori){
   tc.lineTo(tipX-aLen*Math.cos(aRad)+aW*Math.sin(aRad),tipY-aLen*Math.sin(aRad)-aW*Math.cos(aRad));
   tc.lineTo(tipX-aLen*Math.cos(aRad)-aW*Math.sin(aRad),tipY-aLen*Math.sin(aRad)+aW*Math.cos(aRad));
   tc.closePath(); tc.fillStyle=isSel?'#2563eb':col; tc.fill();
+}
 
+function drawCamBody(tc,cam,vs,isSel){
+  var sx=cam.x*vs, sy=cam.y*vs;
+  var col=typeColor(cam.type||'dome',isSel);
+  function toR(a){return a*Math.PI/180;}
   var type=cam.type||'dome';
   if(type==='dome'){
     tc.beginPath(); tc.arc(sx,sy,CAM_R,0,Math.PI*2);
@@ -2017,6 +2052,7 @@ function addCamera(cssX,cssY){
     environ:document.getElementById('inp-environ').value,
     conduit:document.getElementById('inp-conduit').value,
     hazards:document.getElementById('inp-hazards').value.trim(),
+    floor:document.getElementById('inp-floor').value.trim(),
     notes:document.getElementById('inp-notes').value.trim()});
   selectedId=id;
   var m=label.match(/^(.*?)([0-9]+)$/);
@@ -2041,6 +2077,8 @@ function selectCamera(id){
   document.getElementById('inp-environ').value    = cam.environ || 'indoor';
   document.getElementById('inp-conduit').value    = cam.conduit || 'none';
   document.getElementById('inp-hazards').value    = cam.hazards || '';
+  document.getElementById('inp-floor').value      = cam.floor || '';
+  refreshFloorSuggestions();
   // Update model info display + highlight brand tile
   currentModelKey = cam.model || null;
   var info=document.getElementById('model-info');
@@ -2077,7 +2115,24 @@ function updateSelected(){
   cam.environ=document.getElementById('inp-environ').value;
   cam.conduit=document.getElementById('inp-conduit').value;
   cam.hazards=document.getElementById('inp-hazards').value;
+  cam.floor  =document.getElementById('inp-floor').value.trim();
   redraw(); updateList(); updateDoriInfo();
+}
+
+// Floor autocomplete — one suggestion per imported PDF page (Floor 1..N).
+// Project-used floor names are also included so re-naming sticks across cams.
+function getFloorDefaults(){
+  var arr = [];
+  for(var i=1; i<=pages.length; i++) arr.push('Floor ' + i);
+  return arr;
+}
+function refreshFloorSuggestions(){
+  var dl = document.getElementById('floor-suggestions'); if(!dl) return;
+  var seen = {};
+  cameras.forEach(function(c){ if(c.floor) seen[c.floor] = true; });
+  var all = Object.keys(seen).sort();
+  getFloorDefaults().forEach(function(z){ if(!seen[z]) all.push(z); });
+  dl.innerHTML = all.map(function(z){ return '<option value="'+escapeHtml(z)+'"></option>'; }).join('');
 }
 
 function undoLast(){
@@ -2168,9 +2223,15 @@ function saveJSON(){
     storCodec: document.getElementById('stor-codec').value,
     storMode:  document.getElementById('stor-mode').value
   };
+  // Strip transient riser-export decorations before saving.
+  var camsForSave = cameras.map(function(c){
+    var clone = {};
+    for(var k in c){ if(c.hasOwnProperty(k) && k.indexOf('__') !== 0) clone[k] = c[k]; }
+    return clone;
+  });
   var data=JSON.stringify({
-    version:7,
-    cameras:cameras,
+    version:8,
+    cameras:camsForSave,
     calibrations:calibrations,
     headends:headends,
     projectInfo:projectInfo,
@@ -2193,6 +2254,18 @@ document.getElementById('json-input').addEventListener('change',function(e){
       if(data.calibrations) calibrations=data.calibrations;
       if(data.headends) headends=data.headends;
       if(data.projectInfo) projectInfo=data.projectInfo;
+      // Backward compat: pre-floor saves had `zone`; pre-zone saves had nothing.
+      // Also strip transient riser-export decorations that may have leaked into older saves.
+      cameras.forEach(function(c){
+        if(c.floor === undefined) c.floor = c.zone || '';
+        delete c.zone;
+        delete c.__cableId;
+        delete c.__cableLenDisplay;
+      });
+      // Backward compat: projects saved before proposalSections
+      if(!projectInfo.proposalSections){
+        projectInfo.proposalSections = { cover:true, bom:true, riser:true, plans:true };
+      }
       acDevices  = data.acDevices  || [];
       acCounters = data.acCounters || {};
       acSelectedId = null;
@@ -2216,7 +2289,7 @@ document.getElementById('json-input').addEventListener('change',function(e){
           var dot=document.createElement('span'); dot.className='tab-cal'; tab.appendChild(dot);
         }
       });
-      selectedId=null; redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList();
+      selectedId=null; redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList(); refreshFloorSuggestions();
       if(bomOpen) recalcBom();
     } catch(err){alert('Invalid JSON file.');}
   };
@@ -2227,27 +2300,26 @@ document.getElementById('json-input').addEventListener('change',function(e){
 function openExportModal(){
   if(!pdfLoaded||!pages.length) return;
   document.getElementById('exp-warn').style.display = 'none';
-  updateExportSubOpts();
+  document.getElementById('exp-warn').textContent = '';
   document.getElementById('export-modal').classList.add('show');
 }
 function closeExportModal(){
   document.getElementById('export-modal').classList.remove('show');
 }
-function updateExportSubOpts(){
-  var on = document.getElementById('exp-plans').checked;
-  document.getElementById('exp-plans-sub').classList.toggle('disabled', !on);
-}
 
 async function runExportPDF(){
+  var sec = (projectInfo.proposalSections) || { cover:true, bom:true, riser:true, plans:true };
   var opts = {
-    cover:    document.getElementById('exp-cover').checked,
-    schedule: document.getElementById('exp-schedule').checked,
-    bom:      document.getElementById('exp-bom').checked,
-    plans:    document.getElementById('exp-plans').checked,
+    cover:       sec.cover !== false,
+    bom:         sec.bom   !== false,
+    riser:       sec.riser !== false,
+    plans:       sec.plans !== false,
     currentOnly: document.getElementById('exp-current-only').checked
   };
-  if(!opts.cover && !opts.schedule && !opts.bom && !opts.plans){
-    document.getElementById('exp-warn').style.display = 'block';
+  if(!opts.cover && !opts.bom && !opts.riser && !opts.plans){
+    var warn = document.getElementById('exp-warn');
+    warn.textContent = 'All proposal sections are disabled in Project Info → Proposal Sections. Enable at least one and try again.';
+    warn.style.display = 'block';
     return;
   }
   closeExportModal();
@@ -2284,18 +2356,18 @@ async function runExportPDF(){
     drawProposalCover(doc, pageW, pageH);
   }
 
-  // ── Camera Schedule ──────────────────────────────────────────────────
-  if(opts.schedule && cameras.length > 0){
-    showProgress('Composing camera schedule\u2026',10);
-    startSection('letter','portrait');
-    drawProposalSchedule(doc, pageW, pageH);
-  }
-
-  // ── BOM Page ─────────────────────────────────────────────────────────
+  // BOM Page
   if(opts.bom && cameras.length > 0){
     showProgress('Composing BOM\u2026',15);
     startSection('letter','portrait');
     drawProposalBOM(doc, pageW, pageH);
+  }
+
+  // Riser Diagram (one or more pages \u2014 overflows continue the schedule)
+  if(opts.riser && cameras.length > 0){
+    showProgress('Composing riser diagram\u2026',25);
+    startSection('letter','portrait');
+    drawProposalRiser(doc, pageW, pageH, startSection);
   }
 
   // ── Floor Plan Pages ─────────────────────────────────────────────────
@@ -2445,7 +2517,6 @@ function drawProposalCover(doc, W, H){
   doc.text('CAMERAS', 65, y+45);
   doc.text('PAGES', 65, y+65);
   doc.text('SCALE CALIBRATED', 65, y+85);
-  doc.text('GRAND TOTAL', 65, y+108);
 
   doc.setFont('courier','bold'); doc.setTextColor(26, 26, 46); doc.setFontSize(12);
   doc.text(String(cameras.length), 250, y+45);
@@ -2453,68 +2524,32 @@ function drawProposalCover(doc, W, H){
   var calCount = Object.keys(calibrations).length;
   doc.text(calCount + ' / ' + pages.length, 250, y+85);
 
-  // Compute grand total
-  var auto = computeAutoRows();
-  var subtotal = 0;
-  ['cameras','recording','network','cabling','labor','other'].forEach(function(k){
-    auto[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
-    bomCustomLines[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
-  });
-  var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
-  var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
-  var marginAmt = subtotal * marginPct / 100;
-  var afterMargin = subtotal + marginAmt;
-  var taxAmt = afterMargin * taxPct / 100;
-  var grand = afterMargin + taxAmt;
-
-  doc.setTextColor(200, 32, 44); doc.setFontSize(16);
-  doc.text('$' + formatMoney(grand), 250, y+108);
+  // Grand total — only shown when BOM section is included in the proposal
+  var sec = projectInfo.proposalSections || {};
+  if(sec.bom !== false){
+    doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(120, 120, 140);
+    doc.text('GRAND TOTAL', 65, y+108);
+    var auto = computeAutoRows();
+    var subtotal = 0;
+    ['cameras','recording','network','cabling','labor','other'].forEach(function(k){
+      auto[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
+      bomCustomLines[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
+    });
+    var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
+    var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
+    var marginAmt = subtotal * marginPct / 100;
+    var afterMargin = subtotal + marginAmt;
+    var taxAmt = afterMargin * taxPct / 100;
+    var grand = afterMargin + taxAmt;
+    doc.setFont('courier','bold'); doc.setTextColor(200, 32, 44); doc.setFontSize(16);
+    doc.text('$' + formatMoney(grand), 250, y+108);
+  }
 
   // Footer
   doc.setFont('courier','normal'); doc.setFontSize(8);
   doc.setTextColor(160, 160, 170);
   doc.text('Generated by Camera Markup Tool', 50, H - 30);
   doc.text('Page 1', W - 80, H - 30);
-}
-
-function drawProposalSchedule(doc, W, H){
-  drawPageHeader(doc, W, 'Camera Schedule');
-  var y = 110;
-  doc.setFont('courier','bold'); doc.setFontSize(8);
-  doc.setFillColor(26, 26, 46); doc.setTextColor(255, 255, 255);
-  doc.rect(40, y, W-80, 18, 'F');
-  doc.text('#',          45, y+12);
-  doc.text('LABEL',      65, y+12);
-  doc.text('PAGE',       145, y+12);
-  doc.text('TYPE',       180, y+12);
-  doc.text('MODEL',      215, y+12);
-  doc.text('RES',        330, y+12);
-  doc.text('FOV',        365, y+12);
-  doc.text('NOTES',      400, y+12);
-  y += 18;
-
-  doc.setFont('courier','normal'); doc.setFontSize(8); doc.setTextColor(26, 26, 46);
-  cameras.forEach(function(cam, i){
-    if(y > H - 60){
-      doc.addPage('letter','portrait');
-      drawPageHeader(doc, W, 'Camera Schedule (cont.)');
-      y = 110;
-    }
-    if(i % 2 === 0){ doc.setFillColor(248,248,250); doc.rect(40, y, W-80, 16, 'F'); }
-    var modelText = (cam.model && CAMERA_DB[cam.model]) ? CAMERA_DB[cam.model].brand+' '+CAMERA_DB[cam.model].model : 'Custom';
-    var resText = (cam.resolution >= 3840) ? '4K' : (cam.resolution >= 2592) ? '5MP' : (cam.resolution >= 2560) ? '4MP' : '2MP';
-    doc.text(String(i+1), 45, y+11);
-    doc.text(String(cam.label||'').slice(0,12), 65, y+11);
-    doc.text('P'+(cam.page+1), 145, y+11);
-    doc.text(String(cam.type||'').toUpperCase(), 180, y+11);
-    doc.text(modelText.slice(0,18), 215, y+11);
-    doc.text(resText, 330, y+11);
-    doc.text(cam.fov+'°', 365, y+11);
-    doc.text(String(cam.notes||'').slice(0,30), 400, y+11);
-    y += 16;
-  });
-
-  drawPageFooter(doc, W, H);
 }
 
 function drawProposalBOM(doc, W, H){
@@ -2614,6 +2649,404 @@ function drawPageFooter(doc, W, H){
   doc.text((projectInfo.company || ''), 40, H - 24);
   doc.text(new Date().toISOString().slice(0,10), W/2, H - 24, {align:'center'});
   doc.text('Page ' + doc.internal.getNumberOfPages(), W - 40, H - 24, {align:'right'});
+}
+
+// ─── Riser Diagram ───────────────────────────────────────────────────────────
+// Auto-generated system one-line: head-end at top (NVR + PoE switches + UPS),
+// then horizontal zone bands stacked top-to-bottom (upper floors high, lower
+// floors low), with cameras laid out within each band and cable lines back to
+// the switch. Equipment schedule occupies the right ~40% of the page; if it
+// overflows, continuation pages contain only schedule rows.
+//
+// Cable IDs are assigned sequentially project-wide in zone-display order, so
+// every cable shows on both the diagram and the schedule with the same C-NN.
+//
+// All vector primitives via jsPDF (lines, rects, circles, text) — no rasters.
+
+function drawProposalRiser(doc, W, H, startSection){
+  drawPageHeader(doc, W, 'System Riser Diagram');
+  drawPageFooter(doc, W, H);
+
+  var marginX = 40;
+  var headerEndY = 70;
+  var bottomMargin = 40;
+  var contentH = H - headerEndY - bottomMargin;
+  var totalW = W - 2 * marginX;
+  var colGap = 12;
+  var leftW = (totalW - colGap) * 0.60;
+  var rightX = marginX + leftW + colGap;
+  var rightW = totalW - leftW - colGap;
+
+  var model = computeRiserModel();
+
+  drawRiserDiagram(doc, marginX, headerEndY, leftW, contentH, model);
+
+  var rows = buildRiserScheduleRows(model);
+  drawRiserSchedule(doc, rightX, headerEndY, rightW, contentH, W, H, rows, startSection);
+}
+
+function computeRiserModel(){
+  var camCount = cameras.length;
+  // Match BOM auto-row sizing exactly so the riser and BOM line up.
+  var ports = camCount <= 4 ? 8 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 24 ? 24 : 48;
+  var switchCount = Math.max(1, Math.ceil(camCount / ports));
+  var nvrChannels = camCount <= 4 ? 4 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 32 ? 32 : camCount <= 64 ? 64 : 128;
+
+  var byZone = {};
+  cameras.forEach(function(cam){
+    var z = (cam.floor || '').trim();
+    if(!byZone[z]) byZone[z] = [];
+    byZone[z].push(cam);
+  });
+  var zoneNames = Object.keys(byZone);
+  zoneNames.sort(function(a, b){
+    var ka = zoneOrderKey(a), kb = zoneOrderKey(b);
+    if(kb !== ka) return kb - ka;
+    return a.localeCompare(b);
+  });
+  var zones = zoneNames.map(function(name){
+    return { name: name, cams: byZone[name].slice() };
+  });
+
+  // Sequential project-wide cable IDs in display order
+  var cableIdx = 1;
+  zones.forEach(function(zone){
+    zone.cams.forEach(function(cam){
+      cam.__cableId = 'C-' + String(cableIdx).padStart(2, '0');
+      cam.__cableLenDisplay = fmtRiserCableLen(cam);
+      cableIdx++;
+    });
+  });
+
+  return { camCount: camCount, ports: ports, switchCount: switchCount, nvrChannels: nvrChannels, zones: zones };
+}
+
+// Top-to-bottom display order: roof at top, basement/parkade at bottom,
+// unassigned at the very bottom. Unknown zone names land between named floors
+// and the underground section; alphabetical tiebreaker.
+function zoneOrderKey(name){
+  if(!name) return -10000;
+  if(/roof/i.test(name)) return 9000;
+  var fl = name.match(/floor\s*(\d+)/i);
+  if(fl) return 100 * parseInt(fl[1], 10);
+  if(/lobby|reception|entrance/i.test(name)) return 75;
+  if(/exterior|outside|outdoor|grounds/i.test(name)) return 50;
+  if(/loading\s*dock/i.test(name)) return -50;
+  if(/parkade|garage|basement|crawl/i.test(name)) return -100;
+  return 1;
+}
+
+function fmtRiserCableLen(cam){
+  var lenM = cableLengthM(cam, cam.page);
+  if(lenM == null) return '—';
+  var ftVal = lenM * FT_PER_METER;
+  var unit = getCalibUnit(cam.page);
+  if(unit === 'ft') return Math.round(ftVal) + ' ft (' + lenM.toFixed(1) + ' m)';
+  return lenM.toFixed(1) + ' m (' + Math.round(ftVal) + ' ft)';
+}
+
+function drawRiserDiagram(doc, x0, y0, w, h, model){
+  if(model.camCount === 0){
+    doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120,120,140);
+    doc.text('No cameras placed.', x0 + w/2, y0 + 60, {align:'center'});
+    return;
+  }
+
+  // Head-end row
+  var nvrW = 50, swW = 60, upsW = 38, gap = 12;
+  var swCount = model.switchCount;
+  var totalHeadW = nvrW + gap + (swW + gap) * swCount + upsW;
+  var scale = Math.min(1, (w - 14) / totalHeadW);
+  var headBoxH = 24;
+  var headBoxY = y0 + 18;
+  var startX = x0 + (w - totalHeadW * scale) / 2;
+
+  drawRiserNvrBox(doc, startX, headBoxY, nvrW * scale, headBoxH, model.nvrChannels);
+  var sx = startX + nvrW * scale + gap * scale;
+  for(var s=0; s<swCount; s++){
+    drawRiserSwitchBox(doc, sx, headBoxY, swW * scale, headBoxH, model.ports);
+    sx += swW * scale + gap * scale;
+  }
+  drawRiserUpsBox(doc, sx, headBoxY, upsW * scale, headBoxH);
+
+  // Bus bar under the switches; trunk descends from the centerline
+  var switchesLeft = startX + nvrW * scale + gap * scale;
+  var switchesRight = switchesLeft + (swW * scale) * swCount + (gap * scale) * (swCount - 1);
+  var busY = headBoxY + headBoxH + 10;
+  doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.7);
+  doc.line(switchesLeft, busY, switchesRight, busY);
+  for(var k=0; k<swCount; k++){
+    var swCx = switchesLeft + k * (swW * scale + gap * scale) + (swW * scale) / 2;
+    doc.line(swCx, headBoxY + headBoxH, swCx, busY);
+  }
+  var trunkX = (switchesLeft + switchesRight) / 2;
+
+  // Zone bands
+  var bandsTop = busY + 14;
+  var bandsBottom = y0 + h - 6;
+  var bandsAreaH = bandsBottom - bandsTop;
+  var bandH = bandsAreaH / Math.max(1, model.zones.length);
+
+  // Vertical trunk down to last band's mid-line
+  doc.setLineWidth(0.7);
+  doc.line(trunkX, busY, trunkX, bandsTop + bandH * (model.zones.length - 0.5));
+
+  model.zones.forEach(function(zone, zi){
+    var bandY = bandsTop + zi * bandH;
+    drawRiserZoneBand(doc, x0, bandY, w, bandH, zone, trunkX);
+  });
+}
+
+function drawRiserZoneBand(doc, x0, y0, w, h, zone, trunkX){
+  // Zone label on the far left
+  doc.setFont('courier','bold'); doc.setFontSize(8);
+  doc.setTextColor(200, 32, 44);
+  var labelText = (zone.name || 'Unassigned').toUpperCase();
+  doc.text(labelText, x0 + 4, y0 + 12);
+
+  // Horizontal rail across the band
+  var railY = y0 + Math.min(h * 0.4, 22);
+  var railLeft = x0 + 70;
+  var railRight = x0 + w - 6;
+  doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.5);
+  doc.line(railLeft, railY, railRight, railY);
+
+  // Place cameras evenly along the rail
+  var cams = zone.cams;
+  var n = cams.length;
+  if(n === 0) return;
+  var avail = railRight - railLeft - 8;
+  var spacing = avail / (n + 1);
+  var iconSize = Math.min(13, Math.max(8, spacing * 0.55));
+  var iconY = Math.min(railY + Math.max(18, h - 18), y0 + h - iconSize/2 - 9);
+
+  cams.forEach(function(cam, i){
+    var cx = railLeft + 4 + spacing * (i + 1);
+    // branch: short vertical stub from icon up to rail
+    doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
+    doc.line(cx, railY, cx, iconY - iconSize/2 - 1);
+    // Cable ID just above icon (between rail and icon)
+    doc.setFont('courier','normal'); doc.setFontSize(5.5);
+    doc.setTextColor(60, 60, 80);
+    doc.text(cam.__cableId, cx + 1.5, railY + 6);
+    if(cam.__cableLenDisplay && cam.__cableLenDisplay !== '—'){
+      doc.setFontSize(4.8);
+      doc.setTextColor(110, 110, 130);
+      doc.text(cam.__cableLenDisplay, cx + 1.5, railY + 11);
+    }
+    // Icon
+    drawRiserCamIcon(doc, cam, cx, iconY, iconSize);
+    // Camera ID under icon
+    doc.setFont('courier','bold'); doc.setFontSize(5.5);
+    doc.setTextColor(40, 40, 60);
+    var lab = cam.label || '';
+    if(lab.length > 11) lab = lab.slice(0, 10) + '…';
+    doc.text(lab, cx, iconY + iconSize/2 + 6, {align:'center'});
+  });
+}
+
+function drawRiserNvrBox(doc, x, y, w, h, channels){
+  doc.setLineWidth(0.6); doc.setDrawColor(40, 40, 60); doc.setFillColor(255, 255, 255);
+  doc.rect(x, y, w, h, 'FD');
+  doc.setDrawColor(180, 180, 200); doc.setLineWidth(0.3);
+  for(var i=0; i<3; i++){
+    var ry = y + 4 + i * 4;
+    if(ry < y + h - 2) doc.line(x + 3, ry, x + w - 3, ry);
+  }
+  doc.setFillColor(40, 200, 40); doc.circle(x + w - 4, y + 5, 1, 'F');
+  doc.setFont('courier','bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 60);
+  doc.text('NVR', x + w/2, y - 3, {align:'center'});
+  doc.setFontSize(6);
+  doc.text(channels + 'ch', x + w/2, y + h + 7, {align:'center'});
+}
+
+function drawRiserSwitchBox(doc, x, y, w, h, ports){
+  doc.setLineWidth(0.6); doc.setDrawColor(40, 40, 60); doc.setFillColor(255, 255, 255);
+  doc.rect(x, y, w, h, 'FD');
+  // port-array dots along the bottom edge
+  var dotCount = Math.min(ports, 12);
+  var totalDotW = w - 6;
+  var dotW = totalDotW / dotCount;
+  doc.setFillColor(80, 80, 100);
+  for(var i=0; i<dotCount; i++){
+    doc.rect(x + 3 + i * dotW + dotW * 0.2, y + h - 3, dotW * 0.6, 1.5, 'F');
+  }
+  doc.setFont('courier','bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 60);
+  doc.text('SWITCH', x + w/2, y - 3, {align:'center'});
+  doc.setFontSize(6);
+  doc.text(ports + '-port', x + w/2, y + h + 7, {align:'center'});
+}
+
+function drawRiserUpsBox(doc, x, y, w, h){
+  doc.setLineWidth(0.6); doc.setDrawColor(40, 40, 60); doc.setFillColor(255, 255, 255);
+  doc.rect(x, y, w, h, 'FD');
+  // battery cells
+  var bw = w - 8, bh = h * 0.5;
+  var bx = x + 4, by = y + h/2 - bh/2;
+  doc.setFillColor(120, 120, 140);
+  doc.rect(bx, by, bw, bh, 'F');
+  doc.rect(bx + bw, by + bh * 0.3, 1.5, bh * 0.4, 'F');
+  doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.3);
+  for(var i=1; i<3; i++) doc.line(bx + i * bw / 3, by, bx + i * bw / 3, by + bh);
+  doc.setFont('courier','bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 60);
+  doc.text('UPS', x + w/2, y - 3, {align:'center'});
+}
+
+// Vector camera icons for the riser. Same six families as the floor-plan tool,
+// same colors. Simplified shapes that read well at small sizes (~10–13pt).
+function drawRiserCamIcon(doc, cam, cx, cy, size){
+  var col = TYPE_COLORS[cam.type || 'dome'] || '#c8202c';
+  var rgb = hexToRgbArr(col);
+  doc.setLineWidth(0.4);
+  doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+  doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+  var s = size;
+  var t = cam.type || 'dome';
+  if(t === 'dome'){
+    doc.circle(cx, cy, s/2, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.circle(cx, cy, s/6, 'F');
+  } else if(t === 'bullet'){
+    doc.roundedRect(cx - s*0.7/2, cy - s*0.45/2, s*0.7, s*0.45, 1, 1, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.circle(cx + s*0.18, cy, s*0.10, 'F');
+  } else if(t === 'turret'){
+    doc.circle(cx, cy, s/2, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.circle(cx, cy, s/3, 'F');
+    doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    doc.circle(cx, cy, s/8, 'F');
+  } else if(t === 'fisheye'){
+    doc.circle(cx, cy, s/2, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.circle(cx, cy, s/3, 'F');
+    doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    doc.circle(cx, cy, s/6, 'F');
+  } else if(t === 'ptz'){
+    doc.circle(cx, cy, s/2, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.circle(cx, cy, s/4, 'F');
+    doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setLineWidth(0.5);
+    doc.line(cx, cy - s/2 - 1, cx, cy - s/2 - 3);
+    doc.line(cx, cy + s/2 + 1, cx, cy + s/2 + 3);
+    doc.line(cx - s/2 - 1, cy, cx - s/2 - 3, cy);
+    doc.line(cx + s/2 + 1, cy, cx + s/2 + 3, cy);
+  } else if(t === 'lpr'){
+    doc.roundedRect(cx - s*0.85/2, cy - s*0.30/2, s*0.85, s*0.30, 0.5, 0.5, 'F');
+  }
+}
+
+function hexToRgbArr(hex){
+  if(!hex) return [0, 0, 0];
+  if(hex.charAt(0) === '#') hex = hex.slice(1);
+  if(hex.length === 3) hex = hex.split('').map(function(ch){return ch + ch;}).join('');
+  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+}
+
+function buildRiserScheduleRows(model){
+  var rows = [];
+  rows.push({type:'section', text:'HEAD-END EQUIPMENT', accent:'gray'});
+  rows.push({type:'equip', id:'NVR-1', kind:'NVR', model: model.nvrChannels + '-Ch NVR'});
+  for(var i=0; i<model.switchCount; i++){
+    rows.push({type:'equip', id:'SW-'+(i+1), kind:'Switch', model: model.ports + '-pt PoE+'});
+  }
+  rows.push({type:'equip', id:'UPS-1', kind:'UPS', model:'Rack UPS'});
+  model.zones.forEach(function(zone){
+    rows.push({type:'section', text:(zone.name || 'Unassigned').toUpperCase(), accent:'red'});
+    zone.cams.forEach(function(cam){
+      rows.push({
+        type:'cam',
+        id: cam.label || '',
+        kind:'Camera',
+        model: camRiserDisplayModel(cam),
+        floor: zone.name || 'Unassigned',
+        cable: cam.__cableId || '',
+        length: cam.__cableLenDisplay || '—'
+      });
+    });
+  });
+  return rows;
+}
+
+function camRiserDisplayModel(cam){
+  if(cam.model && CAMERA_DB[cam.model]){
+    var m = CAMERA_DB[cam.model];
+    return (m.brand.split(' ')[0]) + ' ' + m.model;
+  }
+  return 'Custom ' + (cam.type || 'dome');
+}
+
+function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
+  // Column geometry within w
+  var cols = [
+    { x: 0,   w: 38, label: 'ID' },
+    { x: 38,  w: 26, label: 'TYPE' },
+    { x: 64,  w: 56, label: 'MODEL' },
+    { x: 120, w: 28, label: 'FLOOR' },
+    { x: 148, w: 22, label: 'CAB' },
+    { x: 170, w: w - 170, label: 'LENGTH' }
+  ];
+  var rowH = 10.5;
+
+  doc.setFont('courier','bold'); doc.setFontSize(9); doc.setTextColor(26, 26, 46);
+  doc.text('EQUIPMENT SCHEDULE', x0, y0 + 2);
+  var y = y0 + 8;
+
+  function drawHeaderRow(){
+    doc.setFont('courier','bold'); doc.setFontSize(7);
+    doc.setFillColor(26, 26, 46); doc.setTextColor(255, 255, 255);
+    doc.rect(x0, y, w, 11, 'F');
+    cols.forEach(function(c){ doc.text(c.label, x0 + c.x + 2, y + 7.5); });
+    y += 11;
+  }
+
+  function newSchedulePage(){
+    startSection('letter','portrait');
+    drawPageHeader(doc, pageW, 'System Riser — Schedule (cont.)');
+    drawPageFooter(doc, pageW, pageH);
+    y = 80;
+    doc.setFont('courier','bold'); doc.setFontSize(9); doc.setTextColor(26, 26, 46);
+    doc.text('EQUIPMENT SCHEDULE (continued)', 40, y); y += 8;
+    drawHeaderRow();
+  }
+
+  function ensureSpace(){
+    var bottom = (y > pageH - 60) ? null : pageH - 60;
+    if(bottom == null || y + rowH > pageH - 50){
+      newSchedulePage();
+    }
+  }
+
+  drawHeaderRow();
+
+  rows.forEach(function(row){
+    ensureSpace();
+    if(row.type === 'section'){
+      doc.setFont('courier','bold'); doc.setFontSize(7);
+      doc.setFillColor(245, 244, 240);
+      doc.rect(x0, y, w, rowH, 'F');
+      doc.setTextColor(row.accent === 'red' ? 200 : 100, row.accent === 'red' ? 32 : 100, row.accent === 'red' ? 44 : 120);
+      doc.text(row.text, x0 + 3, y + 7.5);
+      y += rowH;
+    } else if(row.type === 'equip'){
+      doc.setFont('courier','normal'); doc.setFontSize(7);
+      doc.setTextColor(40, 40, 60);
+      doc.text((row.id || '').slice(0, 10),    x0 + cols[0].x + 2, y + 7.5);
+      doc.text((row.kind || '').slice(0, 7),    x0 + cols[1].x + 2, y + 7.5);
+      doc.text((row.model || '').slice(0, 18),  x0 + cols[2].x + 2, y + 7.5);
+      y += rowH;
+    } else if(row.type === 'cam'){
+      doc.setFont('courier','normal'); doc.setFontSize(7);
+      doc.setTextColor(40, 40, 60);
+      doc.text((row.id || '').slice(0, 10),    x0 + cols[0].x + 2, y + 7.5);
+      doc.text((row.kind || '').slice(0, 7),    x0 + cols[1].x + 2, y + 7.5);
+      doc.text((row.model || '').slice(0, 18),  x0 + cols[2].x + 2, y + 7.5);
+      doc.text((row.floor || '').slice(0, 9),   x0 + cols[3].x + 2, y + 7.5);
+      doc.text((row.cable || '').slice(0, 6),   x0 + cols[4].x + 2, y + 7.5);
+      doc.text((row.length || '').slice(0, 18), x0 + cols[5].x + 2, y + 7.5);
+      y += rowH;
+    }
+  });
 }
 
 function drawLegend(tc, canvasW, canvasH, pageIdx){
@@ -3125,6 +3558,11 @@ function openProjectModal(){
   document.getElementById('proj-sales').value   = projectInfo.sales || '';
   document.getElementById('proj-company').value = projectInfo.company || '';
   document.getElementById('proj-scope').value   = projectInfo.scope || '';
+  var ps = projectInfo.proposalSections || { cover:true, bom:true, riser:true, plans:true };
+  document.getElementById('proj-sec-cover').checked = ps.cover !== false;
+  document.getElementById('proj-sec-bom').checked   = ps.bom   !== false;
+  document.getElementById('proj-sec-riser').checked = ps.riser !== false;
+  document.getElementById('proj-sec-plans').checked = ps.plans !== false;
   document.getElementById('project-modal').classList.add('show');
 }
 function closeProjectModal(){
@@ -3140,7 +3578,13 @@ function saveProjectInfo(){
     valid:   document.getElementById('proj-valid').value,
     sales:   document.getElementById('proj-sales').value,
     company: document.getElementById('proj-company').value,
-    scope:   document.getElementById('proj-scope').value
+    scope:   document.getElementById('proj-scope').value,
+    proposalSections: {
+      cover: document.getElementById('proj-sec-cover').checked,
+      bom:   document.getElementById('proj-sec-bom').checked,
+      riser: document.getElementById('proj-sec-riser').checked,
+      plans: document.getElementById('proj-sec-plans').checked
+    }
   };
   closeProjectModal();
 }
