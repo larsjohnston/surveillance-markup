@@ -335,6 +335,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   width:2px; border-radius:2px; background:var(--primary);
 }
 .strip-btn svg { width:24px; height:24px; }
+/* PNG mode-icons (Cameras / Access Control). Black silhouettes — we tint state
+   via the button bg + accent bar, and dim the bitmap when inactive. */
+.strip-icon { width:24px; height:24px; object-fit:contain; opacity:.55; transition:opacity .15s; pointer-events:none; }
+.strip-btn:hover:not(.active) .strip-icon { opacity:.85; }
+.strip-btn.active .strip-icon { opacity:1; }
 .strip-divider { height:1px; background:var(--border); margin:4px 12px; }
 .strip-spacer { flex:1; }
 
@@ -573,16 +578,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 <div id="main">
   <aside id="icon-strip">
     <button class="strip-btn active" data-mode-btn="cameras" title="Cameras" onclick="setPanelMode('cameras')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M9 6h6l1 2h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3l1-2z"/>
-        <circle cx="12" cy="13" r="3.2"/>
-      </svg>
+      <img src="./Icons/dome_camera.png" alt="" class="strip-icon">
     </button>
     <button class="strip-btn" data-mode-btn="access" title="Access Control" onclick="setPanelMode('access')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="6" y="3" width="12" height="18" rx="2"/>
-        <path d="M9 8h6M9 12h6M9 16h6"/>
-      </svg>
+      <img src="./Icons/access_reader.png" alt="" class="strip-icon">
     </button>
     <div class="strip-spacer"></div>
     <button class="strip-btn" id="strip-btn-help" title="Help" onclick="openHelpModal()">
