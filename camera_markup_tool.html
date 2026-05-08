@@ -241,7 +241,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .tab-label { line-height:1; }
 .tab-cal { display:inline-block; width:6px; height:6px; border-radius:50%; background:#10b981; vertical-align:middle; }
 .tab-close { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:4px; color:var(--text-faint); font-size:14px; line-height:1; opacity:0; transition:opacity .15s, background-color .15s, color .15s; }
-.tab-rename { background:#fff; border:1px solid var(--primary); border-radius:4px; padding:2px 6px; font:inherit; color:inherit; outline:none; box-shadow:0 0 0 3px var(--primary-faint); width:auto; min-width:60px; max-width:180px; }
+/* Pass A.5: typical-floor range badge (muted, understated). */
+.tab-typical-badge { font:500 10px var(--font-ui); color:var(--text-muted); margin-left:2px; letter-spacing:.02em; }
+/* Pass A.5: head-end-on-typical warning badge (amber, stands out). */
+.tab-warning-badge { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 3px; border-radius:4px; background:#fef3c7; color:#b45309; font:700 10px var(--font-ui); margin-left:6px; cursor:help; }
 .tab:hover .tab-close { opacity:1; }
 .tab-close:hover { background:#fee2e2; color:#b91c1c; }
 
@@ -1065,6 +1068,37 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
 </div>
 
+<!-- Edit Tab Modal (Pass A.5) -->
+<div id="tab-edit-modal" class="big-modal">
+  <div class="modal-box" style="min-width:420px;">
+    <h3>Edit Tab</h3>
+    <label class="rp-label" style="margin-bottom:6px;">Tab name</label>
+    <div style="margin-bottom:14px;">
+      <input type="text" id="tab-edit-name" maxlength="30" placeholder="Floor 1" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font:500 13px var(--font-ui); background:#fff;">
+    </div>
+    <label style="display:flex; align-items:center; gap:8px; font:500 13px var(--font-ui); cursor:pointer; padding:6px 0;">
+      <input type="checkbox" id="tab-edit-typical" onchange="updateTabEditTypical()">
+      <span>This page represents multiple floors</span>
+    </label>
+    <div id="tab-edit-typical-fields" style="display:none; padding:12px 14px; background:var(--surface-soft); border:1px solid var(--border); border-radius:6px; margin-top:8px;">
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+        <label style="font:600 11px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em;">From</label>
+        <input type="number" id="tab-edit-from" min="-10" max="200" step="1" oninput="updateTabEditCount()" style="width:64px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font:600 12px var(--font-mono); background:#fff;">
+        <label style="font:600 11px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em;">To</label>
+        <input type="number" id="tab-edit-to" min="-10" max="200" step="1" oninput="updateTabEditCount()" style="width:64px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font:600 12px var(--font-mono); background:#fff;">
+        <span id="tab-edit-count" style="font:500 11px var(--font-ui); color:var(--text-muted); margin-left:auto;"></span>
+      </div>
+      <label class="rp-label" style="margin-bottom:4px; display:block;">Note (optional)</label>
+      <input type="text" id="tab-edit-note" maxlength="100" placeholder="e.g. Tower typical resi" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font:500 13px var(--font-ui); background:#fff;">
+    </div>
+    <p id="tab-edit-warn" style="color:var(--primary); font:500 11px var(--font-ui); display:none; margin-top:10px;"></p>
+    <div class="modal-actions">
+      <button class="btn btn-dark"  onclick="closeTabEditModal()">Cancel</button>
+      <button class="btn btn-blue"  onclick="saveTabEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Camera Model Browser Modal -->
 <div id="brand-modal" class="big-modal">
   <div class="modal-box big-modal-box" style="min-width:680px;">
@@ -1554,7 +1588,7 @@ async function loadImage(file){
   // Floor name defaults to filename without extension; fall back to Floor 1.
   var baseName = file.name.replace(/\.[^.]+$/, '').trim();
   var imgFloorName = baseName ? (baseName.length > 30 ? baseName.slice(0,28)+'…' : baseName) : 'Floor 1';
-  pages.push({offCanvas:off, logW:img.naturalWidth, logH:img.naturalHeight, label:imgLabel, name:imgFloorName});
+  pages.push({offCanvas:off, logW:img.naturalWidth, logH:img.naturalHeight, label:imgLabel, name:imgFloorName, typical:null});
   rebuildTabsDom();
 
   hideProgress(); pdfLoaded=true;
@@ -1592,7 +1626,7 @@ async function loadPDF(file){
     var off=document.createElement('canvas');
     off.width=Math.round(renderVp.width); off.height=Math.round(renderVp.height);
     await page.render({canvasContext:off.getContext('2d'),viewport:renderVp}).promise;
-    pages.push({offCanvas:off,logW:baseVp.width,logH:baseVp.height,label:'Page '+i,name:'Floor '+i});
+    pages.push({offCanvas:off,logW:baseVp.width,logH:baseVp.height,label:'Page '+i,name:'Floor '+i,typical:null});
   }
   rebuildTabsDom();
   refreshFloorSuggestions();
@@ -1640,6 +1674,28 @@ function rebuildTabsDom(){
     })(idx);
     t.appendChild(lab);
 
+    // Pass A.5: typical-floor range badge (muted), tooltip on hover.
+    var mult = pageMultiplier(idx);
+    var range = pageFloorRange(idx);
+    if(range){
+      var badge = document.createElement('span');
+      badge.className = 'tab-typical-badge';
+      badge.textContent = '· ' + range;
+      t.appendChild(badge);
+      var tip = 'Floors ' + pg.typical.fromFloor + '–' + pg.typical.toFloor + ' (' + mult + ' floors)';
+      if(pg.typical.note) tip += ' — ' + pg.typical.note;
+      t.title = tip;
+    }
+
+    // Pass A.5: warning badge when a typical (mult>1) page also has a head-end.
+    if(mult > 1 && headends[idx]){
+      var warn = document.createElement('span');
+      warn.className = 'tab-warning-badge';
+      warn.textContent = '⚠';
+      warn.title = 'Head-end on a typical floor — review placement; head-end belongs on a single floor.';
+      t.appendChild(warn);
+    }
+
     if(calibrations[idx]){
       var dot = document.createElement('span');
       dot.className = 'tab-cal';
@@ -1670,63 +1726,107 @@ function rebuildTabsDom(){
 // Replace a tab's label with a small text input for inline rename.
 // Enter / blur saves; Esc or empty input reverts. Validation: 1–30 chars,
 // alphanumeric + space + dash + slash.
+// Pass A.5 — opens the centered tab-edit modal pre-populated for the given
+// page. Replaces Pass A's inline rename input. Save/Cancel handlers do the
+// commit + rebuildTabsDom + cam.floor cascade.
+var editingTabIdx = -1;
+
 function beginTabRename(idx){
   if(idx < 0 || idx >= pages.length) return;
-  var tabsEl = document.getElementById('tabs');
-  if(!tabsEl) return;
-  var tab = tabsEl.querySelector('.tab[data-idx="' + idx + '"]');
-  if(!tab) return;
-  var lab = tab.querySelector('.tab-label');
-  if(!lab) return;
-  // Bail if already in edit mode (a stray dblclick during edit shouldn't restart).
-  if(tab.querySelector('.tab-rename')) return;
+  var pg = pages[idx];
+  editingTabIdx = idx;
 
-  var current = pages[idx].name || pages[idx].label || ('Floor ' + (idx + 1));
-  var input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'tab-rename';
-  input.value = current;
-  input.maxLength = 30;
-  input.spellcheck = false;
+  var nameInput = document.getElementById('tab-edit-name');
+  nameInput.value = pg.name || pg.label || ('Floor ' + (idx + 1));
 
-  var settled = false;
-  var cancelled = false;
+  var typicalCb = document.getElementById('tab-edit-typical');
+  var fromInput = document.getElementById('tab-edit-from');
+  var toInput   = document.getElementById('tab-edit-to');
+  var noteInput = document.getElementById('tab-edit-note');
+  var hasTypical = !!(pg.typical && pg.typical.enabled);
+  typicalCb.checked = hasTypical;
+  fromInput.value = hasTypical ? (pg.typical.fromFloor || '') : '';
+  toInput.value   = hasTypical ? (pg.typical.toFloor   || '') : '';
+  noteInput.value = hasTypical ? (pg.typical.note || '') : '';
 
-  function commit(){
-    if(settled) return;
-    settled = true;
-    var v = input.value.trim();
-    var valid = v.length > 0 && v.length <= 30 && /^[A-Za-z0-9 \-\/]+$/.test(v);
-    if(valid && v !== current){
-      pages[idx].name = v;
-      // Cascade the new name to all cameras on this page so legacy code that
-      // reads cam.floor (riser zone fallback, BOM lookups, etc.) stays consistent.
-      cameras.forEach(function(c){ if(c.page === idx) c.floor = v; });
+  document.getElementById('tab-edit-warn').style.display = 'none';
+  document.getElementById('tab-edit-warn').textContent = '';
+  updateTabEditTypical();
+  updateTabEditCount();
+  document.getElementById('tab-edit-modal').classList.add('show');
+  setTimeout(function(){ nameInput.focus(); nameInput.select(); }, 30);
+}
+
+function closeTabEditModal(){
+  document.getElementById('tab-edit-modal').classList.remove('show');
+  editingTabIdx = -1;
+}
+
+// Toggle visibility of from/to/note based on checkbox.
+function updateTabEditTypical(){
+  var on = document.getElementById('tab-edit-typical').checked;
+  document.getElementById('tab-edit-typical-fields').style.display = on ? '' : 'none';
+}
+
+// Live update of "Represents N floors" readout. Auto-swap if reversed.
+function updateTabEditCount(){
+  var from = parseInt(document.getElementById('tab-edit-from').value, 10);
+  var to   = parseInt(document.getElementById('tab-edit-to').value, 10);
+  var el = document.getElementById('tab-edit-count');
+  if(isNaN(from) || isNaN(to)){ el.textContent = ''; return; }
+  if(from > to){ var t = from; from = to; to = t; }
+  var n = to - from + 1;
+  el.textContent = 'Represents ' + n + ' floor' + (n === 1 ? '' : 's');
+}
+
+function saveTabEdit(){
+  if(editingTabIdx < 0 || editingTabIdx >= pages.length){ closeTabEditModal(); return; }
+  var idx = editingTabIdx;
+  var pg = pages[idx];
+  var warn = document.getElementById('tab-edit-warn');
+  warn.style.display = 'none'; warn.textContent = '';
+
+  var name = document.getElementById('tab-edit-name').value.trim();
+  if(!name || name.length > 30 || !/^[A-Za-z0-9 \-\/]+$/.test(name)){
+    warn.textContent = 'Name must be 1–30 characters: letters, digits, spaces, dashes, slashes.';
+    warn.style.display = 'block';
+    return;
+  }
+
+  var typicalOn = document.getElementById('tab-edit-typical').checked;
+  var typical = null;
+  if(typicalOn){
+    var from = parseInt(document.getElementById('tab-edit-from').value, 10);
+    var to   = parseInt(document.getElementById('tab-edit-to').value, 10);
+    if(isNaN(from) || isNaN(to)){
+      warn.textContent = 'Enter From and To floor numbers.';
+      warn.style.display = 'block';
+      return;
     }
-    rebuildTabsDom();
-  }
-  function cancel(){
-    if(settled) return;
-    settled = true;
-    rebuildTabsDom();
+    if(from > to){ var t = from; from = to; to = t; }   // silent swap
+    typical = {
+      enabled: true,
+      fromFloor: from,
+      toFloor: to,
+      note: document.getElementById('tab-edit-note').value.trim()
+    };
   }
 
-  input.addEventListener('keydown', function(e){
-    if(e.key === 'Enter'){ e.preventDefault(); commit(); }
-    else if(e.key === 'Escape'){ e.preventDefault(); cancelled = true; cancel(); }
-  });
-  input.addEventListener('blur', function(){
-    if(cancelled) return;
-    commit();
-  });
-  // Don't let stray clicks inside the input trigger switchPage on the parent.
-  ['click','mousedown','dblclick'].forEach(function(ev){
-    input.addEventListener(ev, function(e){ e.stopPropagation(); });
-  });
+  var nameChanged = (name !== pg.name);
+  pg.name = name;
+  pg.typical = typical;
 
-  lab.replaceWith(input);
-  input.focus();
-  input.select();
+  // Pass A cascade: keep cam.floor on this page consistent with the tab name.
+  if(nameChanged){
+    cameras.forEach(function(c){ if(c.page === idx) c.floor = name; });
+  }
+
+  closeTabEditModal();
+  rebuildTabsDom();
+  // Multiplier may have changed → all aggregated counts (BOM, riser, cover)
+  // need a recompute. The drawer redraws itself; cover/riser refresh on
+  // next export.
+  if(typeof recalcBom === 'function' && bomOpen) recalcBom();
 }
 
 // Drop a page-keyed object's matching key, decrement higher-numeric keys.
@@ -1912,6 +2012,13 @@ function cancelCalib(){ cancelCalibrationFlow(); }
 // ─── Head-End Placement & Cable Runs ──────────────────────────────────────────
 function startHeadendPlacement(){
   if(!pdfLoaded) return;
+  // Pass A.5: block placement on typical-floor pages with multiplier > 1.
+  // A head-end is a single physical device; placing it on a typical page
+  // would imply N copies. Tell the user where it should go instead.
+  if(pageMultiplier(currentPage) > 1){
+    alert('Place the head-end on a non-typical floor (parkade, lobby, or single floor). Typical floors share the same head-end.');
+    return;
+  }
   if(calibMode) cancelCalibrationFlow();
   headendMode = true;
   var cmvr = document.getElementById('tb-cmvr'); if(cmvr) cmvr.classList.add('active');
@@ -1966,6 +2073,42 @@ function updateScaleIndicator(){
 }
 function getPPM(p){var c=calibrations[p]; return c?c.pixelsPerMeter:null;}
 function getCalibUnit(p){var c=calibrations[p]; return c?c.unit:'m';}
+
+// ─── Typical-floor multiplier (Pass A.5) ─────────────────────────────────────
+// A page can represent a range of floors (e.g. tower typical floors 3–17).
+// Counts/sums for BOM, riser, cover, storage all scale by this multiplier.
+// Drawing, hit-tests, calibration are per-page geometry — never multiplied.
+function pageMultiplier(pageIdx){
+  var p = pages[pageIdx];
+  if(!p || !p.typical || !p.typical.enabled) return 1;
+  var from = parseInt(p.typical.fromFloor, 10);
+  var to   = parseInt(p.typical.toFloor, 10);
+  if(isNaN(from) || isNaN(to)) return 1;
+  if(from > to){ var t = from; from = to; to = t; } // silent swap
+  return Math.max(1, to - from + 1);
+}
+
+// "F3-17" when typical with multiplier > 1; empty string otherwise.
+// Used by tab badge, riser zone label, schedule "Floors" column, cable suffix.
+function pageFloorRange(pageIdx){
+  var p = pages[pageIdx];
+  if(!p || !p.typical || !p.typical.enabled) return '';
+  var from = parseInt(p.typical.fromFloor, 10);
+  var to   = parseInt(p.typical.toFloor, 10);
+  if(isNaN(from) || isNaN(to)) return '';
+  if(from > to){ var t = from; from = to; to = t; }
+  if(from === to) return '';        // multiplier === 1, no badge
+  return 'F' + from + '–' + to; // en-dash separator
+}
+
+// Sum of pageMultiplier across an array of cameras (or any page-tagged items).
+// Centralizes the "multiplied count" used in BOM sizing, riser camCount,
+// cover summary, storage calc, etc.
+function multipliedTotal(arr){
+  var total = 0;
+  for(var i = 0; i < arr.length; i++) total += pageMultiplier(arr[i].page);
+  return total;
+}
 function fmtDist(meters, p){
   if(meters==null) return '\u2014';
   var unit=getCalibUnit(p);
@@ -2510,7 +2653,18 @@ document.addEventListener('keydown',function(e){
   }
   if(!pdfLoaded) return;
   if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT'){
-    if(e.key==='Escape'&&calibMode){ cancelCalibrationFlow(); }
+    if(e.key==='Escape'){
+      // Allow Esc to close the tab-edit modal even when focus is inside its
+      // input fields (otherwise we'd be trapped — the only other escape is
+      // clicking Cancel). Calibration prompt also gets the same exception.
+      if(document.getElementById('tab-edit-modal').classList.contains('show')){ closeTabEditModal(); return; }
+      if(calibMode){ cancelCalibrationFlow(); }
+    }
+    // Enter inside the tab-edit modal name field: commit save.
+    if(e.key==='Enter' && document.getElementById('tab-edit-modal').classList.contains('show')){
+      e.preventDefault();
+      saveTabEdit();
+    }
     return;
   }
   if(e.key==='Delete'||e.key==='Backspace'){
@@ -2519,6 +2673,7 @@ document.addEventListener('keydown',function(e){
   }
   if(e.key==='Escape'){
     if(openMenuEl){ closeAllMenus(); return; }
+    if(document.getElementById('tab-edit-modal').classList.contains('show')){ closeTabEditModal(); return; }
     if(document.getElementById('help-modal').classList.contains('show')){ closeHelpModal(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
@@ -2978,8 +3133,13 @@ async function saveJSON(){
     for(var k in c){ if(c.hasOwnProperty(k) && k.indexOf('__') !== 0) clone[k] = c[k]; }
     return clone;
   });
-  // Per-page metadata: editable floor name.
-  var pagesForSave = pages.map(function(pg){ return { name: pg.name || pg.label || '' }; });
+  // Per-page metadata: editable floor name + optional typical-floor range.
+  var pagesForSave = pages.map(function(pg){
+    return {
+      name: pg.name || pg.label || '',
+      typical: pg.typical || null
+    };
+  });
 
   // Embed the source document if we have one. Defensive against the (shouldn't-
   // happen) case where Save fires with no source — we'd still write a valid
@@ -3000,7 +3160,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 10,
+    version: 11,
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -3057,10 +3217,14 @@ function applyProjectState(data){
   acDevices    = data.acDevices  || [];
   acCounters   = data.acCounters || {};
   acSelectedId = null;
-  // v9+ persists per-page floor names; v8 has no `pages` array — defaults stay.
+  // v9+ persists per-page floor names; v11+ also persists per-page typical-floor
+  // config. v8 has no `pages` array — defaults stay. v9/v10 saves have no
+  // `typical` field — leave it null so multiplier stays 1.
   if(Array.isArray(data.pages)){
     data.pages.forEach(function(saved, i){
-      if(pages[i] && saved && saved.name) pages[i].name = saved.name;
+      if(!pages[i] || !saved) return;
+      if(saved.name) pages[i].name = saved.name;
+      pages[i].typical = saved.typical || null;
     });
   }
   if(data.bom){
@@ -3362,12 +3526,18 @@ function drawProposalCover(doc, W, H){
 
   doc.setFontSize(9); doc.setTextColor(120, 120, 140);
   doc.text('CAMERAS', 65, y+45);
-  doc.text('PAGES', 65, y+65);
+  doc.text('FLOORS', 65, y+65);
   doc.text('SCALE CALIBRATED', 65, y+85);
 
+  // Pass A.5: CAMERAS reflects multiplied total across typical floors;
+  // FLOORS replaces PAGES — sum of pageMultiplier(i). When no typicals
+  // exist, both numbers match the old pages.length / cameras.length.
+  var floorTotal = 0;
+  for(var fp = 0; fp < pages.length; fp++) floorTotal += pageMultiplier(fp);
+
   doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(12);
-  doc.text(String(cameras.length), 250, y+45);
-  doc.text(String(pages.length), 250, y+65);
+  doc.text(String(multipliedTotal(cameras)), 250, y+45);
+  doc.text(String(floorTotal), 250, y+65);
   var calCount = Object.keys(calibrations).length;
   doc.text(calCount + ' / ' + pages.length, 250, y+85);
 
@@ -3533,8 +3703,9 @@ function drawProposalRiser(doc, W, H, startSection){
 }
 
 function computeRiserModel(){
-  var camCount = cameras.length;
-  // Match BOM auto-row sizing exactly so the riser and BOM line up.
+  // Pass A.5: switch / NVR / band labels reflect typical-floor multipliers
+  // so the riser matches BOM totals.
+  var camCount = multipliedTotal(cameras);
   var ports = camCount <= 4 ? 8 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 24 ? 24 : 48;
   var switchCount = Math.max(1, Math.ceil(camCount / ports));
   var nvrChannels = camCount <= 4 ? 4 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 32 ? 32 : camCount <= 64 ? 64 : 128;
@@ -3551,8 +3722,20 @@ function computeRiserModel(){
     if(kb !== ka) return kb - ka;
     return a.localeCompare(b);
   });
+  // Each zone gets a `displayName` used for band labels and schedule
+  // subheaders (augmented with " · F3–17 (×15)" on typical pages). The raw
+  // `name` stays available for camera-row "Floors" fallback when the page
+  // has no typical range to show.
   var zones = zoneNames.map(function(name){
-    return { name: name, cams: byZone[name].slice() };
+    var cams = byZone[name].slice();
+    var firstPageIdx = cams.length ? cams[0].page : 0;
+    var mult = pageMultiplier(firstPageIdx);
+    var range = pageFloorRange(firstPageIdx);
+    var displayName = name || 'Unassigned';
+    if(range && mult > 1){
+      displayName = displayName + ' · ' + range + ' (×' + mult + ')';
+    }
+    return { name: name, displayName: displayName, cams: cams };
   });
 
   // Sequential project-wide cable IDs in display order
@@ -3588,8 +3771,14 @@ function fmtRiserCableLen(cam){
   if(lenM == null) return '—';
   var ftVal = lenM * FT_PER_METER;
   var unit = getCalibUnit(cam.page);
-  if(unit === 'ft') return Math.round(ftVal) + ' ft (' + lenM.toFixed(1) + ' m)';
-  return lenM.toFixed(1) + ' m (' + Math.round(ftVal) + ' ft)';
+  var s = (unit === 'ft')
+    ? (Math.round(ftVal) + ' ft (' + lenM.toFixed(1) + ' m)')
+    : (lenM.toFixed(1) + ' m (' + Math.round(ftVal) + ' ft)');
+  // Pass A.5: typical-floor cable runs happen N times. Annotate with a middot
+  // suffix ("38 ft (11.6 m) · ×15 floors") when multiplier > 1.
+  var mult = pageMultiplier(cam.page);
+  if(mult > 1) s += ' · ×' + mult + ' floors';
+  return s;
 }
 
 function drawRiserDiagram(doc, x0, y0, w, h, model){
@@ -3648,7 +3837,8 @@ function drawRiserZoneBand(doc, x0, y0, w, h, zone, trunkX){
   // Zone label on the far left
   doc.setFont('courier','bold'); doc.setFontSize(8);
   doc.setTextColor(31, 41, 55);
-  var labelText = (zone.name || 'Unassigned').toUpperCase();
+  // Augmented: includes typical-floor range/multiplier when applicable.
+  var labelText = (zone.displayName || zone.name || 'Unassigned').toUpperCase();
   doc.text(labelText, x0 + 4, y0 + 12);
 
   // Horizontal rail across the band
@@ -3799,14 +3989,17 @@ function buildRiserScheduleRows(model){
   }
   rows.push({type:'equip', id:'UPS-1', kind:'UPS', model:'Rack UPS'});
   model.zones.forEach(function(zone){
-    rows.push({type:'section', text:(zone.name || 'Unassigned').toUpperCase(), accent:'red'});
+    rows.push({type:'section', text:(zone.displayName || zone.name || 'Unassigned').toUpperCase(), accent:'red'});
     zone.cams.forEach(function(cam){
+      // "Floors" column: range string for typicals (e.g. "F3–17"); otherwise
+      // the floor name (or "Unassigned").
+      var floorTxt = pageFloorRange(cam.page) || (zone.name || 'Unassigned');
       rows.push({
         type:'cam',
         id: cam.label || '',
         kind:'Camera',
         model: camRiserDisplayModel(cam),
-        floor: zone.name || 'Unassigned',
+        floor: floorTxt,
         cable: cam.__cableId || '',
         length: cam.__cableLenDisplay || '—'
       });
@@ -3986,7 +4179,8 @@ function computeAutoRows(){
     return (c.tier || 'recommended') === bomTierFilter;
   });
 
-  // Group cameras by model+type for the camera section
+  // Group cameras by model+type for the camera section.
+  // Pass A.5: each camera contributes pageMultiplier(c.page) (typical floors).
   var camGroups = {};
   filteredCams.forEach(function(cam){
     var key, desc, brand='', model='';
@@ -4002,7 +4196,7 @@ function computeAutoRows(){
       desc = 'Custom ' + (cam.type||'dome').toUpperCase() + ' Camera (' + resTxt + ')';
     }
     if(!camGroups[key]) camGroups[key] = { desc:desc, qty:0, brand:brand, model:model, key:key };
-    camGroups[key].qty++;
+    camGroups[key].qty += pageMultiplier(cam.page);
   });
 
   var camRows = Object.keys(camGroups).map(function(k){
@@ -4010,17 +4204,22 @@ function computeAutoRows(){
     return { auto:true, src:'cameras', key:k, desc:g.desc, qty:g.qty, unit:0, sectionAuto:true };
   });
 
+  // Pass A.5: NVR/switch sizing + storage math use multiplied totals so the
+  // BOM matches the real installed count across typical floors.
+  var multCount = multipliedTotal(filteredCams);
+
   // Auto-recording: NVR sized to channel count + storage drives
   var recordingRows = [];
   if(filteredCams.length > 0){
-    var ch = filteredCams.length;
+    var ch = multCount;
     var channels = ch <= 4 ? 4 : ch <= 8 ? 8 : ch <= 16 ? 16 : ch <= 32 ? 32 : ch <= 64 ? 64 : 128;
     recordingRows.push({
       auto:true, src:'recording', key:'auto-nvr',
       desc: channels+'-Channel NVR / VMS Recorder (sized for '+ch+' cam'+(ch===1?'':'s')+')',
       qty: 1, unit: 0, sectionAuto:true
     });
-    // Surveillance-rated HDDs based on storage calc
+    // Surveillance-rated HDDs based on storage calc.
+    // Each camera's GB/day contribution scales by pageMultiplier(c.page).
     var days = parseFloat(document.getElementById('stor-days').value) || 30;
     var fps  = parseFloat(document.getElementById('stor-fps').value) || 15;
     var codec = document.getElementById('stor-codec').value;
@@ -4029,7 +4228,7 @@ function computeAutoRows(){
     var gbPerDay = 0;
     filteredCams.forEach(function(cam){
       var br = estimateBitrateMbps(cam.resolution || 2560, fps, codec);
-      gbPerDay += (br * 3600 * 24 * modeFactor) / (8 * 1000);
+      gbPerDay += (br * 3600 * 24 * modeFactor) / (8 * 1000) * pageMultiplier(cam.page);
     });
     var tbTotal = (gbPerDay * days) / 1000;
     var recommendedTB = Math.ceil(tbTotal * 1.20);
@@ -4042,24 +4241,29 @@ function computeAutoRows(){
     });
   }
 
-  // Auto-network: PoE switch sized
+  // Auto-network: PoE switch sized to multiplied camera count.
   var networkRows = [];
   if(filteredCams.length > 0){
-    var ch = filteredCams.length;
-    var ports = ch <= 4 ? 8 : ch <= 8 ? 8 : ch <= 16 ? 16 : ch <= 24 ? 24 : 48;
-    var switchCount = Math.ceil(ch / ports);
+    var ch2 = multCount;
+    var ports = ch2 <= 4 ? 8 : ch2 <= 8 ? 8 : ch2 <= 16 ? 16 : ch2 <= 24 ? 24 : 48;
+    var switchCount = Math.ceil(ch2 / ports);
     networkRows.push({
       auto:true, src:'network', key:'auto-switch',
-      desc: ports + '-Port PoE+ Network Switch ('+ch+' camera'+(ch===1?'':'s')+', '+switchCount+' switch'+(switchCount===1?'':'es')+')',
+      desc: ports + '-Port PoE+ Network Switch ('+ch2+' camera'+(ch2===1?'':'s')+', '+switchCount+' switch'+(switchCount===1?'':'es')+')',
       qty: switchCount, unit: 0, sectionAuto:true
     });
   }
 
-  // Auto-labor: install hours per camera by type
+  // Auto-labor: install hours per camera by type.
+  // Pass A.5: typeCounts accumulate pageMultiplier per camera.
   var laborRows = [];
   if(filteredCams.length > 0){
     var typeCounts = { dome:0, bullet:0, turret:0, fisheye:0, ptz:0, lpr:0 };
-    filteredCams.forEach(function(c){ typeCounts[c.type||'dome']++; });
+    filteredCams.forEach(function(c){
+      var t = c.type || 'dome';
+      if(typeCounts[t] === undefined) typeCounts[t] = 0;
+      typeCounts[t] += pageMultiplier(c.page);
+    });
     Object.keys(typeCounts).forEach(function(t){
       if(typeCounts[t] > 0){
         var hrs = DEFAULT_HOURS_BY_TYPE[t] || 2.0;
@@ -4087,11 +4291,14 @@ function computeAutoRows(){
 // Auto cable row: total Cat6 footage based on head-end distances
 function computeAutoCableRows(){
   var rows = [];
-  var totalM = 0, runs = 0, anyOverLimit = false;
+  // Pass A.5: typical pages multiply both totalM and runs by pageMultiplier.
+  var totalM = 0, runs = 0, anyOverLimit = false, anyTypical = false;
   Object.keys(headends).forEach(function(p){
     var pageIdx = parseInt(p);
     var ppm = getPPM(pageIdx);
     if(!ppm) return;
+    var mult = pageMultiplier(pageIdx);
+    if(mult > 1) anyTypical = true;
     cameras.filter(function(c){
       if(c.page!==pageIdx) return false;
       if(bomTierFilter==='all') return true;
@@ -4099,8 +4306,8 @@ function computeAutoCableRows(){
     }).forEach(function(cam){
       var m = cableLengthM(cam, pageIdx);
       if(m != null){
-        totalM += m;
-        runs++;
+        totalM += m * mult;
+        runs   += mult;
         if(m > maxCableM) anyOverLimit = true;
       }
     });
@@ -4110,7 +4317,7 @@ function computeAutoCableRows(){
     var withSlack = totalFt * 1.10;
     rows.push({
       auto:true, src:'cabling', key:'auto-cat6',
-      desc:'Cat6 PoE cable — '+runs+' runs, '+Math.round(totalFt)+' ft straight, '+Math.round(withSlack)+' ft with 10% slack'+(anyOverLimit?' \u26a0 RUN OVER 90m':''),
+      desc:'Cat6 PoE cable — '+runs+' runs, '+Math.round(totalFt)+' ft straight, '+Math.round(withSlack)+' ft with 10% slack'+(anyOverLimit?' ⚠ RUN OVER 90m':'')+(anyTypical?' — typical-floor totals are estimated; actual install may vary':''),
       qty: Math.round(withSlack), unit: 0, sectionAuto:true
     });
   }
@@ -4186,9 +4393,12 @@ function recalcBom(){
   var taxAmt = afterMargin * taxPct / 100;
   var grand = afterMargin + taxAmt;
 
+  // Pass A.5: BOM camera-count display reflects multiplied totals so it
+  // matches the per-line quantities in the table.
+  var totalMult = multipliedTotal(cameras);
   document.getElementById('bom-cam-count').textContent = bomTierFilter==='all'
-    ? cameras.length
-    : (cameras.filter(function(c){return (c.tier||'recommended')===bomTierFilter;}).length + ' / ' + cameras.length);
+    ? totalMult
+    : (multipliedTotal(cameras.filter(function(c){return (c.tier||'recommended')===bomTierFilter;})) + ' / ' + totalMult);
   document.getElementById('bom-subtotal').textContent = '$' + formatMoney(subtotal);
   document.getElementById('bom-margin-amt').textContent = '$' + formatMoney(marginAmt);
   document.getElementById('bom-tax-amt').textContent = '$' + formatMoney(taxAmt);
@@ -4292,33 +4502,37 @@ function recalcStorage(){
   var modeFactor = mode === 'motion' ? 0.30 : (mode === 'business' ? 0.50 : 1.0);
   var hoursPerDay = 24 * modeFactor;
 
+  // Pass A.5: each camera contributes pageMultiplier(c.page) to aggregate
+  // bitrate and storage. The "per camera (avg)" denominator uses the
+  // multiplied total so the average reflects what's actually deployed.
   var totalMbps = 0;
   cameras.forEach(function(cam){
     var br = estimateBitrateMbps(cam.resolution || 2560, fps, codec);
-    totalMbps += br;
+    totalMbps += br * pageMultiplier(cam.page);
   });
 
-  // Storage formula: bitrate(Mbps) × seconds × cams = bits → /8 = bytes
   // Per camera per day: bitrate × 3600 × hoursPerDay / 8 / 1000 = GB/day
   var gbPerDay = 0;
   cameras.forEach(function(cam){
     var br = estimateBitrateMbps(cam.resolution || 2560, fps, codec);
-    gbPerDay += (br * 3600 * hoursPerDay) / (8 * 1000);
+    gbPerDay += (br * 3600 * hoursPerDay) / (8 * 1000) * pageMultiplier(cam.page);
   });
   var gbTotal = gbPerDay * days;
   var tbTotal = gbTotal / 1000;
 
   // Recommended drive size with 20% headroom + RAID consideration not included
   var recommendedTB = Math.ceil(tbTotal * 1.20);
-  // Pick a sensible drive count assuming 8TB/12TB drives
   var driveSize = recommendedTB <= 8 ? 8 : (recommendedTB <= 12 ? 12 : (recommendedTB <= 18 ? 18 : 22));
   var driveCount = Math.max(1, Math.ceil(recommendedTB / driveSize));
+
+  var multCams = multipliedTotal(cameras);
+  var avgGbPerCam = multCams > 0 ? (gbPerDay / multCams) : 0;
 
   el.className = '';
   el.innerHTML =
     '<div class="stor-row"><span>Aggregate bitrate</span><b>'+totalMbps.toFixed(1)+' Mbps</b></div>'+
-    '<div class="stor-row"><span>Daily storage / camera (avg)</span><b>'+(gbPerDay/cameras.length).toFixed(1)+' GB</b></div>'+
-    '<div class="stor-row"><span>Total / day (' + cameras.length + ' cam' + (cameras.length===1?'':'s') + ')</span><b>'+gbPerDay.toFixed(1)+' GB</b></div>'+
+    '<div class="stor-row"><span>Daily storage / camera (avg)</span><b>'+avgGbPerCam.toFixed(1)+' GB</b></div>'+
+    '<div class="stor-row"><span>Total / day (' + multCams + ' cam' + (multCams===1?'':'s') + ')</span><b>'+gbPerDay.toFixed(1)+' GB</b></div>'+
     '<div class="stor-row"><span>Required for ' + days + ' days</span><b>'+gbTotal.toFixed(0)+' GB ('+tbTotal.toFixed(2)+' TB)</b></div>'+
     '<div class="stor-row stor-total"><span>Recommended (with 20% headroom)</span><b>'+driveCount+' &times; '+driveSize+'TB = '+(driveCount*driveSize)+'TB</b></div>';
 }
