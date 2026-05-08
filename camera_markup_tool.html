@@ -424,6 +424,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .rp-sub-field:last-child { margin-bottom:0; }
 .rp-sub-label { font:500 11px var(--font-ui); color:var(--text-muted); min-width:72px; flex-shrink:0; }
 .rp-sub-field .rp-slot { flex:1; }
+
+/* Pass A.8: panel mode swap. data-mode="camera" shows .rp-camera-fields and
+   hides .rp-reader-fields; data-mode="reader" does the inverse. */
+#right-panel[data-mode="camera"] .rp-reader-fields { display:none; }
+#right-panel[data-mode="reader"] .rp-camera-fields { display:none; }
 .phdr { font:700 10px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; padding:12px 16px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); }
 
 #controls { padding:10px 13px; border-bottom:1px solid var(--border); }
@@ -890,85 +895,118 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </div>
   </div>
 
-  <aside id="right-panel" aria-hidden="true">
+  <aside id="right-panel" aria-hidden="true" data-mode="camera">
     <header class="rp-header">
-      <h3>Camera Details</h3>
+      <h3 id="rp-title">Camera Details</h3>
       <button class="rp-close" type="button" onclick="closeRightPanel()" title="Close" aria-label="Close panel">&times;</button>
     </header>
     <div class="rp-body">
-      <div class="rp-field">
-        <label class="rp-label">Label</label>
-        <div class="rp-slot" data-rp-slot="label">
-          <input type="text" id="inp-label" value="CAM-01" oninput="updateSelected()">
-        </div>
-      </div>
-
-      <div class="rp-field">
-        <label class="rp-label">Manufacturer &amp; Model</label>
-        <div class="rp-readout" id="rp-model-readout">
-          <div class="rp-model-name">Custom Camera</div>
-          <div class="rp-model-desc"></div>
-        </div>
-      </div>
-
-      <div class="rp-field">
-        <label class="rp-label">Specs</label>
-        <div class="rp-readout" id="rp-specs-readout">
-          <div class="rp-spec-row"><span>Resolution</span><b id="rp-spec-res">&mdash;</b></div>
-          <div class="rp-spec-row"><span>FOV</span><b id="rp-spec-fov">&mdash;</b></div>
-          <div class="rp-spec-row"><span>Reach</span><b id="rp-spec-reach">&mdash;</b></div>
-        </div>
-        <div class="rp-custom-specs" id="rp-custom-specs" style="display:none">
-          <div class="rp-sub-field">
-            <span class="rp-sub-label">Resolution</span>
-            <div class="rp-slot" data-rp-slot="resolution">
-              <select id="inp-resolution" onchange="updateSelected()">
-                <option value="1920">2 MP / 1080p</option>
-                <option value="2560" selected>4 MP / 1440p</option>
-                <option value="2592">5 MP</option>
-                <option value="3072">6 MP</option>
-                <option value="3840">8 MP / 4K</option>
-                <option value="4000">12 MP</option>
-              </select>
-            </div>
-          </div>
-          <div class="rp-sub-field">
-            <span class="rp-sub-label">FOV</span>
-            <div class="rp-slot rp-slider" data-rp-slot="fov">
-              <input type="range" id="inp-fov" min="20" max="180" value="75" oninput="updateSelected()">
-              <span class="rp-slider-val" id="v-fov">75&deg;</span>
-            </div>
-          </div>
-          <div class="rp-sub-field">
-            <span class="rp-sub-label">Reach</span>
-            <div class="rp-slot rp-slider" data-rp-slot="reach">
-              <input type="range" id="inp-reach" min="20" max="600" value="150" oninput="updateSelected()">
-              <span class="rp-slider-val" id="v-reach">150</span>
-            </div>
+      <div class="rp-camera-fields">
+        <div class="rp-field">
+          <label class="rp-label">Label</label>
+          <div class="rp-slot" data-rp-slot="label">
+            <input type="text" id="inp-label" value="CAM-01" oninput="updateSelected()">
           </div>
         </div>
-      </div>
 
-      <div class="rp-field">
-        <label class="rp-label">Mount Height</label>
-        <div class="rp-slot rp-input-with-unit" data-rp-slot="mount">
-          <input type="number" id="inp-mount" min="0" max="20" step="0.1" value="3.0" oninput="updateSelected()">
-          <span class="rp-input-unit" id="v-mount-unit">m</span>
+        <div class="rp-field">
+          <label class="rp-label">Manufacturer &amp; Model</label>
+          <div class="rp-readout" id="rp-model-readout">
+            <div class="rp-model-name">Custom Camera</div>
+            <div class="rp-model-desc"></div>
+          </div>
+        </div>
+
+        <div class="rp-field">
+          <label class="rp-label">Specs</label>
+          <div class="rp-readout" id="rp-specs-readout">
+            <div class="rp-spec-row"><span>Resolution</span><b id="rp-spec-res">&mdash;</b></div>
+            <div class="rp-spec-row"><span>FOV</span><b id="rp-spec-fov">&mdash;</b></div>
+            <div class="rp-spec-row"><span>Reach</span><b id="rp-spec-reach">&mdash;</b></div>
+          </div>
+          <div class="rp-custom-specs" id="rp-custom-specs" style="display:none">
+            <div class="rp-sub-field">
+              <span class="rp-sub-label">Resolution</span>
+              <div class="rp-slot" data-rp-slot="resolution">
+                <select id="inp-resolution" onchange="updateSelected()">
+                  <option value="1920">2 MP / 1080p</option>
+                  <option value="2560" selected>4 MP / 1440p</option>
+                  <option value="2592">5 MP</option>
+                  <option value="3072">6 MP</option>
+                  <option value="3840">8 MP / 4K</option>
+                  <option value="4000">12 MP</option>
+                </select>
+              </div>
+            </div>
+            <div class="rp-sub-field">
+              <span class="rp-sub-label">FOV</span>
+              <div class="rp-slot rp-slider" data-rp-slot="fov">
+                <input type="range" id="inp-fov" min="20" max="180" value="75" oninput="updateSelected()">
+                <span class="rp-slider-val" id="v-fov">75&deg;</span>
+              </div>
+            </div>
+            <div class="rp-sub-field">
+              <span class="rp-sub-label">Reach</span>
+              <div class="rp-slot rp-slider" data-rp-slot="reach">
+                <input type="range" id="inp-reach" min="20" max="600" value="150" oninput="updateSelected()">
+                <span class="rp-slider-val" id="v-reach">150</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rp-field">
+          <label class="rp-label">Mount Height</label>
+          <div class="rp-slot rp-input-with-unit" data-rp-slot="mount">
+            <input type="number" id="inp-mount" min="0" max="20" step="0.1" value="3.0" oninput="updateSelected()">
+            <span class="rp-input-unit" id="v-mount-unit">m</span>
+          </div>
+        </div>
+
+        <div class="rp-field">
+          <label class="rp-label">Angle</label>
+          <div class="rp-slot rp-slider" data-rp-slot="angle">
+            <input type="range" id="inp-angle" min="0" max="359" value="270" oninput="updateSelected()">
+            <span class="rp-slider-val" id="v-angle">270&deg;</span>
+          </div>
+        </div>
+
+        <div class="rp-field">
+          <label class="rp-label">Notes</label>
+          <div class="rp-slot" data-rp-slot="notes">
+            <textarea id="inp-notes" placeholder="e.g. IP66, WDR, IR..." oninput="updateSelected()"></textarea>
+          </div>
         </div>
       </div>
 
-      <div class="rp-field">
-        <label class="rp-label">Angle</label>
-        <div class="rp-slot rp-slider" data-rp-slot="angle">
-          <input type="range" id="inp-angle" min="0" max="359" value="270" oninput="updateSelected()">
-          <span class="rp-slider-val" id="v-angle">270&deg;</span>
+      <div class="rp-reader-fields">
+        <div class="rp-field">
+          <label class="rp-label">Label</label>
+          <div class="rp-slot" data-rp-slot="label-reader">
+            <input type="text" id="inp-label-reader" oninput="updateSelectedReader()">
+          </div>
         </div>
-      </div>
 
-      <div class="rp-field">
-        <label class="rp-label">Notes</label>
-        <div class="rp-slot" data-rp-slot="notes">
-          <textarea id="inp-notes" placeholder="e.g. IP66, WDR, IR..." oninput="updateSelected()"></textarea>
+        <div class="rp-field">
+          <label class="rp-label">Manufacturer &amp; Model</label>
+          <div class="rp-readout" id="rp-reader-model-readout">
+            <div class="rp-model-name">Brivo Smart Reader</div>
+            <div class="rp-model-desc"></div>
+          </div>
+        </div>
+
+        <div class="rp-field">
+          <label class="rp-label">Form Factor</label>
+          <div class="rp-readout" id="rp-reader-form-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+
+        <div class="rp-field">
+          <label class="rp-label">Notes</label>
+          <div class="rp-slot" data-rp-slot="notes-reader">
+            <textarea id="inp-notes-reader" placeholder="e.g. Exterior; weatherproof box required" oninput="updateSelectedReader()"></textarea>
+          </div>
         </div>
       </div>
     </div>
@@ -2522,8 +2560,9 @@ cv.addEventListener('mousedown',function(e){
     var dev = readerAt(p.cx, p.cy);
     if(dev){ selectReader(dev.id); dragging = {id:dev.id, type:'reader-move'}; return; }
     // Deselect-on-empty-click when something is selected (matches drawing-app
-    // convention; second click in empty space then places).
-    if(acSelectedId){ acSelectedId = null; redraw(); updateAcList(); return; }
+    // convention; second click in empty space then places). Pass A.8 routes
+    // through closeRightPanel so the reader details panel slides out too.
+    if(acSelectedId){ closeRightPanel(); return; }
     placeReader(p.cx, p.cy);
     return;
   }
@@ -2718,20 +2757,16 @@ function setPanelMode(mode){
   document.querySelectorAll('#icon-strip .strip-btn[data-mode-btn]').forEach(function(b){
     b.classList.toggle('active', b.dataset.modeBtn === mode);
   });
+  // Mode switches always deselect — the right panel slides out via the
+  // canonical close path (which clears both selectedId and acSelectedId).
+  // The user re-opens it by clicking a camera or reader after the switch.
+  closeRightPanel();
   if(mode === 'access'){
-    selectedId = null;
-    // Right panel is camera-only; close it when entering AC mode.
-    var rp = document.getElementById('right-panel');
-    if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
     // Auto-arm a default reader on AC entry only when nothing is currently
     // armed. If the user previously armed a tile then switched to camera
     // mode and back, currentReaderModel persists and we leave it alone.
     if(!currentReaderModel) pickReader(lastArmedReader);
-    updateAcList();
-  } else {
-    acSelectedId = null;
   }
-  redraw();
 }
 
 function pickReader(sku){
@@ -2760,7 +2795,8 @@ function placeReader(cssX, cssY){
     page: currentPage,
     x: cssX/viewScale, y: cssY/viewScale,
     model: currentReaderModel,
-    label: label
+    label: label,
+    notes: ''
   };
   acDevices.push(dev);
   acSelectedId = dev.id;
@@ -2773,12 +2809,19 @@ function selectReader(id){
   var d = acDevices.find(function(x){return x.id === id;});
   if(d) pickReader(d.model);
   redraw(); updateList(); updateAcList();
+  // Pass A.8: open the right-side details panel for this reader.
+  if(d) openRightPanelForReader(d);
 }
 
 function deleteReader(id){
   acDevices = acDevices.filter(function(d){return d.id !== id;});
-  if(acSelectedId === id) acSelectedId = null;
-  redraw(); updateAcList();
+  // Pass A.8: if the deleted reader was selected, close the right panel
+  // (mirrors deleteSelected's behavior for cameras).
+  if(acSelectedId === id){
+    closeRightPanel();
+  } else {
+    redraw(); updateAcList();
+  }
 }
 
 function updateAcList(){
@@ -2896,11 +2939,14 @@ function addCamera(cssX,cssY){
   redraw(); updateList(); updateDoriInfo();
 }
 
+// Single deselect path for either mode (camera or reader). Clears both
+// selection vars; the UI lights/redraws are idempotent if one side wasn't set.
 function closeRightPanel(){
-  selectedId = null;
+  selectedId   = null;
+  acSelectedId = null;
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
-  redraw(); updateList(); updateDoriInfo();
+  redraw(); updateList(); updateAcList(); updateDoriInfo();
 }
 
 // Update the camera-details readouts (model name, description, specs) and
@@ -2944,11 +2990,68 @@ function openRightPanelForCamera(cam){
   if(!cam) return;
   updateRightPanelDisplay(cam);
   var rp = document.getElementById('right-panel');
-  if(rp){ rp.classList.add('open'); rp.setAttribute('aria-hidden', 'false'); }
+  if(!rp) return;
+  rp.setAttribute('data-mode', 'camera');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Camera Details';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
+}
+
+// Pass A.8: reader-mode populator. Mirrors updateRightPanelDisplay for cameras.
+// Sets the brand+model readout from BRIVO_READERS, builds the form-factor
+// string ("Single-Gang Keypad · Dual-tech" / "Mullion · Tri-tech" / etc),
+// and seeds the editable label + notes fields.
+function updateRightPanelDisplayForReader(dev){
+  if(!dev) return;
+  var spec = BRIVO_READERS[dev.model] || null;
+
+  // Mfg & Model readout
+  var mNameEl = document.querySelector('#rp-reader-model-readout .rp-model-name');
+  var mDescEl = document.querySelector('#rp-reader-model-readout .rp-model-desc');
+  if(mNameEl) mNameEl.textContent = spec ? ('Brivo Smart Reader ' + spec.model) : 'Brivo Smart Reader';
+  if(mDescEl){
+    mDescEl.textContent = spec && spec.desc ? spec.desc : '';
+    mDescEl.style.display = spec && spec.desc ? '' : 'none';
+  }
+
+  // Form Factor readout
+  var fEl = document.querySelector('#rp-reader-form-readout .rp-model-name');
+  if(fEl){
+    if(spec){
+      var mount = spec.mount === 'mullion' ? 'Mullion' : 'Single-Gang';
+      var keypad = spec.keypad ? ' Keypad' : '';
+      var tech = spec.tech === 'tri' ? 'Tri-tech' : 'Dual-tech';
+      fEl.textContent = mount + keypad + ' · ' + tech;
+    } else {
+      fEl.textContent = '—';
+    }
+  }
+
+  // Editable fields
+  var labelInput = document.getElementById('inp-label-reader');
+  var notesInput = document.getElementById('inp-notes-reader');
+  if(labelInput) labelInput.value = dev.label || '';
+  if(notesInput) notesInput.value = dev.notes || '';
+}
+
+function openRightPanelForReader(dev){
+  if(!dev) return;
+  updateRightPanelDisplayForReader(dev);
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  rp.setAttribute('data-mode', 'reader');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Access Control Reader';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
 }
 
 function selectCamera(id){
   selectedId=id;
+  // Pass A.8: clear any stale reader selection so the right panel cleanly
+  // swaps from reader-mode to camera-mode (no dual selection).
+  acSelectedId=null;
   var cam=cameras.find(function(c){return c.id===id;});
   if(!cam) return;
   document.getElementById('inp-label').value=cam.label;
@@ -3005,6 +3108,21 @@ function updateSelected(){
   cam.hazards=document.getElementById('inp-hazards').value;
   cam.floor  =document.getElementById('inp-floor').value.trim();
   redraw(); updateList(); updateDoriInfo();
+}
+
+// Pass A.8: oninput handler for the reader-mode label/notes inputs in the
+// right-side details panel. Mirrors updateSelected's raw write semantics
+// (no trim, no fallback) — empty inputs persist as empty strings so reader
+// behavior matches camera behavior on the same edge case.
+function updateSelectedReader(){
+  if(!acSelectedId) return;
+  var dev = acDevices.find(function(x){ return x.id === acSelectedId; });
+  if(!dev) return;
+  var labelInput = document.getElementById('inp-label-reader');
+  var notesInput = document.getElementById('inp-notes-reader');
+  if(labelInput) dev.label = labelInput.value;
+  if(notesInput) dev.notes = notesInput.value;
+  redraw(); updateAcList();
 }
 
 // Floor autocomplete — one suggestion per imported PDF page (Floor 1..N).
@@ -3160,7 +3278,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 11,
+    version: 12,
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -3217,6 +3335,9 @@ function applyProjectState(data){
   acDevices    = data.acDevices  || [];
   acCounters   = data.acCounters || {};
   acSelectedId = null;
+  // Pass A.8: readers gained an editable `notes` field in v12. Older saves
+  // (v9–v11) don't have it; default to empty so the right-panel input is safe.
+  acDevices.forEach(function(dev){ if(typeof dev.notes !== 'string') dev.notes = ''; });
   // v9+ persists per-page floor names; v11+ also persists per-page typical-floor
   // config. v8 has no `pages` array — defaults stay. v9/v10 saves have no
   // `typical` field — leave it null so multiplier stays 1.
