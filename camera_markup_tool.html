@@ -470,6 +470,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 /* Slider row: range input flexed left, numeric value pinned right. */
 .rp-slider { display:flex; align-items:center; gap:10px; }
 .rp-slider-val { font:600 12px var(--font-mono); color:var(--text); min-width:48px; text-align:right; }
+/* Pass C: subtle reset-to-spec link, only shown when reachM diverges from spec. */
+.rp-reset-link { font:600 10px var(--font-ui); color:var(--text-faint); cursor:pointer; padding:0 2px; text-transform:uppercase; letter-spacing:.05em; user-select:none; }
+.rp-reset-link:hover { color:var(--primary); }
 
 /* Number-input + unit (e.g. mount height + m/ft). */
 .rp-input-with-unit { display:flex; align-items:center; gap:10px; }
@@ -984,7 +987,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           <div class="rp-readout" id="rp-specs-readout">
             <div class="rp-spec-row"><span>Resolution</span><b id="rp-spec-res">&mdash;</b></div>
             <div class="rp-spec-row"><span>FOV</span><b id="rp-spec-fov">&mdash;</b></div>
-            <div class="rp-spec-row"><span>Reach</span><b id="rp-spec-reach">&mdash;</b></div>
           </div>
           <div class="rp-custom-specs" id="rp-custom-specs" style="display:none">
             <div class="rp-sub-field">
@@ -1007,13 +1009,16 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
                 <span class="rp-slider-val" id="v-fov">75&deg;</span>
               </div>
             </div>
-            <div class="rp-sub-field">
-              <span class="rp-sub-label">Reach</span>
-              <div class="rp-slot rp-slider" data-rp-slot="reach">
-                <input type="range" id="inp-reach" min="20" max="600" value="150" oninput="updateSelected()">
-                <span class="rp-slider-val" id="v-reach">150</span>
-              </div>
-            </div>
+          </div>
+        </div>
+
+        <!-- Pass C: Reach lives outside the custom-only block so DB cameras get the same editable slider. -->
+        <div class="rp-field">
+          <label class="rp-label">Reach</label>
+          <div class="rp-slot rp-slider" data-rp-slot="reach">
+            <input type="range" id="inp-reach" min="10" max="500" step="5" value="40" oninput="updateSelected()">
+            <span class="rp-slider-val" id="v-reach">40 ft</span>
+            <span class="rp-reset-link" id="reach-reset" onclick="resetReachToSpec()" title="Reset to manufacturer spec" style="display:none">Reset</span>
           </div>
         </div>
 
@@ -1439,6 +1444,10 @@ var DORI_LEVELS = [
 var TYPE_COLORS = { dome:'#c8202c', bullet:'#2563eb', ptz:'#7c3aed', lpr:'#d97706', turret:'#0891b2', fisheye:'#16a34a' };
 var CAM_R=11, LENS_R=5, RENDER_SCALE=4;
 var FT_PER_METER = 3.28084;
+// Pass C: visual placeholder for cone size when a page has no calibration.
+// Cones still render at a sensible default reach × this constant; the
+// uncalib banner already nags the user about the missing calibration.
+var DEFAULT_PIXELS_PER_METER = 30;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 var APP_VERSION = '0.5';
@@ -1640,6 +1649,10 @@ function pickModel(key){
       cam.resolution = parseInt(document.getElementById('inp-resolution').value);
       cam.fov = parseInt(document.getElementById('inp-fov').value);
       cam.model = key;
+      // Pass C: reset reach to the new model's spec value when the user picks
+      // a different model — keeps the cone tied to the chosen camera's specs.
+      cam.reachM = cameraSpecReachM(key);
+      configureReachSlider(cam);
       if(!cam.notes) cam.notes = spec.desc;
       redraw(); updateList(); updateDoriInfo();
     }
@@ -2395,6 +2408,12 @@ function saveCalib(){
   cancelCalibrationFlow();
   updateScaleIndicator(); updateDoriInfo();
   rebuildTabsDom();
+  // Pass C: reconfigure the reach slider for the new calibration unit if a
+  // camera on this page is currently selected.
+  if(selectedId){
+    var selCam = cameras.find(function(c){return c.id===selectedId;});
+    if(selCam && selCam.page === currentPage) configureReachSlider(selCam);
+  }
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
 }
 function cancelCalib(){ cancelCalibrationFlow(); }
@@ -2492,13 +2511,17 @@ function _parseRealSide(str){
 }
 
 // Apply a parsed scale ratio to the current PDF/image render.
-// Math: pixelsPerMeter = renderScale × 72 / (0.0254 × ratio)
-// (1 PDF point = 1/72", 1" = 0.0254m; pages render at RENDER_SCALE × base.)
+// Math: pixelsPerMeter = 72 / (0.0254 × ratio)  ← in PDF points per meter.
+// (1 PDF point = 1/72", 1" = 0.0254m.) Coordinates throughout the app
+// (cam.x, calibPoints) are stored as PDF points, so ppm must match.
 // `units` is 'imperial' or 'metric'; mapped to existing 'ft'/'m' for fmtDist.
 function applyTypedScale(pageIdx, ratio, units){
   if(pageIdx < 0 || pageIdx >= pages.length) return;
   if(!ratio || !isFinite(ratio) || ratio <= 0) return;
-  var pxPerM = RENDER_SCALE * 72 / (0.0254 * ratio);
+  // PDF-points-per-meter — RENDER_SCALE intentionally NOT included; matches
+  // what saveCalib's two-point math produces (calibPoints are stored as
+  // cssX/viewScale = PDF points, so its pxPerM is also PDF-points/m).
+  var pxPerM = 72 / (0.0254 * ratio);
   calibrations[pageIdx] = {
     pixelsPerMeter: pxPerM,
     unit: (units === 'imperial' ? 'ft' : 'm')
@@ -2508,6 +2531,12 @@ function applyTypedScale(pageIdx, ratio, units){
     updateScaleIndicator();
     updateDoriInfo();
     redraw();
+    // Pass C: if a camera on this page is selected, reconfigure the slider
+    // to the new calibration unit (imperial/metric range swap).
+    if(selectedId){
+      var selCam = cameras.find(function(c){return c.id===selectedId;});
+      if(selCam && selCam.page === pageIdx) configureReachSlider(selCam);
+    }
   }
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
 }
@@ -2680,6 +2709,19 @@ function doriDistanceM(hPx, fovDeg, targetPPM){
   return hPx/(2*targetPPM*Math.tan(fovRad/2));
 }
 
+// Pass C: spec-derived reach in meters per camera model. Uses the DORI
+// Recognition threshold (62 ppm) — "I can tell who that is" — which matches
+// what most users intuitively expect a useful camera coverage area to be.
+// Custom or unknown models default to 12 m (~40 ft), typical indoor dome.
+function cameraSpecReachM(modelKey){
+  if(modelKey && CAMERA_DB[modelKey]){
+    var s = CAMERA_DB[modelKey];
+    var d = doriDistanceM(s.hPx, s.fov, 62);
+    if(d > 0) return d;
+  }
+  return 12;
+}
+
 function updateDoriInfo(){
   var el=document.getElementById('dori-info');
   var ppm=getPPM(currentPage);
@@ -2814,15 +2856,21 @@ function redraw(){
   ctx.restore();
 }
 
+// Pass C: single source of truth for cone reach in logical pixels.
+// DORI mode keeps its live ppm-based math (unchanged behavior). Default
+// mode now multiplies stored reachM by the page's ppm; uncalibrated pages
+// fall back to DEFAULT_PIXELS_PER_METER so cones still render reasonably.
+// Callers multiply by viewScale themselves to get on-screen pixels.
 function getCameraReachPx(cam,pageIdx){
+  var reachM = (typeof cam.reachM === 'number') ? cam.reachM : 12;
   if(doriMode){
-    var ppm=getPPM(pageIdx);
-    if(ppm){
-      var dDet=doriDistanceM(cam.resolution||2560, cam.fov, 25);
-      return dDet*ppm;
+    var ppmD = getPPM(pageIdx);
+    if(ppmD){
+      return doriDistanceM(cam.resolution||2560, cam.fov, 25) * ppmD;
     }
   }
-  return cam.reach;
+  var ppm = getPPM(pageIdx);
+  return reachM * (ppm || DEFAULT_PIXELS_PER_METER);
 }
 function typeColor(type,isSel){return isSel?'#2563eb':(TYPE_COLORS[type]||TYPE_COLORS.dome);}
 
@@ -2854,7 +2902,7 @@ function drawCamCone(tc,cam,vs,isSel,useDori){
       tc.lineWidth=1; tc.fill(); tc.stroke();
     }
   } else {
-    var sr=cam.reach*vs;
+    var sr=getCameraReachPx(cam,currentPage)*vs;
     tc.beginPath(); tc.moveTo(sx,sy);
     for(var a=cam.angle-cam.fov/2;a<=cam.angle+cam.fov/2;a+=2)
       tc.lineTo(sx+sr*Math.cos(toR(a)),sy+sr*Math.sin(toR(a)));
@@ -2864,9 +2912,7 @@ function drawCamCone(tc,cam,vs,isSel,useDori){
     tc.lineWidth=1.2; tc.fill(); tc.stroke();
   }
 
-  var dirReach=useDori&&getPPM(currentPage)?
-    (doriDistanceM(cam.resolution||2560,cam.fov,25)*getPPM(currentPage)*vs):
-    cam.reach*vs;
+  var dirReach=getCameraReachPx(cam,currentPage)*vs;
   var tipX=sx+dirReach*Math.cos(toR(cam.angle));
   var tipY=sy+dirReach*Math.sin(toR(cam.angle));
   tc.beginPath(); tc.moveTo(sx,sy); tc.lineTo(tipX,tipY);
@@ -3443,7 +3489,7 @@ function addCamera(cssX,cssY){
   cameras.push({id:id,page:currentPage,x:cssX/viewScale,y:cssY/viewScale,
     angle:parseInt(document.getElementById('inp-angle').value),
     fov:  parseInt(document.getElementById('inp-fov').value),
-    reach:parseInt(document.getElementById('inp-reach').value),
+    reachM: cameraSpecReachM(currentModelKey),
     resolution:parseInt(document.getElementById('inp-resolution').value),
     label:label,type:currentType,
     model:currentModelKey,
@@ -3458,7 +3504,10 @@ function addCamera(cssX,cssY){
     // new value to all cameras on that page (see beginTabRename).
     floor:(pages[currentPage] && (pages[currentPage].name || pages[currentPage].label)) || ('Floor ' + (currentPage + 1)),
     notes:document.getElementById('inp-notes').value.trim()});
-  selectedId=id;
+  // Pass C: route through selectCamera so configureReachSlider runs on
+  // placement — keeps the reach slider's data-unit/range/value in sync with
+  // the new camera's reachM and the page's calibration unit.
+  selectCamera(id);
   var m=label.match(/^(.*?)([0-9]+)$/);
   if(m) document.getElementById('inp-label').value=m[1]+(parseInt(m[2])+1);
   redraw(); updateList(); updateDoriInfo();
@@ -3501,7 +3550,6 @@ function updateRightPanelDisplay(cam){
     })(cam.resolution || 0);
     document.getElementById('rp-spec-res').textContent   = resTxt;
     document.getElementById('rp-spec-fov').textContent   = (cam.fov || 0) + '°';
-    document.getElementById('rp-spec-reach').textContent = (cam.reach || 0);
   } else {
     nameEl.textContent = 'Custom Camera';
     descEl.textContent = '';
@@ -3582,7 +3630,7 @@ function selectCamera(id){
   document.getElementById('inp-label').value=cam.label;
   document.getElementById('inp-angle').value=cam.angle;
   document.getElementById('inp-fov').value  =cam.fov;
-  document.getElementById('inp-reach').value=cam.reach;
+  configureReachSlider(cam);
   document.getElementById('inp-notes').value=cam.notes||'';
   document.getElementById('inp-resolution').value=cam.resolution||2560;
   document.getElementById('inp-tier').value = cam.tier || 'recommended';
@@ -3620,7 +3668,13 @@ function updateSelected(){
   if(!cam) return;
   cam.angle=parseInt(document.getElementById('inp-angle').value);
   cam.fov  =parseInt(document.getElementById('inp-fov').value);
-  cam.reach=parseInt(document.getElementById('inp-reach').value);
+  // Pass C: slider value is in feet (imperial pages) or meters (metric/uncalibrated).
+  // Use the slider's data attribute, which configureReachSlider sets, to know which.
+  var rSlider = document.getElementById('inp-reach');
+  var rVal    = parseFloat(rSlider.value) || 0;
+  var rUnit   = rSlider.getAttribute('data-unit') || 'm';
+  cam.reachM = (rUnit === 'ft') ? (rVal / FT_PER_METER) : rVal;
+  updateReachResetVisibility(cam);
   cam.label=document.getElementById('inp-label').value;
   cam.notes=document.getElementById('inp-notes').value;
   cam.resolution=parseInt(document.getElementById('inp-resolution').value);
@@ -3687,16 +3741,65 @@ function syncLabels(){
   // Mount height unit indicator — match calibration unit if present
   var mountUnit = getCalibUnit(currentPage);
   document.getElementById('v-mount-unit').textContent = mountUnit==='ft' ? 'ft' : 'm';
-  var ppm=getPPM(currentPage);
-  var rPx=parseInt(document.getElementById('inp-reach').value);
-  if(ppm){
-    var unit=getCalibUnit(currentPage);
-    var rM=rPx/ppm;
-    var rDisp=unit==='ft'?rM*FT_PER_METER:rM;
-    document.getElementById('v-reach').textContent=rDisp.toFixed(1)+(unit==='ft'?' ft':' m');
+  // Pass C: slider value is real-world (ft or m). Suffix matches data-unit.
+  var rSlider = document.getElementById('inp-reach');
+  var rUnit   = rSlider.getAttribute('data-unit') || 'm';
+  document.getElementById('v-reach').textContent = rSlider.value + (rUnit === 'ft' ? ' ft' : ' m');
+}
+
+// Pass C: range/step/value of #inp-reach swap when the page's calibration unit
+// differs from the slider's current data-unit. Imperial pages: 10-500 ft, step 5.
+// Metric pages: 5-150 m, step 1. Uncalibrated defaults to imperial per the brief.
+function configureReachSlider(cam){
+  var slider = document.getElementById('inp-reach');
+  if(!slider) return;
+  var pageIdx = cam ? cam.page : currentPage;
+  var unit    = getCalibUnit(pageIdx);
+  var ppm     = getPPM(pageIdx);
+  if(!ppm) unit = 'ft';
+  var reachM  = (cam && typeof cam.reachM === 'number') ? cam.reachM : 12;
+  if(unit === 'ft'){
+    slider.min = '10'; slider.max = '500'; slider.step = '5';
+    var ftVal = Math.round(reachM * FT_PER_METER / 5) * 5;
+    slider.value = String(Math.max(10, Math.min(500, ftVal)));
+    slider.setAttribute('data-unit', 'ft');
   } else {
-    document.getElementById('v-reach').textContent=rPx;
+    slider.min = '5'; slider.max = '150'; slider.step = '1';
+    var mVal = Math.round(reachM);
+    slider.value = String(Math.max(5, Math.min(150, mVal)));
+    slider.setAttribute('data-unit', 'm');
   }
+  syncLabels();
+  updateReachResetVisibility(cam);
+}
+
+// Pass C: reset-to-spec link visible only when reachM diverges from the
+// model's spec. 0.05 m tolerance is well below any user-induced step
+// (1 m metric, 5 ft ≈ 1.5 m imperial) but ignores float drift. Called from
+// configureReachSlider (selection/calibration changes) and updateSelected
+// (live slider drag) so the link appears/disappears immediately.
+function updateReachResetVisibility(cam){
+  var resetEl = document.getElementById('reach-reset');
+  if(!resetEl) return;
+  if(!cam || typeof cam.reachM !== 'number'){
+    resetEl.style.display = 'none';
+    return;
+  }
+  var specM = cameraSpecReachM(cam.model || null);
+  var divergent = Math.abs(cam.reachM - specM) > 0.05;
+  resetEl.style.display = divergent ? '' : 'none';
+}
+
+// Pass C: revert the selected camera's reach to its model's spec value.
+// Hidden when already at spec; only callable from the reset link in the
+// right panel, which is gated to selected-camera state.
+function resetReachToSpec(){
+  if(!selectedId) return;
+  var cam = cameras.find(function(c){return c.id===selectedId;});
+  if(!cam) return;
+  cam.reachM = cameraSpecReachM(cam.model || null);
+  configureReachSlider(cam);
+  redraw();
 }
 
 function updateList(){
@@ -3803,7 +3906,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 12,
+    version: 13,
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -3848,11 +3951,20 @@ function applyProjectState(data){
   if(data.projectInfo) projectInfo = data.projectInfo;
   // Backward compat: pre-floor saves had `zone`; pre-zone saves had nothing.
   // Also strip transient riser-export decorations that may have leaked in.
+  // Pass C (v13): legacy `cam.reach` was pixels-at-placement, which is
+  // meaningless once calibration changes. Discard it and derive `reachM`
+  // from the model spec (12 m fallback for custom).
+  var _legacyReachMigrated = false;
   cameras.forEach(function(c){
     if(c.floor === undefined) c.floor = c.zone || '';
     delete c.zone;
     delete c.__cableId;
     delete c.__cableLenDisplay;
+    if(typeof c.reachM !== 'number'){
+      c.reachM = cameraSpecReachM(c.model || null);
+      _legacyReachMigrated = true;
+    }
+    delete c.reach;
   });
   if(!projectInfo.proposalSections){
     projectInfo.proposalSections = { cover:true, bom:true, riser:true, plans:true };
@@ -3892,6 +4004,13 @@ function applyProjectState(data){
   redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList(); refreshFloorSuggestions();
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
   if(bomOpen) recalcBom();
+  // Pass C: deferred so the canvas paints with the migrated cones before the
+  // modal blocks. setTimeout 0 lets the current task finish.
+  if(_legacyReachMigrated){
+    setTimeout(function(){
+      alert('Camera reach values updated to reflect manufacturer specs. FOV cones now scale to real-world coverage.');
+    }, 0);
+  }
 }
 
 // Single entry point for "the user gave us a project file" — handles both
@@ -4793,8 +4912,14 @@ function exportCSV(){
       brand=CAMERA_DB[cam.model].brand;
       model=CAMERA_DB[cam.model].model;
     }
+    // Pass C: reach in the page's calibration unit; uncalibrated → meters.
+    var reachM = (typeof cam.reachM === 'number') ? cam.reachM : 12;
+    var rUnit  = getCalibUnit(cam.page);
+    var reachStr = (rUnit === 'ft')
+      ? (Math.round(reachM * FT_PER_METER) + ' ft')
+      : (Math.round(reachM) + ' m');
     rows.push([i+1,'Page '+(cam.page+1),brand,model,cam.type||'dome',cam.tier||'recommended',cam.label,res,
-      cam.angle,cam.fov,cam.reach,
+      cam.angle,cam.fov,reachStr,
       cam.mountHeight||'',cam.mountType||'',cam.power||'',cam.environ||'',cam.conduit||'',
       '"'+hazards+'"','"'+notes+'"',d_id,d_rec,d_obs,d_det].join(','));
   });
