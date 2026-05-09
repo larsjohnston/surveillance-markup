@@ -106,6 +106,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .topbar-icon-btn:hover:not(:disabled) { background:var(--primary-faint); color:var(--primary); }
 .topbar-icon-btn:disabled { opacity:.4; cursor:default; }
 .topbar-icon-btn svg { width:20px; height:20px; }
+/* Pass D: save status indicator. Hidden until pdfLoaded; muted while clean,
+   slightly bolder + darker while dirty. Click → saveJSON. */
+.save-indicator {
+  font:500 11px var(--font-ui); color:var(--text-muted);
+  cursor:pointer; padding:0 12px; user-select:none; white-space:nowrap;
+  transition:color .15s;
+}
+.save-indicator:hover { color:var(--primary); }
+.save-indicator.dirty { color:var(--text); font-weight:600; }
 .btn { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font:600 12px var(--font-ui); letter-spacing:.01em; transition:background-color .15s, opacity .15s, box-shadow .15s, transform .1s; white-space:nowrap; }
 .btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 2px 4px rgba(0,0,0,.08); }
 .btn:disabled { opacity:.4; cursor:default; }
@@ -344,6 +353,26 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   cursor:pointer;
 }
 #uncalib-banner .ub-action:hover { background:#d97706; }
+
+/* Pass D: bottom-right toast for the 10-min save reminder + the one-shot
+   "auto-save unavailable" notice. Single shared element; data-kind attribute
+   differentiates if styling ever needs to vary. */
+#reminder-toast {
+  position:fixed; bottom:20px; right:20px;
+  background:#fff; padding:12px 16px;
+  border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,.15);
+  display:none; align-items:flex-start; gap:12px;
+  max-width:340px; z-index:60;
+  font:500 12px var(--font-ui); color:var(--text); line-height:1.5;
+}
+#reminder-toast.show { display:flex; }
+#reminder-toast .toast-text { flex:1; }
+#reminder-toast .toast-close {
+  background:transparent; border:none; cursor:pointer;
+  color:var(--text-muted); font-size:18px; line-height:1;
+  padding:0 0 0 4px; margin-top:-2px;
+}
+#reminder-toast .toast-close:hover { color:var(--text); }
 
 /* Big modal for project info */
 .big-modal { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; align-items:center; justify-content:center; z-index:30; }
@@ -708,6 +737,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       </div>
     </div>
   </nav>
+  <!-- Pass D: auto-save status. updateSaveIndicator() controls visibility/text. -->
+  <span id="save-indicator" class="save-indicator" style="display:none" onclick="saveJSON()" title="Click to save (Ctrl+S)"></span>
   <div class="topbar-spacer"></div>
   <button id="btn-undo" class="topbar-icon-btn" title="Undo" onclick="undoLast()" disabled>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1283,6 +1314,28 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
 </div>
 
+<!-- Pass D: bottom-right toast — 10-min reminder OR one-shot "auto-save
+     unavailable" notice. showToast() populates the text node and adds .show. -->
+<div id="reminder-toast">
+  <div class="toast-text" id="toast-text"></div>
+  <button class="toast-close" onclick="dismissReminderToast()" title="Dismiss" aria-label="Dismiss">&times;</button>
+</div>
+
+<!-- Pass D: Auto-save recovery prompt. Backdrop click discards (the brief's
+     "treat as Discard if closed" rule); Esc key handler does the same. -->
+<div id="recovery-modal" class="big-modal" onclick="if(event.target===this) discardRecovery()">
+  <div class="modal-box" style="min-width:440px; max-width:520px;">
+    <h3>Restore Auto-Saved Work?</h3>
+    <p style="margin-bottom:10px;">Found auto-saved project from <b id="recovery-time">just now</b>.</p>
+    <p id="recovery-counts" style="font:500 12px var(--font-mono); color:var(--text-muted); margin:0 0 14px; padding:8px 10px; background:#f9fafb; border-radius:4px;"></p>
+    <p style="margin:0 0 4px; color:var(--text-muted); font-size:12px;">Restore? Otherwise the auto-save will be discarded.</p>
+    <div class="modal-actions">
+      <button class="btn btn-dark" onclick="discardRecovery()">Discard</button>
+      <button class="btn btn-blue" onclick="restoreRecovery()">Restore</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── BOM Drawer ───────────────────────────────────────────── -->
 <div id="bom-backdrop" onclick="toggleBom()"></div>
 <aside id="bom-drawer">
@@ -1312,20 +1365,20 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   <div id="bom-config">
     <div class="bom-cfg">
       <label>Labor Rate</label>
-      $<input type="number" id="bom-labor-rate" value="0" step="0.01" min="0" oninput="recalcBom()">
+      $<input type="number" id="bom-labor-rate" value="0" step="0.01" min="0" oninput="bomConfigChanged()">
       <span style="color:#78350f">/hr</span>
     </div>
     <div class="bom-cfg">
       <label>Default Hrs/Cam</label>
-      <input type="number" id="bom-labor-hrs" value="2" step="0.25" min="0" oninput="recalcBom()">
+      <input type="number" id="bom-labor-hrs" value="2" step="0.25" min="0" oninput="bomConfigChanged()">
     </div>
     <div class="bom-cfg">
       <label>Margin %</label>
-      <input type="number" id="bom-margin-pct" value="0" step="1" min="0" max="100" oninput="recalcBom()">
+      <input type="number" id="bom-margin-pct" value="0" step="1" min="0" max="100" oninput="bomConfigChanged()">
     </div>
     <div class="bom-cfg">
       <label>Tax %</label>
-      <input type="number" id="bom-tax-pct" value="0" step="0.5" min="0" max="50" oninput="recalcBom()">
+      <input type="number" id="bom-tax-pct" value="0" step="0.5" min="0" max="50" oninput="bomConfigChanged()">
     </div>
   </div>
 
@@ -1335,24 +1388,24 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="storage-grid">
       <div class="bom-cfg">
         <label>Retention</label>
-        <input type="number" id="stor-days" value="30" step="1" min="1" max="365" oninput="recalcBom()">
+        <input type="number" id="stor-days" value="30" step="1" min="1" max="365" oninput="bomConfigChanged()">
         <span style="color:#1e3a8a">days</span>
       </div>
       <div class="bom-cfg">
         <label>Frame Rate</label>
-        <input type="number" id="stor-fps" value="15" step="1" min="1" max="60" oninput="recalcBom()">
+        <input type="number" id="stor-fps" value="15" step="1" min="1" max="60" oninput="bomConfigChanged()">
         <span style="color:#1e3a8a">fps</span>
       </div>
       <div class="bom-cfg">
         <label>Codec</label>
-        <select id="stor-codec" onchange="recalcBom()">
+        <select id="stor-codec" onchange="bomConfigChanged()">
           <option value="h265">H.265 (efficient)</option>
           <option value="h264">H.264</option>
         </select>
       </div>
       <div class="bom-cfg">
         <label>Recording</label>
-        <select id="stor-mode" onchange="recalcBom()">
+        <select id="stor-mode" onchange="bomConfigChanged()">
           <option value="continuous">Continuous 24/7</option>
           <option value="motion">Motion only (~30%)</option>
           <option value="business">Business hours (12h)</option>
@@ -1460,6 +1513,28 @@ var sourceDocumentMime  = null;   // 'application/pdf' | 'image/png' | 'image/jp
 // post-render trigger doesn't fire while applyProjectState is restoring the
 // calibrations. loadProjectFromFile flips this around its loadPDF/loadImage call.
 var SUPPRESS_AUTO_CALIBRATION_PROMPT = false;
+
+// ─── Pass D: Auto-save state ─────────────────────────────────────────────────
+// Recovery insurance, not a replacement for Save Project. Lite snapshot
+// (no embedded PDF) written to localStorage every 30 s while dirty. On next
+// PDF load, prompt to restore. Visual indicator + 10-min reminder live on top.
+var AUTOSAVE_KEY          = 'surveillance_autosave';
+var AUTOSAVE_INTERVAL_MS  = 30 * 1000;
+var STALE_AGE_MS          = 24 * 60 * 60 * 1000;   // discard autosaves older than this
+var REMINDER_AGE_MS       = 10 * 60 * 1000;        // dirty-for-X before nag toast
+var REMINDER_TOAST_MS     = 30 * 1000;             // auto-dismiss after this
+var isDirty               = false;                 // any unsaved state change
+var autoSaveAvailable     = true;                  // false after first localStorage failure
+var lastSaveTime          = null;                  // ms epoch; either auto or manual
+var lastSaveType          = null;                  // 'autosave' | 'manual'
+var dirtySinceMs          = null;                  // when isDirty flipped to true (for reminder)
+var lastReminderMs        = 0;                     // throttle reminder toast
+var SUPPRESS_AUTOSAVE_RECOVERY = false;            // set during loadProjectFromFile so the
+                                                   // recovery prompt doesn't fight the load
+var pendingRecovery       = null;                  // parsed autosave entry held while the
+                                                   // recovery modal is visible (Restore/Discard reads it)
+var _toastTimer           = null;                  // setTimeout handle for toast auto-dismiss
+var _shownToastMessages   = {};                    // memo for showOneShotToast — never re-show same text
 var DPR=window.devicePixelRatio||1, pages=[], cameras=[], currentPage=0;
 var selectedId=null, dragging=null, counters={}, viewScale=1, pdfLoaded=false;
 var currentType='dome', blindMode=false, doriMode=false, heatmapMode=false;
@@ -1654,6 +1729,7 @@ function pickModel(key){
       cam.reachM = cameraSpecReachM(key);
       configureReachSlider(cam);
       if(!cam.notes) cam.notes = spec.desc;
+      markDirty();
       redraw(); updateList(); updateDoriInfo();
     }
   }
@@ -1770,6 +1846,9 @@ async function loadImage(file){
   });
   switchPage(0);
   maybeFireAutoCalibrationPrompt();
+  updateSaveIndicator();
+  // Pass D: see loadPDF below — same reasoning.
+  checkAutoSaveRecovery();
 }
 
 async function loadPDF(file){
@@ -1811,6 +1890,11 @@ async function loadPDF(file){
   });
   switchPage(0);
   maybeFireAutoCalibrationPrompt();
+  updateSaveIndicator();
+  // Pass D: after the source document is fully rendered and chrome enabled,
+  // see if there's a recent autosave to offer for restore. Suppressed during
+  // loadProjectFromFile (the project file IS the canonical state to apply).
+  checkAutoSaveRecovery();
 }
 
 function showProgress(msg,pct){
@@ -1993,6 +2077,7 @@ function saveTabEdit(){
     cameras.forEach(function(c){ if(c.page === idx) c.floor = name; });
   }
 
+  markDirty();
   closeTabEditModal();
   rebuildTabsDom();
   // Multiplier may have changed → all aggregated counts (BOM, riser, cover)
@@ -2014,6 +2099,7 @@ function remapPageKeys(obj, removedIdx){
 
 function deletePage(idx){
   if(idx < 0 || idx >= pages.length) return;
+  markDirty();
   // Cascade
   pages.splice(idx, 1);
   cameras = cameras.filter(function(c){return c.page !== idx;});
@@ -2405,6 +2491,7 @@ function saveCalib(){
   var meters=unit==='ft'?dist/FT_PER_METER:dist;
   var pxPerM=pixelDist/meters;
   calibrations[currentPage]={pixelsPerMeter:pxPerM,unit:unit};
+  markDirty();
   cancelCalibrationFlow();
   updateScaleIndicator(); updateDoriInfo();
   rebuildTabsDom();
@@ -2526,6 +2613,7 @@ function applyTypedScale(pageIdx, ratio, units){
     pixelsPerMeter: pxPerM,
     unit: (units === 'imperial' ? 'ft' : 'm')
   };
+  markDirty();
   rebuildTabsDom();
   if(pageIdx === currentPage){
     updateScaleIndicator();
@@ -2624,6 +2712,7 @@ function cancelHeadendPlacement(){
 
 function placeHeadend(cssX, cssY){
   headends[currentPage] = { x: cssX/viewScale, y: cssY/viewScale };
+  markDirty();
   cancelHeadendPlacement();
   cablesMode = true;
   document.getElementById('btn-cables').classList.add('active');
@@ -3088,7 +3177,7 @@ function setType(t, fromModel){
   });
   if(!fromModel && selectedId){
     var cam=cameras.find(function(c){return c.id===selectedId;});
-    if(cam){cam.type=t; redraw();}
+    if(cam){cam.type=t; markDirty(); redraw();}
   }
 }
 
@@ -3182,14 +3271,14 @@ cv.addEventListener('mousemove',function(e){
   }
   if(dragging.type==='head-end-move'){
     var he = headends[currentPage];
-    if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; redraw(); }
+    if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; markDirty(); redraw(); }
     return;
   }
   if(dragging.type==='reader-move'){
     var dev = acDevices.find(function(d){return d.id===dragging.id;});
     if(!dev) return;
     dev.x = p.cx/viewScale; dev.y = p.cy/viewScale;
-    redraw();
+    markDirty(); redraw();
     return;
   }
   var cam=cameras.find(function(c){return c.id===dragging.id;});
@@ -3199,6 +3288,7 @@ cv.addEventListener('mousemove',function(e){
     cam.angle=Math.round((Math.atan2(dy,dx)*180/Math.PI+360)%360);
     document.getElementById('inp-angle').value=cam.angle; syncLabels(); updateDoriInfo();
   } else {cam.x=p.cx/viewScale; cam.y=p.cy/viewScale;}
+  markDirty();
   redraw();
 });
 cv.addEventListener('mouseup', function(){dragging=null; cv.style.cursor='crosshair'; updateList(); updateAcList();});
@@ -3266,6 +3356,7 @@ document.addEventListener('keydown',function(e){
       if(document.getElementById('tab-edit-modal').classList.contains('show')){ closeTabEditModal(); return; }
       if(document.getElementById('calib-dialog').classList.contains('show')){ closeCalibDialog(); return; }
       if(isCalibrationPromptOpen()){ closeCalibrationPrompt(); return; }
+      if(document.getElementById('recovery-modal').classList.contains('show')){ discardRecovery(); return; }
       if(calibMode){ cancelCalibrationFlow(); }
     }
     // Enter inside the tab-edit modal name field: commit save.
@@ -3285,6 +3376,7 @@ document.addEventListener('keydown',function(e){
     if(document.getElementById('help-modal').classList.contains('show')){ closeHelpModal(); return; }
     if(document.getElementById('calib-dialog').classList.contains('show')){ closeCalibDialog(); return; }
     if(isCalibrationPromptOpen()){ closeCalibrationPrompt(); return; }
+    if(document.getElementById('recovery-modal').classList.contains('show')){ discardRecovery(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
     // closeRightPanel handles the camera-selected case (clears selectedId,
@@ -3315,6 +3407,7 @@ function duplicateCam(){
 function deleteSelected(){
   hideCtxMenu(); if(!selectedId) return;
   cameras=cameras.filter(function(c){return c.id!==selectedId;});
+  markDirty();
   closeRightPanel();
 }
 
@@ -3371,6 +3464,7 @@ function placeReader(cssX, cssY){
   };
   acDevices.push(dev);
   acSelectedId = dev.id;
+  markDirty();
   redraw(); updateAcList();
 }
 
@@ -3386,6 +3480,7 @@ function selectReader(id){
 
 function deleteReader(id){
   acDevices = acDevices.filter(function(d){return d.id !== id;});
+  markDirty();
   // Pass A.8: if the deleted reader was selected, close the right panel
   // (mirrors deleteSelected's behavior for cameras).
   if(acSelectedId === id){
@@ -3508,6 +3603,7 @@ function addCamera(cssX,cssY){
   // placement — keeps the reach slider's data-unit/range/value in sync with
   // the new camera's reachM and the page's calibration unit.
   selectCamera(id);
+  markDirty();
   var m=label.match(/^(.*?)([0-9]+)$/);
   if(m) document.getElementById('inp-label').value=m[1]+(parseInt(m[2])+1);
   redraw(); updateList(); updateDoriInfo();
@@ -3686,6 +3782,7 @@ function updateSelected(){
   cam.conduit=document.getElementById('inp-conduit').value;
   cam.hazards=document.getElementById('inp-hazards').value;
   cam.floor  =document.getElementById('inp-floor').value.trim();
+  markDirty();
   redraw(); updateList(); updateDoriInfo();
 }
 
@@ -3701,6 +3798,7 @@ function updateSelectedReader(){
   var notesInput = document.getElementById('inp-notes-reader');
   if(labelInput) dev.label = labelInput.value;
   if(notesInput) dev.notes = notesInput.value;
+  markDirty();
   redraw(); updateAcList();
 }
 
@@ -3726,13 +3824,16 @@ function undoLast(){
   var last=fl[fl.length-1];
   if(selectedId===last.id) selectedId=null;
   cameras.splice(cameras.indexOf(last),1);
+  markDirty();
   redraw(); updateList(); updateDoriInfo();
 }
 function clearPage(){
   if(!cameras.filter(function(c){return c.page===currentPage;}).length) return;
   if(!confirm('Clear all cameras on this page?')) return;
   cameras=cameras.filter(function(c){return c.page!==currentPage;});
-  selectedId=null; counters[currentPage]=0; redraw(); updateList(); updateDoriInfo();
+  selectedId=null; counters[currentPage]=0;
+  markDirty();
+  redraw(); updateList(); updateDoriInfo();
 }
 
 function syncLabels(){
@@ -3799,6 +3900,7 @@ function resetReachToSpec(){
   if(!cam) return;
   cam.reachM = cameraSpecReachM(cam.model || null);
   configureReachSlider(cam);
+  markDirty();
   redraw();
 }
 
@@ -3856,6 +3958,286 @@ function bytesToBase64(buf){
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+}
+
+// ─── Pass D: dirty-tracking helpers ──────────────────────────────────────────
+// markDirty() is the single hook every state-change site calls. It sets the
+// flag, records the time of the FIRST flip (so the 10-min reminder can use
+// "dirty since when," not "dirty since last redraw"), and refreshes the top-
+// bar indicator. Idempotent — calling it twice in one tick is fine.
+function markDirty(){
+  // Idempotent + cheap: short-circuit when already dirty so dragging a camera
+  // (which fires markDirty on every mousemove) doesn't thrash textContent in
+  // the indicator. updateSaveIndicator only runs on the dirty-flip transition;
+  // the 60 s interval still drives relative-time refresh.
+  if(isDirty) return;
+  isDirty      = true;
+  dirtySinceMs = Date.now();
+  updateSaveIndicator();
+}
+
+// markClean(type) is called on successful save (auto or manual) AND on Load
+// Project / recovery-restore — anytime the running state matches what was
+// last persisted. `type` drives the indicator wording: 'autosave' → "Auto-
+// saved …", 'manual' → "Saved …".
+function markClean(type){
+  isDirty       = false;
+  dirtySinceMs  = null;
+  lastSaveTime  = Date.now();
+  lastSaveType  = type || 'manual';
+  updateSaveIndicator();
+}
+
+// Pass D: render the top-bar save status. Four states:
+//   - !pdfLoaded → hidden (nothing to save)
+//   - pdfLoaded, isDirty → "● Unsaved changes" with .dirty class (darker + bold)
+//   - pdfLoaded, !isDirty, lastSaveTime set → "✓ Saved 5 min ago" or
+//     "✓ Auto-saved 5 min ago" depending on lastSaveType
+//   - pdfLoaded, !isDirty, never saved → hidden (no useful info to display)
+// Called from markDirty/markClean (immediate flip) and from the 30 s + 60 s
+// intervals (relative time refresh). Cheap — no layout thrash.
+function updateSaveIndicator(){
+  var el = document.getElementById('save-indicator');
+  if(!el) return;
+  if(!pdfLoaded){
+    el.style.display = 'none';
+    el.classList.remove('dirty');
+    return;
+  }
+  if(isDirty){
+    el.style.display = '';
+    el.classList.add('dirty');
+    el.textContent = '● Unsaved changes';
+    return;
+  }
+  el.classList.remove('dirty');
+  if(lastSaveTime){
+    el.style.display = '';
+    var prefix = (lastSaveType === 'autosave') ? '✓ Auto-saved ' : '✓ Saved ';
+    el.textContent = prefix + formatRelativeTime(lastSaveTime);
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// ─── Pass D: lite-save serializer ────────────────────────────────────────────
+// Returns the same data shape saveJSON writes, MINUS the embedded source
+// document. Pure function — reads cameras/pages/calibrations/etc. plus the
+// BOM config DOM inputs (same inputs saveJSON reads). The shape is duplicated
+// from saveJSON intentionally: keeps each function self-contained and matches
+// the codebase's "no abstraction layer" style. If saveJSON's shape changes,
+// update both. The autosave wrapper (version, timestamp, pdfMeta) is added
+// in autoSaveTick — this returns just the inner `data` field.
+function buildLiteSaveData(){
+  var bomConfig = {
+    laborRate: parseFloat(document.getElementById('bom-labor-rate').value)||0,
+    laborHrs:  parseFloat(document.getElementById('bom-labor-hrs').value)||0,
+    marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
+    taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
+    storDays:  parseFloat(document.getElementById('stor-days').value)||30,
+    storFps:   parseFloat(document.getElementById('stor-fps').value)||15,
+    storCodec: document.getElementById('stor-codec').value,
+    storMode:  document.getElementById('stor-mode').value
+  };
+  // Strip transient riser-export decorations (same as saveJSON).
+  var camsForSave = cameras.map(function(c){
+    var clone = {};
+    for(var k in c){ if(c.hasOwnProperty(k) && k.indexOf('__') !== 0) clone[k] = c[k]; }
+    return clone;
+  });
+  var pagesForSave = pages.map(function(pg){
+    return {
+      name: pg.name || pg.label || '',
+      typical: pg.typical || null
+    };
+  });
+  return {
+    cameras: camsForSave,
+    pages: pagesForSave,
+    calibrations: calibrations,
+    headends: headends,
+    projectInfo: projectInfo,
+    bom: { customLines: bomCustomLines, autoOverrides: bomAutoOverrides, config: bomConfig },
+    acDevices: acDevices,
+    acCounters: acCounters
+  };
+}
+
+// ─── Pass D: auto-save tick ──────────────────────────────────────────────────
+// Fires every AUTOSAVE_INTERVAL_MS (30 s). When clean, just refreshes the
+// indicator's relative timestamp. When dirty, writes a lite snapshot to
+// localStorage. Gates on PDF loaded + not in a multi-step flow (calib/headend)
+// so we never capture a half-finished placement. localStorage failures
+// (quota, private mode) flip autoSaveAvailable=false for the rest of the
+// session and surface a one-shot toast — manual Save Project still works.
+function autoSaveTick(){
+  // Always refresh indicator — relative time may have crossed a minute boundary.
+  updateSaveIndicator();
+  if(!isDirty) return;
+  if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
+  try {
+    var entry = {
+      version: 13,             // generation tag — autosave was produced by a v13-aware tool
+      timestamp: Date.now(),
+      pdfMeta: {
+        name: sourceDocumentName || null,
+        size: (sourceDocumentBytes && sourceDocumentBytes.byteLength) || null,
+        mime: sourceDocumentMime || null,
+        pageCount: pages.length
+      },
+      data: buildLiteSaveData()
+    };
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(entry));
+    markClean('autosave');
+  } catch(e){
+    autoSaveAvailable = false;
+    showOneShotToast('Auto-save unavailable. Use Save Project regularly.');
+  }
+  checkReminderToast();
+}
+
+// ─── Pass D: toast UI ────────────────────────────────────────────────────────
+// Single shared bottom-right toast. Two callers:
+//   - showOneShotToast(msg)  — for the "auto-save unavailable" notice. Memoed
+//     so the same string never re-appears in this session.
+//   - checkReminderToast()   — for the 10-min "you've been dirty for a while"
+//     reminder. Throttled so it doesn't repeat within REMINDER_AGE_MS.
+// Both auto-dismiss after REMINDER_TOAST_MS (30 s); user can click × earlier.
+function showToast(msg, kind){
+  var toast  = document.getElementById('reminder-toast');
+  var textEl = document.getElementById('toast-text');
+  if(!toast || !textEl) return;
+  textEl.textContent = msg;
+  toast.setAttribute('data-kind', kind || '');
+  toast.classList.add('show');
+  if(_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(dismissReminderToast, REMINDER_TOAST_MS);
+}
+
+function dismissReminderToast(){
+  var toast = document.getElementById('reminder-toast');
+  if(toast) toast.classList.remove('show');
+  if(_toastTimer){ clearTimeout(_toastTimer); _toastTimer = null; }
+}
+
+function showOneShotToast(msg){
+  if(_shownToastMessages[msg]) return;
+  _shownToastMessages[msg] = true;
+  showToast(msg, 'oneshot');
+}
+
+// Fired from autoSaveTick after each save attempt. Surfaces a passive nag
+// when the user has been dirty for >10 min AND the previous reminder (if any)
+// was >10 min ago. Doesn't block the UI; a 30 s auto-dismiss keeps it from
+// lingering. Throttle uses lastReminderMs so dismissal-then-still-dirty
+// doesn't spam: next reminder fires 10 min after THIS show, not after dismiss.
+function checkReminderToast(){
+  if(!isDirty || !dirtySinceMs) return;
+  if(Date.now() - dirtySinceMs   < REMINDER_AGE_MS) return;
+  if(Date.now() - lastReminderMs < REMINDER_AGE_MS) return;
+  lastReminderMs = Date.now();
+  showToast('It’s been 10 minutes since you saved. Save Project (Ctrl+S) to embed the PDF.', 'reminder');
+}
+
+// ─── Pass D: relative-time formatter ─────────────────────────────────────────
+// Used by the recovery prompt and the top-bar save indicator. Returns short
+// human-readable strings: "just now", "5 min ago", "1 hour ago", "yesterday",
+// "3 days ago". Does NOT prefix with "Saved" — caller adds context.
+function formatRelativeTime(ms){
+  if(!ms) return '';
+  var diff = Date.now() - ms;
+  if(diff < 0) return 'just now';
+  var sec = Math.floor(diff / 1000);
+  if(sec < 30)  return 'just now';
+  if(sec < 60)  return sec + ' s ago';
+  var min = Math.floor(sec / 60);
+  if(min < 60)  return min + ' min ago';
+  var hr = Math.floor(min / 60);
+  if(hr  < 24)  return hr + (hr === 1 ? ' hour ago' : ' hours ago');
+  var days = Math.floor(hr / 24);
+  if(days === 1) return 'yesterday';
+  return days + ' days ago';
+}
+
+// ─── Pass D: recovery flow ───────────────────────────────────────────────────
+// Called at the end of loadPDF/loadImage (step D9). Reads localStorage,
+// validates the entry, and either silently clears stale data or hands the
+// parsed entry to promptRecovery. Triple-guarded against bad localStorage:
+// the read may throw (private mode), JSON.parse may throw (corrupt entry),
+// and the entry may be missing required fields.
+function checkAutoSaveRecovery(){
+  if(SUPPRESS_AUTOSAVE_RECOVERY) return;
+  var raw;
+  try { raw = localStorage.getItem(AUTOSAVE_KEY); }
+  catch(e){ return; }
+  if(!raw) return;
+  var parsed;
+  try { parsed = JSON.parse(raw); }
+  catch(e){
+    try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_){}
+    return;
+  }
+  if(!parsed || !parsed.timestamp || !parsed.data){
+    try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_){}
+    return;
+  }
+  var ageMs = Date.now() - parsed.timestamp;
+  if(ageMs > STALE_AGE_MS){
+    try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_){}
+    return;
+  }
+  promptRecovery(parsed);
+}
+
+// Open the recovery modal populated with timestamp + counts. The parsed
+// entry is stashed in `pendingRecovery` so the Restore/Discard handlers
+// (which the user invokes via button click) can pick it up.
+function promptRecovery(parsed){
+  pendingRecovery = parsed;
+  var timeEl   = document.getElementById('recovery-time');
+  var countsEl = document.getElementById('recovery-counts');
+  if(timeEl) timeEl.textContent = formatRelativeTime(parsed.timestamp);
+  if(countsEl){
+    var d           = parsed.data || {};
+    var camCount    = (d.cameras  || []).length;
+    var readerCount = (d.acDevices || []).length;
+    var pageCount   = (d.pages    || []).length;
+    var bomLines    = ((d.bom && d.bom.customLines) || []).length;
+    countsEl.textContent =
+      camCount    + (camCount    === 1 ? ' camera · '   : ' cameras · ') +
+      readerCount + (readerCount === 1 ? ' reader · '   : ' readers · ') +
+      pageCount   + (pageCount   === 1 ? ' page · '     : ' pages · ') +
+      bomLines    + (bomLines    === 1 ? ' BOM line'    : ' BOM lines');
+  }
+  var modal = document.getElementById('recovery-modal');
+  if(modal) modal.classList.add('show');
+}
+
+// User clicked Restore: apply the autosave to the just-loaded source document
+// and treat the result as the canonical state (markClean — no further "you
+// have unsaved changes" until the user actually edits something). Clears
+// localStorage so the same entry can't be restored again on next load.
+function restoreRecovery(){
+  closeRecoveryModal();
+  if(pendingRecovery && pendingRecovery.data){
+    applyProjectState(pendingRecovery.data);
+    markClean('manual');
+  }
+  try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_){}
+  pendingRecovery = null;
+}
+
+// User clicked Discard (or backdrop / Esc): drop the autosave entry and
+// continue with the empty state the source document just loaded into.
+function discardRecovery(){
+  closeRecoveryModal();
+  try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_){}
+  pendingRecovery = null;
+}
+
+function closeRecoveryModal(){
+  var modal = document.getElementById('recovery-modal');
+  if(modal) modal.classList.remove('show');
 }
 
 async function saveJSON(){
@@ -3932,6 +4314,10 @@ async function saveJSON(){
   setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
 
   hideProgress();
+  // Pass D: explicit save supersedes any pending autosave. Clear the entry
+  // and flip the indicator to "✓ Saved just now".
+  try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_){}
+  markClean('manual');
 }
 // Decode a base64 string to an ArrayBuffer. Pair to bytesToBase64.
 function base64ToArrayBuffer(b64){
@@ -4044,9 +4430,12 @@ async function loadProjectFromFile(file){
       var synth = new File([bytes], name, { type: mime });
       // Suppress the fresh-import auto-prompt: applyProjectState will restore
       // calibrations a moment later, and we don't want the prompt to appear
-      // for a project that already has them. Reset in finally so any throw
-      // doesn't leave the flag stuck on.
+      // for a project that already has them. Same logic for the Pass D
+      // autosave-recovery prompt — the project file IS the state to apply,
+      // so a competing "restore autosave?" modal would be confusing. Reset
+      // both in finally so any throw doesn't leave them stuck on.
       SUPPRESS_AUTO_CALIBRATION_PROMPT = true;
+      SUPPRESS_AUTOSAVE_RECOVERY       = true;
       try {
         if(data.sourceDocument.type === 'pdf'){
           await loadPDF(synth);
@@ -4061,7 +4450,13 @@ async function loadProjectFromFile(file){
         hideProgress();
       } finally {
         SUPPRESS_AUTO_CALIBRATION_PROMPT = false;
+        SUPPRESS_AUTOSAVE_RECOVERY       = false;
       }
+      // Pass D: just-loaded project IS the canonical state. Clear any leftover
+      // autosave (it was for a different session) and flip the indicator to
+      // "✓ Saved just now".
+      try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_){}
+      markClean('manual');
     } else {
       // v9 or older: no embedded source. Need a PDF/image already loaded.
       hideProgress();
@@ -4070,6 +4465,9 @@ async function loadProjectFromFile(file){
         return;
       }
       applyProjectState(data);
+      // Pass D: same reasoning as the v10+ branch above.
+      try { localStorage.removeItem(AUTOSAVE_KEY); } catch(_){}
+      markClean('manual');
     }
   } catch(err){
     hideProgress();
@@ -5105,6 +5503,14 @@ function computeAutoCableRows(){
   return rows;
 }
 
+// Pass D: user-driven BOM config inputs route through this so we can mark
+// the project dirty without touching the many internal recalcBom callers
+// (applyProjectState, saveTabEdit, etc., which mustn't dirty the file).
+function bomConfigChanged(){
+  markDirty();
+  recalcBom();
+}
+
 function recalcBom(){
   var auto = computeAutoRows();
   var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
@@ -5199,6 +5605,7 @@ function updateAutoRow(input){
   var val = parseFloat(input.value) || 0;
   if(!bomAutoOverrides[key]) bomAutoOverrides[key] = {};
   bomAutoOverrides[key][field] = val;
+  markDirty();
   recalcBom();
 }
 
@@ -5219,11 +5626,13 @@ computeAutoRows = function(){
 
 function addBomLine(section){
   bomCustomLines[section].push({ desc:'', qty:1, unit:0 });
+  markDirty();
   recalcBom();
 }
 
 function removeBomLine(section, idx){
   bomCustomLines[section].splice(idx, 1);
+  markDirty();
   recalcBom();
 }
 
@@ -5236,6 +5645,7 @@ function updateCustomRow(input){
   if(!line) return;
   if(field === 'desc') line.desc = input.value;
   else line[field] = parseFloat(input.value) || 0;
+  markDirty();
   // Update line total only (avoid full re-render on every keystroke for desc)
   if(field === 'desc') return;
   var total = (line.qty||0) * (line.unit||0);
@@ -5439,11 +5849,29 @@ function saveProjectInfo(){
       plans: document.getElementById('proj-sec-plans').checked
     }
   };
+  markDirty();
   closeProjectModal();
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 syncLabels(); updateList(); updateScaleIndicator(); updateDoriInfo();
+// Pass D: drive the auto-save loop and indicator clock. The 60 s indicator
+// tick is mostly redundant with autoSaveTick (which also refreshes), but
+// keeps the relative timestamp moving even if autoSaveTick is gated off
+// (no PDF loaded, in-flow, etc.).
+setInterval(autoSaveTick,        AUTOSAVE_INTERVAL_MS);
+setInterval(updateSaveIndicator, 60 * 1000);
+// Pass D: belt-and-suspenders to the autosave loop. If the user closes the
+// tab or navigates away while dirty (and a PDF is loaded), surface the
+// browser's native "leave page?" prompt. Modern browsers ignore custom
+// strings; the presence of a returnValue is what triggers the prompt.
+window.addEventListener('beforeunload', function(e){
+  if(isDirty && pdfLoaded){
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  }
+});
 window.addEventListener('resize',function(){
   DPR=window.devicePixelRatio||1;
   if(pdfLoaded) fitPage();
