@@ -91,3 +91,83 @@ Paste-able lines the user can run in DevTools console.
 Step [N+1] handles: [short description]. Ready to proceed when user confirms.
 
 Always include all sections. If a section doesn't apply, write "N/A" — don't omit. Be candid in the Risks section. List only non-trivial Decisions, not naming or formatting choices.
+
+## Codebase conventions and known pitfalls
+
+This section captures lessons from past PRs. Each entry exists because Claude Code (or a reviewer) made a mistake here before. Read this section at the start of every session.
+
+### Calibration math — pixelsPerMeter convention
+
+`calibrations[pageIdx].pixelsPerMeter` is in **PDF-points-per-meter**, not offcanvas-pixels-per-meter. The two-point calibration in `saveCalib` produces this value correctly using `pixelDist / meters` where `pixelDist` is already in PDF points (cssX / viewScale).
+
+Any new code that writes to `pixelsPerMeter` must match this convention. Specifically: do **NOT** include `RENDER_SCALE` in the formula. Render-time consumers (`drawCamCone`, `getCameraReachPx`, `cableLengthM`) multiply by `viewScale` at draw time to convert PDF-points to screen pixels. Including `RENDER_SCALE` in `pixelsPerMeter` double-applies the upsampling factor and produces 4×-too-large results that silently affect cones, DORI bands, and cable length labels.
+
+Correct typed-scale formula:
+    var pxPerM = 72 / (0.0254 * ratio);   // PDF-pts per real meter
+NOT:
+    var pxPerM = RENDER_SCALE * 72 / (0.0254 * ratio);   // WRONG — bug from Pass C
+
+### Selection state — never assign selectedId / acSelectedId directly
+
+When placing or selecting a camera or reader programmatically, always call `selectCamera(id)` or `selectReader(id)`. Never use bare assignment like `selectedId = id;`.
+
+`selectCamera`/`selectReader` run side-effects that the UI depends on:
+- `configureReachSlider(cam)` — sets slider unit/range/value for the new selection
+- `openRightPanelForCamera(cam)` / `openRightPanelForReader(dev)` — populates and slides in the details panel
+- `updateRightPanelDisplay(cam)` — updates Manufacturer/Model/Specs readouts
+- Various redraws and DOM syncs
+
+Bare assignment leaves the right panel desynced from the model. The UI shows stale data; user has to re-click the device for it to refresh. Bug from Pass C step 7.
+
+### State change tracking — markDirty discipline
+
+Pass D introduced `isDirty` for auto-save. Every user-driven state change must call `markDirty()`:
+
+State changes that DO trigger markDirty:
+- Camera/reader placement, deletion, drag-end, label/notes/mount/angle/FOV/reach/model edits
+- Tab rename, tab typical-config save, tab delete
+- Calibration save (typed or two-point)
+- Head-end placement
+- BOM custom-line add/edit/remove, BOM auto-override edit, BOM config input changes (when from user, not internal recalc)
+- Project Info save
+
+State changes that do NOT trigger markDirty (read-only navigation):
+- switchPage / tab click
+- Tier filter chip change in BOM
+- BOM CSV export
+- DORI / blind-spot / heatmap toggle
+- Mode swap (cameras ↔ access)
+
+When adding new state-change features, audit whether `markDirty()` should fire and add the call at the commit point of the change (after the data model update, before redraw).
+
+### Cache discipline (Edge file:// URL caching)
+
+Edge aggressively caches JavaScript loaded from `file://` URLs. After any code change, the procedure to test reliably is:
+
+1. Close the browser tab entirely
+2. Reopen the file from File Explorer (double-click `camera_markup_tool.html`)
+3. Press Ctrl+Shift+R (hard reload, force-fetches everything from disk)
+
+Without this, console may report functions as undefined, version numbers as the old value, and behavior as unchanged when the source actually IS updated. Always assume "it didn't take" diagnoses are cache before assuming code bugs. Verify via `typeof functionName` in console.
+
+### Math constants — use existing ones
+
+The codebase has these constants near the top of the script:
+- `RENDER_SCALE` — PDF.js rendering upsample factor (currently 4)
+- `FT_PER_METER` — 3.28084
+- `DEFAULT_PIXELS_PER_METER` — 30 (Pass C; used when getPPM returns null)
+
+Don't redefine them inline. If new code needs a similar constant, add it to the constants block, don't sprinkle it.
+
+### JSON version bumps
+
+Each pass that changes the save shape bumps the version literal in saveJSON. Current version chain:
+- v8 — original
+- v9 — pages[i].name (editable tabs, Pass A)
+- v10 — sourceDocument with embedded PDF (Pass A.25)
+- v11 — pages[i].typical multiplier config (Pass A.5)
+- v12 — acDevices[i].notes editable (Pass A.8)
+- v13 — cam.reachM in meters; calibration unit field (Pass C)
+
+When bumping the version: read all older versions cleanly in `applyProjectState`. Default missing fields rather than rejecting the file. Add a one-time info banner if the migration is user-visible (e.g., reach values updated in Pass C).
+
