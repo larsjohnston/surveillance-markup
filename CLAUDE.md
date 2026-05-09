@@ -54,3 +54,40 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 - The HTML file is large — favor targeted `str_replace` edits over rewrites.
 - After any significant edit, do a JS syntax check: `node -e "..."` on the script block (we did this in the prior session).
 
+## Step report format
+
+At the end of every step, output a single fenced markdown code block containing the complete step report. This is for the user to copy and paste back to their reviewer for verification. Use this exact structure:
+
+## Step [N] — [short description]
+
+### Files changed
+- `<filepath>` — [N lines added, M removed]
+
+### Code sites touched
+| Site | Before | After |
+|---|---|---|
+| `functionName()` (line ~NNNN) | [old behavior] | [new behavior] |
+
+### Decisions made (where the brief left a choice)
+- [Decision]: chose [option] because [reason]. Alternative was [other option].
+
+### Behavior NOT changed (what the brief might imply but I left alone)
+- [Item]: kept as-is because [reason]
+
+### Risks / things to watch
+- [Anything that could regress, edge cases, or that needs human eyes]
+
+### Syntax check
+- node --check: PASS / FAIL
+
+### Console smoke test (optional but preferred for data/math changes)
+Paste-able lines the user can run in DevTools console.
+
+### Manual browser test list
+1. [Specific user action] → [expected outcome]
+2. [Specific user action] → [expected outcome]
+
+### What's next
+Step [N+1] handles: [short description]. Ready to proceed when user confirms.
+
+Always include all sections. If a section doesn't apply, write "N/A" — don't omit. Be candid in the Risks section. List only non-trivial Decisions, not naming or formatting choices.
