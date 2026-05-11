@@ -102,6 +102,8 @@ Surface uncertainty, don't hide it.
 
 At the end of every step, output a single fenced markdown code block containing the complete step report. This is for the user to copy and paste back to their reviewer for verification. Use this exact structure:
 
+Step reports that claim "Retained X" or "Kept Y" must be verified against actual diff, not against intent. If an element is described as retained, grep for it after the edit to confirm it still exists. The exp-warn near-miss in A.6 happened because the report described intended behavior while the code dropped the element — only caught by a follow-up grep.
+
 ## Step [N] — [short description]
 
 ### Files changed
