@@ -13,15 +13,16 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 - Vanilla JavaScript, no framework. Plain `<script>` block at the end of the HTML.
 - One canvas element. Camera placements stored in a flat `cameras[]` array, each tagged with `page` index.
 - PDF.js renders each page to an offscreen canvas at 4× scale; that canvas is drawn into the visible canvas at user's zoom level. Retina-aware via `devicePixelRatio`.
-- Save/Load uses JSON files, not localStorage.
+- Save/Load uses JSON files, not localStorage (autosave uses localStorage as recovery only).
 
 ## Major features built
 - **PDF or PNG/JPG import** (drag-drop or file picker, multi-page PDFs become tabs)
 - **Camera database** — 25 Eagle Eye + 19 Hanwha Wisenet models with real specs
 - **Six camera styles** — Dome (red), Bullet (blue), Turret (cyan), Fisheye (green), PTZ (purple), LPR (amber). Each has a flat SVG icon and a distinct canvas rendering.
 - **Brand picker UI** — three-tile grid (Custom / EE / HW). Clicking opens a modal with style filter chips and a grouped model list.
-- **Scale calibration** — click two reference points, type real distance in ft or m. Per-page calibration persisted in JSON.
+- **Scale calibration** — typed scale (`1/8" = 1'-0"`, `1:100`, etc.) or two-point click reference distance. Per-page calibration persisted in JSON.
 - **DORI zones** (IEC 62676-4 standard) — colored bands inside the FOV cone showing Identification (250 ppm), Recognition (125), Observation (62), Detection (25). Math: `D = horizPx / (2 × targetPPM × tan(FOV/2))`.
+- **Calibration-aware cones** — non-DORI cones reflect real-world coverage based on `cam.reachM` (meters) and page calibration. Slider in right panel adjusts per-camera reach with Reset to spec.
 - **Mounting height + recommended tilt** — auto-calculated based on camera height and detection range.
 - **Visualization modes** — Blind Spots overlay (mutually exclusive with Heatmap).
 - **Cable run planner** — place an NVR head-end per page, cables auto-draw with length labels. Runs over 90 m flagged red (Cat6 PoE limit).
@@ -30,12 +31,16 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 - **Multi-tier pricing** — each camera tagged Essential/Recommended/Premium; BOM has tier filter chips.
 - **Site survey fields per camera** — mount type, power source, environment, conduit, hazards.
 - **Project info modal** — client, address, ref number, date, valid-until, salesperson, scope.
-- **Proposal PDF export** — branded cover page, camera schedule, BOM with totals, then floor plan pages with overlays. Saved with project name as filename.
+- **Riser diagram** — auto-generated system one-line in proposal PDF. Pages become floor bands stacked by elevation. Head-end renders inside its band. Drag-and-drop tab reorder overrides smart-parse order.
+- **Auto-save with recovery** — localStorage write every 30 s when dirty. Recovery prompt on PDF drop if recent autosave exists. Indicator in top bar shows save status. Beforeunload guard.
+- **Proposal PDF export** — branded cover page, BOM with totals, riser diagram + equipment schedule, then floor plan pages with overlays. Saved with project name as filename.
+- **Typical floor multiplier** — pages can be configured as "typical" representing N identical floors. Camera counts and cable lengths multiply in BOM and riser schedule.
+- **Access control mode** — separate device type (Brivo readers). Mode toggle in top bar. Readers have their own right panel with editable label and notes.
 
 ## Pending / known gaps
 - **Pricing fields are blank by default.** User will populate camera and labor pricing in the database when they have updated info from their distributor.
 - **Cable cost line** is a placeholder — user will provide cable cost per foot/meter later.
-- The user briefly mentioned wanting team-wide deployment; we packaged this as a portable folder with a setup script for now.
+- **Head-end is data-only** — no selection, no right panel, no Delete key. Only "Place Head-End" mode + click to delete. Parking lot item for future first-class object treatment.
 
 ## Coding conventions used
 - Courier New monospace UI, dark navy `#111827` headers with red `#c8202c` accent, white panels.
@@ -52,7 +57,46 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 ## Workflow notes
 - Use `git add . && git commit` after meaningful changes for safe undo.
 - The HTML file is large — favor targeted `str_replace` edits over rewrites.
-- After any significant edit, do a JS syntax check: `node -e "..."` on the script block (we did this in the prior session).
+- After any significant edit, do a JS syntax check: `node --check` on the script block.
+
+# General rules
+
+These rules apply to every task in this project unless explicitly overridden.
+
+## Rule 1 — Surgical changes
+
+Touch only what you must. Don't "improve" adjacent code, comments, or formatting.
+Don't refactor what isn't broken. Match existing style.
+
+## Rule 2 — Read before you write
+
+Before adding code, read exports, immediate callers, and shared utilities.
+"Looks orthogonal" is dangerous. If unsure why code is structured a certain way, ask.
+
+## Rule 3 — Match the codebase's conventions
+
+Conformance beats personal taste inside this codebase.
+If you genuinely think a convention is harmful, surface it. Don't fork silently.
+
+## Rule 4 — Fail loud
+
+"Completed" is wrong if anything was skipped silently.
+"Tests pass" is wrong if any were skipped.
+Surface uncertainty, don't hide it.
+
+## Project context
+
+- **Stack:** single-file vanilla HTML/JS/CSS tool. No build step. No framework. No package.json. No tests.
+- **Main file:** `camera_markup_tool.html` — contains all CSS, HTML, and JS in one file.
+- **Verification command:** `node --check` (on extracted script block). Browser-only; no test suite.
+- **Run locally:** Open the HTML file directly in a browser (file:// URL). No dev server.
+- **Where things live:** Everything is in one file. Convention is `// ─── Section Name ───` comment dividers for navigation.
+- **Conventions worth knowing:**
+  - Vanilla JS, `var` declarations (not `let`/`const`). Match existing style.
+  - No new dependencies. CDN-loaded libs only: pdf.js, jsPDF.
+  - Save files use a single JSON version literal (currently v14). Bump on shape change.
+  - State changes call `markDirty()` for auto-save tracking.
+  - Selection uses `selectCamera(id)` / `selectReader(id)` — never bare assignment to `selectedId` / `acSelectedId`.
 
 ## Step report format
 
@@ -119,6 +163,17 @@ When placing or selecting a camera or reader programmatically, always call `sele
 
 Bare assignment leaves the right panel desynced from the model. The UI shows stale data; user has to re-click the device for it to refresh. Bug from Pass C step 7.
 
+### addCamera label increment timing
+
+In `addCamera`, the post-placement increment of `inp-label.value` (for the next placement) must happen AFTER `selectCamera(id)` runs, not before. `selectCamera` populates the right panel's label input from `cam.label`. If the increment fires first, the input shows the next-up label while the just-placed camera holds the previous one — they don't match. Bug from Pass A.7 aux5.
+
+Correct order in addCamera:
+1. cameras.push({...label: label, ...})
+2. selectCamera(id)
+3. markDirty()
+4. redraw(); updateList(); updateDoriInfo()
+5. Then: increment inp-label.value for NEXT placement
+
 ### State change tracking — markDirty discipline
 
 Pass D introduced `isDirty` for auto-save. Every user-driven state change must call `markDirty()`:
@@ -127,9 +182,10 @@ State changes that DO trigger markDirty:
 - Camera/reader placement, deletion, drag-end, label/notes/mount/angle/FOV/reach/model edits
 - Tab rename, tab typical-config save, tab delete
 - Calibration save (typed or two-point)
-- Head-end placement
+- Head-end placement and deletion
 - BOM custom-line add/edit/remove, BOM auto-override edit, BOM config input changes (when from user, not internal recalc)
 - Project Info save
+- Tab drag-reorder (sets tabOrder, then markDirty)
 
 State changes that do NOT trigger markDirty (read-only navigation):
 - switchPage / tab click
@@ -156,6 +212,7 @@ The codebase has these constants near the top of the script:
 - `RENDER_SCALE` — PDF.js rendering upsample factor (currently 4)
 - `FT_PER_METER` — 3.28084
 - `DEFAULT_PIXELS_PER_METER` — 30 (Pass C; used when getPPM returns null)
+- `RISER_EMPTY_BAND_PT` / `RISER_MAX_BAND_PT` — Pass A.7 band height caps
 
 Don't redefine them inline. If new code needs a similar constant, add it to the constants block, don't sprinkle it.
 
@@ -168,6 +225,15 @@ Each pass that changes the save shape bumps the version literal in saveJSON. Cur
 - v11 — pages[i].typical multiplier config (Pass A.5)
 - v12 — acDevices[i].notes editable (Pass A.8)
 - v13 — cam.reachM in meters; calibration unit field (Pass C)
+- v14 — tabOrder manual riser order override (Pass A.7)
 
 When bumping the version: read all older versions cleanly in `applyProjectState`. Default missing fields rather than rejecting the file. Add a one-time info banner if the migration is user-visible (e.g., reach values updated in Pass C).
 
+### Dev quiet flag (testing convenience)
+
+To suppress both the auto-calibration prompt and the autosave recovery prompt during development:
+
+    localStorage.setItem('dev_quiet', '1')   // enable
+    localStorage.removeItem('dev_quiet')      // disable
+
+Persists across reloads. Init reads the flag and sets `SUPPRESS_AUTO_CALIBRATION_PROMPT` and `SUPPRESS_AUTOSAVE_RECOVERY` accordingly. Edge case: `loadProjectFromFile`'s finally block resets both flags after a v10+ save load; reload the page to re-enable dev_quiet after loading a project file.
