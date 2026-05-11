@@ -256,6 +256,13 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .tab-warning-badge { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 3px; border-radius:4px; background:#fef3c7; color:#b45309; font:700 10px var(--font-ui); margin-left:6px; cursor:help; }
 .tab:hover .tab-close { opacity:1; }
 .tab-close:hover { background:#fee2e2; color:#b91c1c; }
+/* Pass A.7: drag-reorder visuals. Source fades; drop target gets a coloured
+   left/right border indicating the insert side. Dragstart-suppression on
+   the close × button keeps Delete-Page working without initiating a drag. */
+.tab[draggable="true"] { cursor:grab; }
+.tab.dragging { opacity:.4; }
+.tab.drop-before { box-shadow: inset 2px 0 0 var(--primary); }
+.tab.drop-after  { box-shadow: inset -2px 0 0 var(--primary); }
 
 #main { display:flex; flex:1; overflow:hidden; }
 #icon-strip { order:0; }
@@ -1535,6 +1542,13 @@ var pendingRecovery       = null;                  // parsed autosave entry held
                                                    // recovery modal is visible (Restore/Discard reads it)
 var _toastTimer           = null;                  // setTimeout handle for toast auto-dismiss
 var _shownToastMessages   = {};                    // memo for showOneShotToast — never re-show same text
+// Pass A.7: tristate provenance of #inp-label's current value:
+//   'auto'      — set programmatically (post-placement pin, switchPage clear, init)
+//   'typed'     — user has typed; addCamera uses the typed value and
+//                 increments for the next placement (padStart-preserving)
+//   'selection' — set by selectCamera when an existing camera is clicked;
+//                 next addCamera ignores the field and regenerates an auto-label
+var _inpLabelSource       = 'auto';
 var DPR=window.devicePixelRatio||1, pages=[], cameras=[], currentPage=0;
 var selectedId=null, dragging=null, counters={}, viewScale=1, pdfLoaded=false;
 var currentType='dome', blindMode=false, doriMode=false, heatmapMode=false;
@@ -1544,6 +1558,10 @@ var headendMode = false;      // currently placing head-end?
 var cablesMode = false;       // showing cable runs?
 var cableOverhead = 1.25;     // multiplier for cable routing (vs straight-line)
 var maxCableM = 90;           // PoE Cat6 max length
+// Pass A.7: manual tab/floor ordering for the riser. null = auto-parse via
+// compareForRiser; populated = permutation of [0..pages.length-1] driven by
+// HTML5 drag-reorder on the tab strip. Persists into JSON v14.
+var tabOrder = null;
 
 // ─── Access Control State ────────────────────────────────────────────────────
 // Brivo Smart Reader catalog. Black-only (white discontinued).
@@ -1800,6 +1818,7 @@ async function loadImage(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
+  tabOrder=null;                // Pass A.7: fresh import → no manual reorder
   skippedPages = new Set();
   document.getElementById('btn-blind').classList.remove('active');
   document.getElementById('btn-dori').classList.remove('active');
@@ -1855,6 +1874,7 @@ async function loadPDF(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
+  tabOrder=null;                // Pass A.7: fresh import → no manual reorder
   skippedPages = new Set();
   document.getElementById('btn-blind').classList.remove('active');
   document.getElementById('btn-dori').classList.remove('active');
@@ -1906,20 +1926,67 @@ function hideProgress(){document.getElementById('progress-wrap').classList.add('
 
 // ─── Page switching ───────────────────────────────────────────────────────────
 // ─── Tabs ────────────────────────────────────────────────────────────────────
+// Pass A.7: tab strip is the visual ordering source for the riser. When
+// `tabOrder` is set (user has drag-reordered), iterate it; else iterate
+// pages[] natural order. Each tab's `dataset.idx` is the underlying page
+// index (NOT the visual position) so click→switchPage and ×→deletePage
+// continue to use the correct index after a reorder.
+function getTabDisplayOrder(){
+  var n = pages.length;
+  if(n === 0) return [];
+  if(tabOrder && tabOrder.length === n) return tabOrder.slice();
+  var idxs = [];
+  for(var i = 0; i < n; i++) idxs.push(i);
+  return idxs;
+}
+
+// Drag state — module scope so handlers across separate tab elements can
+// coordinate. Reset on dragend.
+var _draggingPageIdx = null;
+
+function clearTabDropIndicators(){
+  var els = document.querySelectorAll('#tabs .tab.drop-before, #tabs .tab.drop-after');
+  for(var i = 0; i < els.length; i++) els[i].classList.remove('drop-before', 'drop-after');
+}
+
+// On drop: rebuild the display order with `sourceIdx` removed and reinserted
+// either before or after `targetIdx`. Sets `tabOrder` to the result, marks
+// dirty, rebuilds the tab DOM. Also recalcs BOM if the drawer is open
+// (typical multipliers can resolve differently if order matters there).
+function reorderTabsAround(sourceIdx, targetIdx, beforeTarget){
+  if(sourceIdx === targetIdx) return;
+  var displayOrder = getTabDisplayOrder();
+  var srcPos = displayOrder.indexOf(sourceIdx);
+  if(srcPos < 0) return;
+  displayOrder.splice(srcPos, 1);
+  var tgtPos = displayOrder.indexOf(targetIdx);
+  if(tgtPos < 0) return;
+  var insertPos = beforeTarget ? tgtPos : tgtPos + 1;
+  displayOrder.splice(insertPos, 0, sourceIdx);
+  tabOrder = displayOrder;
+  markDirty();
+  rebuildTabsDom();
+  if(bomOpen) recalcBom();
+}
+
 // Single source of truth for the tabs DOM. Called after import, JSON load,
-// calibration save, and page deletion.
+// calibration save, and page deletion. Also after a drag-reorder.
 function rebuildTabsDom(){
   var tabsEl = document.getElementById('tabs');
   if(!tabsEl) return;
   tabsEl.innerHTML = '';
-  pages.forEach(function(pg, idx){
+  var displayOrder = getTabDisplayOrder();
+  displayOrder.forEach(function(pageIdx){
+    var pg = pages[pageIdx];
+    if(!pg) return;
     var t = document.createElement('div');
-    t.className = 'tab' + (idx === currentPage ? ' active' : '');
-    t.dataset.idx = idx;
+    t.className = 'tab' + (pageIdx === currentPage ? ' active' : '');
+    t.dataset.idx = pageIdx;
+    t.draggable = true;
 
     var lab = document.createElement('span');
     lab.className = 'tab-label';
-    lab.textContent = pg.name || pg.label || ('Floor ' + (idx + 1));
+    lab.textContent = pg.name || pg.label || ('Floor ' + (pageIdx + 1));
     // Double-click the label to enter rename mode. Single clicks still bubble
     // up to .tab and run switchPage as before.
     (function(targetIdx){
@@ -1927,12 +1994,12 @@ function rebuildTabsDom(){
         e.stopPropagation();
         beginTabRename(targetIdx);
       });
-    })(idx);
+    })(pageIdx);
     t.appendChild(lab);
 
     // Pass A.5: typical-floor range badge (muted), tooltip on hover.
-    var mult = pageMultiplier(idx);
-    var range = pageFloorRange(idx);
+    var mult = pageMultiplier(pageIdx);
+    var range = pageFloorRange(pageIdx);
     if(range){
       var badge = document.createElement('span');
       badge.className = 'tab-typical-badge';
@@ -1944,7 +2011,7 @@ function rebuildTabsDom(){
     }
 
     // Pass A.5: warning badge when a typical (mult>1) page also has a head-end.
-    if(mult > 1 && headends[idx]){
+    if(mult > 1 && headends[pageIdx]){
       var warn = document.createElement('span');
       warn.className = 'tab-warning-badge';
       warn.textContent = '⚠';
@@ -1952,7 +2019,7 @@ function rebuildTabsDom(){
       t.appendChild(warn);
     }
 
-    if(calibrations[idx]){
+    if(calibrations[pageIdx]){
       var dot = document.createElement('span');
       dot.className = 'tab-cal';
       t.appendChild(dot);
@@ -1969,12 +2036,63 @@ function rebuildTabsDom(){
           deletePage(targetIdx);
         }
       });
-    })(idx);
+    })(pageIdx);
+    // Pass A.7: clicking the × must not initiate a drag. HTML5 drag bubbles
+    // from non-draggable children to the closest draggable ancestor unless
+    // dragstart is cancelled at the child level.
+    close.addEventListener('dragstart', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+    });
     t.appendChild(close);
 
     (function(targetIdx){
       t.addEventListener('click', function(){ switchPage(targetIdx); });
-    })(idx);
+    })(pageIdx);
+
+    // Pass A.7: drag-reorder handlers.
+    (function(targetIdx){
+      t.addEventListener('dragstart', function(e){
+        _draggingPageIdx = targetIdx;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(targetIdx));
+        // Defer the opacity class until after the browser has captured the
+        // drag-image — otherwise the floating preview is also dimmed.
+        setTimeout(function(){ t.classList.add('dragging'); }, 0);
+      });
+      t.addEventListener('dragover', function(e){
+        if(_draggingPageIdx === null || _draggingPageIdx === targetIdx) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        var r = t.getBoundingClientRect();
+        var beforeHalf = (e.clientX - r.left) < r.width / 2;
+        clearTabDropIndicators();
+        t.classList.add(beforeHalf ? 'drop-before' : 'drop-after');
+      });
+      t.addEventListener('dragleave', function(){
+        t.classList.remove('drop-before', 'drop-after');
+      });
+      t.addEventListener('drop', function(e){
+        e.preventDefault();
+        var srcIdx = _draggingPageIdx;
+        if(srcIdx === null){
+          // Fallback to dataTransfer if module state was somehow cleared
+          var raw = e.dataTransfer.getData('text/plain');
+          srcIdx = parseInt(raw, 10);
+        }
+        clearTabDropIndicators();
+        if(isNaN(srcIdx) || srcIdx === targetIdx) return;
+        var r = t.getBoundingClientRect();
+        var beforeHalf = (e.clientX - r.left) < r.width / 2;
+        reorderTabsAround(srcIdx, targetIdx, beforeHalf);
+      });
+      t.addEventListener('dragend', function(){
+        _draggingPageIdx = null;
+        t.classList.remove('dragging');
+        clearTabDropIndicators();
+      });
+    })(pageIdx);
+
     tabsEl.appendChild(t);
   });
 }
@@ -2109,6 +2227,12 @@ function deletePage(idx){
   calibrations = remapPageKeys(calibrations, idx);
   headends     = remapPageKeys(headends, idx);
   acCounters   = remapPageKeys(acCounters, idx);
+  // Pass A.7: drop deleted page from manual order and shift higher indices down.
+  if(tabOrder){
+    tabOrder = tabOrder.filter(function(p){ return p !== idx; })
+                        .map(function(p){ return p > idx ? p - 1 : p; });
+    if(tabOrder.length === 0) tabOrder = null;
+  }
 
   // Last-page rewind: full reset to no-PDF state
   if(pages.length === 0){
@@ -2142,6 +2266,8 @@ function rewindToNoPdf(){
   currentPage = 0;
   pdfLoaded = false;
   pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {};
+  tabOrder = null;            // Pass A.7: clear manual order with the rest of state
+  _inpLabelSource = 'auto';   // Pass A.7: reset label provenance
   blindMode = false; doriMode = false; heatmapMode = false;
   cablesMode = false; calibMode = false; calibPoints = []; calibCursor = null;
   headendMode = false; bomOpen = false;
@@ -2186,6 +2312,13 @@ function switchPage(idx){
   // User can still type to override before placing the next camera.
   var floorInput = document.getElementById('inp-floor');
   if(floorInput) floorInput.value = pages.length ? ('Floor ' + (idx + 1)) : '';
+  // Pass A.7: clear the camera label input on page switch so the next
+  // placement on the new page generates a fresh auto-label for that page
+  // rather than carrying the prior page's typed-sequence value.
+  // UI-only side effect — no markDirty (we haven't mutated the model).
+  var lblInput = document.getElementById('inp-label');
+  if(lblInput) lblInput.value = '';
+  _inpLabelSource = 'auto';
   fitPage(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList();
   // Pass B: a manual tab switch closes the auto-calibration prompt — the user
   // has chosen to navigate themselves, so we yield. Internal advances set the
@@ -3208,7 +3341,22 @@ cv.addEventListener('mousedown',function(e){
   hideCtxMenu();
   var p=canvasXY(e);
   if(calibMode){ handleCalibClick(p.cx,p.cy); return; }
-  if(headendMode){ placeHeadend(p.cx,p.cy); return; }
+  if(headendMode){
+    // Click on the existing head-end while in placement mode → remove it.
+    // Pre-existing UX gap: there was no other way to delete a head-end
+    // (right-click/Delete don't act on it). Toggling the mode and clicking
+    // the icon is the discoverable path for now. Hit-test reuses headendAt
+    // (±10 px, same radius as the drag-grab).
+    if(headendAt(p.cx, p.cy)){
+      delete headends[currentPage];
+      markDirty();
+      cancelHeadendPlacement();
+      redraw();
+      return;
+    }
+    placeHeadend(p.cx, p.cy);
+    return;
+  }
   // Head-end is drawn on top of everything; hit-test it first so a click on
   // the CMVR/NVR icon starts a drag in either panel mode.
   if(headendAt(p.cx, p.cy)){ dragging = {type:'head-end-move'}; return; }
@@ -3226,8 +3374,11 @@ cv.addEventListener('mousedown',function(e){
   if(tip){dragging={id:tip.id,type:'tip'}; return;}
   var cam=camAt(p.cx,p.cy);
   if(cam){selectCamera(cam.id); dragging={id:cam.id,type:'move'}; return;}
-  // Deselect-on-empty-click. A second empty-click then places.
-  if(selectedId){ closeRightPanel(); return; }
+  // Pass A.7: empty-canvas click always places. Previously had a two-click
+  // rule (first click deselects, second places) — that conflicted with the
+  // typed-label sequence ("FRONT-01" → "FRONT-02" on next click) because
+  // the intermediate deselect cleared the seed. To deselect without
+  // placing: Esc or the right-panel close button.
   addCamera(p.cx,p.cy);
 });
 
@@ -3577,9 +3728,73 @@ function acRoundRect(c, x, y, w, h, r){
 }
 
 // ─── Camera management ────────────────────────────────────────────────────────
+
+// Pass A.7: structured auto-label generator — "<MFR>-<FLOOR>-<NUM>".
+//   MFR   first 3 chars of brand uppercased (Eagle Eye → EAG, Hanwha → HAN,
+//         null/Custom → CUS)
+//   FLOOR parsed from pages[pageIdx].name. "Floor 7" / "F 7" / "Level 17" →
+//         zero-padded number ("07", "17", "117"). Parkade levels ("P1"/"P2")
+//         stay as-is ("P1"). Named zones map to known abbreviations
+//         (PKG/LBY/RF/PH/BSM/MCH/GND). Fallback: first 2 alphanumeric chars
+//         uppercased, then page index zero-padded.
+//   NUM   counters[pageIdx] (no padding) — the placement counter, already
+//         incremented at the top of addCamera before this is called.
+function getMfrCode(modelKey){
+  if(modelKey && CAMERA_DB[modelKey]){
+    var brand = CAMERA_DB[modelKey].brand || '';
+    if(brand){
+      var firstWord = brand.split(/\s+/)[0] || brand;
+      return firstWord.substring(0, 3).toUpperCase();
+    }
+  }
+  return 'CUS';
+}
+
+function getFloorCode(pageIdx){
+  var pg = pages[pageIdx];
+  if(!pg) return String(pageIdx + 1).padStart(2, '0');
+  var name = (pg.name || pg.label || '').trim();
+  if(!name) return String(pageIdx + 1).padStart(2, '0');
+  // 1. Explicit floor/level prefix
+  var m = name.match(/(?:floor|f|level|l)\s*(\d+)/i);
+  if(m) return String(parseInt(m[1], 10)).padStart(2, '0');
+  // 2. Parkade level "P1" / "P2" / "P3"
+  var pm = name.match(/^p\s*(\d+)$/i);
+  if(pm) return 'P' + pm[1];
+  // 3. Named zones
+  var lower = name.toLowerCase();
+  if(/parkade|garage|carpark/.test(lower)) return 'PKG';
+  if(/lobby|reception|main floor/.test(lower)) return 'LBY';
+  if(/\broof|rooftop/.test(lower)) return 'RF';
+  if(/penthouse|\bph\b/.test(lower)) return 'PH';
+  if(/basement|cellar/.test(lower)) return 'BSM';
+  if(/mech|mechanical/.test(lower)) return 'MCH';
+  if(/ground/.test(lower)) return 'GND';
+  // 4. Any bare number in the name
+  m = name.match(/(\d+)/);
+  if(m) return String(parseInt(m[1], 10)).padStart(2, '0');
+  // 5. First 2 alphanumeric chars uppercased
+  var alphanum = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if(alphanum) return alphanum.substring(0, 2);
+  // 6. Last resort: page index
+  return String(pageIdx + 1).padStart(2, '0');
+}
+
+function generateAutoLabel(modelKey, pageIdx){
+  return getMfrCode(modelKey) + '-' + getFloorCode(pageIdx) + '-' + (counters[pageIdx] || 1);
+}
+
 function addCamera(cssX,cssY){
   counters[currentPage]=(counters[currentPage]||0)+1;
-  var label=document.getElementById('inp-label').value.trim()||('CAM-P'+(currentPage+1)+'-'+counters[currentPage]);
+  // Pass A.7: tristate flag decides label source.
+  //   'typed' + non-empty input → use the typed value (and increment its
+  //     trailing digit for the next placement, padStart-preserving)
+  //   else                       → generate <MFR>-<FLOOR>-<NUM> auto-label
+  var _capturedLabelSource = _inpLabelSource;
+  var _typedValue = document.getElementById('inp-label').value.trim();
+  var label = (_capturedLabelSource === 'typed' && _typedValue)
+    ? _typedValue
+    : generateAutoLabel(currentModelKey, currentPage);
   var id=Date.now()+Math.random();
   cameras.push({id:id,page:currentPage,x:cssX/viewScale,y:cssY/viewScale,
     angle:parseInt(document.getElementById('inp-angle').value),
@@ -3601,12 +3816,30 @@ function addCamera(cssX,cssY){
     notes:document.getElementById('inp-notes').value.trim()});
   // Pass C: route through selectCamera so configureReachSlider runs on
   // placement — keeps the reach slider's data-unit/range/value in sync with
-  // the new camera's reachM and the page's calibration unit.
+  // the new camera's reachM and the page's calibration unit. selectCamera
+  // sets _inpLabelSource = 'selection' as a side effect.
   selectCamera(id);
   markDirty();
-  var m=label.match(/^(.*?)([0-9]+)$/);
-  if(m) document.getElementById('inp-label').value=m[1]+(parseInt(m[2])+1);
   redraw(); updateList(); updateDoriInfo();
+  // Pass A.7: post-placement tail. If the captured source was 'typed', the
+  // user is in sequence mode — increment the trailing digit (padStart-
+  // preserving) and restore the flag so the next placement continues the
+  // sequence. Else pin inp-label to the just-placed label and flag 'auto'
+  // so the right panel reads correctly and the next empty-click regenerates
+  // an auto-label from the (incremented) counter.
+  if(_capturedLabelSource === 'typed'){
+    var m = label.match(/^(.*?)([0-9]+)$/);
+    if(m){
+      var n = parseInt(m[2], 10) + 1;
+      document.getElementById('inp-label').value = m[1] + String(n).padStart(m[2].length, '0');
+    } else {
+      document.getElementById('inp-label').value = label;
+    }
+    _inpLabelSource = 'typed';
+  } else {
+    document.getElementById('inp-label').value = label;
+    _inpLabelSource = 'auto';
+  }
 }
 
 // Single deselect path for either mode (camera or reader). Clears both
@@ -3724,6 +3957,10 @@ function selectCamera(id){
   var cam=cameras.find(function(c){return c.id===id;});
   if(!cam) return;
   document.getElementById('inp-label').value=cam.label;
+  // Pass A.7: this is a selection (not user typing) — flag so the next
+  // addCamera regenerates an auto-label rather than re-using this cam's
+  // label as a typed seed.
+  _inpLabelSource = 'selection';
   document.getElementById('inp-angle').value=cam.angle;
   document.getElementById('inp-fov').value  =cam.fov;
   configureReachSlider(cam);
@@ -4059,7 +4296,8 @@ function buildLiteSaveData(){
     projectInfo: projectInfo,
     bom: { customLines: bomCustomLines, autoOverrides: bomAutoOverrides, config: bomConfig },
     acDevices: acDevices,
-    acCounters: acCounters
+    acCounters: acCounters,
+    tabOrder: tabOrder    // Pass A.7: manual riser order (null = auto-parse)
   };
 }
 
@@ -4077,7 +4315,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 13,             // generation tag — autosave was produced by a v13-aware tool
+      version: 14,             // generation tag — autosave was produced by a v14-aware tool (Pass A.7)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -4288,7 +4526,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 13,
+    version: 14,
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -4297,7 +4535,8 @@ async function saveJSON(){
     projectInfo: projectInfo,
     bom: { customLines: bomCustomLines, autoOverrides: bomAutoOverrides, config: bomConfig },
     acDevices: acDevices,
-    acCounters: acCounters
+    acCounters: acCounters,
+    tabOrder: tabOrder    // Pass A.7: manual riser order (null = auto-parse)
   }, null, 2);
 
   showProgress('Saving file…', 95);
@@ -4327,6 +4566,21 @@ function base64ToArrayBuffer(b64){
   return bytes.buffer;
 }
 
+// Pass A.7: validate a saved tabOrder against the just-loaded page count.
+// Accepts only a strict permutation of [0..n-1]; anything else (wrong type,
+// wrong length, duplicates, out-of-range values) → null so we fall back to
+// the smart-parse path. Defensive against hand-edited or stale saves.
+function parseTabOrderFromSave(saved, n){
+  if(!Array.isArray(saved) || saved.length !== n || n === 0) return null;
+  var seen = {};
+  for(var i = 0; i < n; i++){
+    var v = saved[i];
+    if(typeof v !== 'number' || v !== (v|0) || v < 0 || v >= n || seen[v]) return null;
+    seen[v] = true;
+  }
+  return saved.slice();
+}
+
 // Apply parsed project JSON to the running app state. Assumes the source
 // document (PDF/image) is already loaded — pages[] is populated, canvases
 // rendered, currentPage at 0. Caller is responsible for the right ordering.
@@ -4335,6 +4589,12 @@ function applyProjectState(data){
   if(data.calibrations) calibrations = data.calibrations;
   if(data.headends) headends = data.headends;
   if(data.projectInfo) projectInfo = data.projectInfo;
+  // Pass A.7 (v14): manual tab order. Validate it's a permutation of the
+  // page indices we're about to populate — if the file is from a different
+  // session with a different page count, or hand-edited bogus values, fall
+  // back to null (auto-parse via compareForRiser). pages.length here is the
+  // count the caller already loaded (loadPDF/loadImage ran before us).
+  tabOrder = parseTabOrderFromSave(data.tabOrder, pages.length);
   // Backward compat: pre-floor saves had `zone`; pre-zone saves had nothing.
   // Also strip transient riser-export decorations that may have leaked in.
   // Pass C (v13): legacy `cam.reach` was pixels-at-placement, which is
@@ -4346,6 +4606,7 @@ function applyProjectState(data){
     delete c.zone;
     delete c.__cableId;
     delete c.__cableLenDisplay;
+    delete c.__servingHeadendZone;
     if(typeof c.reachM !== 'number'){
       c.reachM = cameraSpecReachM(c.model || null);
       _legacyReachMigrated = true;
@@ -4590,7 +4851,7 @@ async function runExportPDF(){
     return;
   }
   showProgress('Saving\u2026',95);
-  var fname = (projectInfo.name || 'camera_proposal').replace(/[^a-z0-9]+/gi,'_').toLowerCase();
+  var fname = (projectInfo.name || 'security_proposal').replace(/[^a-z0-9]+/gi,'_').toLowerCase();
   doc.save(fname + '.pdf');
   hideProgress();
 }
@@ -4744,7 +5005,7 @@ function drawProposalCover(doc, W, H){
 
 function drawProposalBOM(doc, W, H){
   drawPageHeader(doc, W, 'Bill of Materials');
-  var y = 110;
+  var y = 80;
   var auto = computeAutoRows();
   var sections = [
     { title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
@@ -4761,7 +5022,7 @@ function drawProposalBOM(doc, W, H){
     if(y > H - 90){
       doc.addPage('letter','portrait');
       drawPageHeader(doc, W, 'Bill of Materials (cont.)');
-      y = 110;
+      y = 80;
     }
     doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
     doc.text(sec.title.toUpperCase(), 40, y); y += 16;
@@ -4778,7 +5039,7 @@ function drawProposalBOM(doc, W, H){
       if(y > H - 60){
         doc.addPage('letter','portrait');
         drawPageHeader(doc, W, 'Bill of Materials (cont.)');
-        y = 110;
+        y = 80;
       }
       var line = (r.qty||0) * (r.unit||0);
       subtotal += line;
@@ -4800,7 +5061,7 @@ function drawProposalBOM(doc, W, H){
   var taxAmt = afterMargin * taxPct / 100;
   var grand = afterMargin + taxAmt;
 
-  if(y > H - 130){ doc.addPage('letter','portrait'); drawPageHeader(doc, W, 'Bill of Materials (cont.)'); y = 110; }
+  if(y > H - 130){ doc.addPage('letter','portrait'); drawPageHeader(doc, W, 'Bill of Materials (cont.)'); y = 80; }
   y += 6;
   doc.setDrawColor(120,120,140); doc.setLineWidth(0.5); doc.line(W-260, y, W-40, y); y += 12;
   doc.setFont('courier','normal'); doc.setFontSize(9);
@@ -4828,7 +5089,7 @@ function drawPageHeader(doc, W, title){
   doc.text(title.toUpperCase(), 40, 32);
   doc.setFont('courier','normal'); doc.setFontSize(8);
   doc.setTextColor(180,180,200);
-  var sub = (projectInfo.name || 'Camera Proposal');
+  var sub = (projectInfo.name || 'Security Proposal');
   if(projectInfo.ref) sub += '  ·  ' + projectInfo.ref;
   doc.text(sub, 40, 48);
 }
@@ -4842,14 +5103,17 @@ function drawPageFooter(doc, W, H){
 }
 
 // ─── Riser Diagram ───────────────────────────────────────────────────────────
-// Auto-generated system one-line: head-end at top (NVR + PoE switches + UPS),
-// then horizontal zone bands stacked top-to-bottom (upper floors high, lower
-// floors low), with cameras laid out within each band and cable lines back to
-// the switch. Equipment schedule occupies the right ~40% of the page; if it
-// overflows, continuation pages contain only schedule rows.
+// Auto-generated system one-line: every page renders as a horizontal band
+// stacked top-to-bottom by elevation (highest on top — Pass A.7). Head-end
+// (NVR + PoE switch + UPS) appears INSIDE the band of whichever page it was
+// placed on; a single vertical trunk runs through every band. Cameras lay
+// out within each band with cable lines back to the trunk. Equipment
+// schedule occupies the right ~30% of the page (Pass A.7 widened the
+// diagram); if it overflows, continuation pages contain only schedule rows.
 //
-// Cable IDs are assigned sequentially project-wide in zone-display order, so
-// every cable shows on both the diagram and the schedule with the same C-NN.
+// Cable IDs are assigned sequentially project-wide in render order (top-to-
+// bottom), so every cable shows on both the diagram and the schedule with
+// the same C-NN.
 //
 // All vector primitives via jsPDF (lines, rects, circles, text) — no rasters.
 
@@ -4858,12 +5122,12 @@ function drawProposalRiser(doc, W, H, startSection){
   drawPageFooter(doc, W, H);
 
   var marginX = 40;
-  var headerEndY = 70;
+  var headerEndY = 80;       // Pass A.7: was 70 — doubled padding below header bar
   var bottomMargin = 40;
   var contentH = H - headerEndY - bottomMargin;
   var totalW = W - 2 * marginX;
   var colGap = 12;
-  var leftW = (totalW - colGap) * 0.60;
+  var leftW = (totalW - colGap) * 0.70;   // Pass A.7: was 0.60 — give the diagram more room
   var rightX = marginX + leftW + colGap;
   var rightW = totalW - leftW - colGap;
 
@@ -4883,40 +5147,48 @@ function computeRiserModel(){
   var switchCount = Math.max(1, Math.ceil(camCount / ports));
   var nvrChannels = camCount <= 4 ? 4 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 32 ? 32 : camCount <= 64 ? 64 : 128;
 
-  var byZone = {};
-  cameras.forEach(function(cam){
-    var z = (cam.floor || '').trim();
-    if(!byZone[z]) byZone[z] = [];
-    byZone[z].push(cam);
-  });
-  var zoneNames = Object.keys(byZone);
-  zoneNames.sort(function(a, b){
-    var ka = zoneOrderKey(a), kb = zoneOrderKey(b);
-    if(kb !== ka) return kb - ka;
-    return a.localeCompare(b);
-  });
-  // Each zone gets a `displayName` used for band labels and schedule
-  // subheaders (augmented with " · F3–17 (×15)" on typical pages). The raw
-  // `name` stays available for camera-row "Floors" fallback when the page
-  // has no typical range to show.
-  var zones = zoneNames.map(function(name){
-    var cams = byZone[name].slice();
-    var firstPageIdx = cams.length ? cams[0].page : 0;
-    var mult = pageMultiplier(firstPageIdx);
-    var range = pageFloorRange(firstPageIdx);
-    var displayName = name || 'Unassigned';
-    if(range && mult > 1){
-      displayName = displayName + ' · ' + range + ' (×' + mult + ')';
-    }
-    return { name: name, displayName: displayName, cams: cams };
+  // Pass A.7: zone per PAGE (not per cam.floor). Every page gets a band, even
+  // empty ones. Render order is top-to-bottom by elevation (highest first),
+  // sourced from getRiserOrder() which honors manual tabOrder when set and
+  // falls back to compareForRiser smart-parse.
+  var ascOrder = getRiserOrder();             // ascending = low → high
+  var topDown  = ascOrder.slice().reverse();  // top → bottom of diagram
+  var zones = topDown.map(function(pageIdx){
+    var pg   = pages[pageIdx];
+    var name = (pg && (pg.name || pg.label)) || ('Floor ' + (pageIdx + 1));
+    var cams = cameras.filter(function(c){ return c.page === pageIdx; });
+    var mult = pageMultiplier(pageIdx);
+    var range = pageFloorRange(pageIdx);
+    var displayName = name;
+    if(range && mult > 1) displayName = displayName + ' · ' + range + ' (×' + mult + ')';
+    return {
+      pageIdx:    pageIdx,
+      name:       name,
+      displayName:displayName,
+      cams:       cams,
+      hasHeadend: !!headends[pageIdx]
+    };
   });
 
-  // Sequential project-wide cable IDs in display order
+  // Pass A.7: per-zone head-end resolution. Each zone's cameras route to a
+  // serving head-end via the cascade: own band → nearest below in render
+  // order (= higher zone[] index, since zones are top-down) → nearest above
+  // → -1 (dangling — rendered with a "(no head-end)" hint). Indexed by zones.
+  function findServingHeadendZone(zi){
+    if(zones[zi].hasHeadend) return zi;
+    for(var i = zi + 1; i < zones.length; i++) if(zones[i].hasHeadend) return i;
+    for(var i = zi - 1; i >= 0; i--)            if(zones[i].hasHeadend) return i;
+    return -1;
+  }
+
+  // Sequential project-wide cable IDs in render order (top-to-bottom).
   var cableIdx = 1;
-  zones.forEach(function(zone){
+  zones.forEach(function(zone, zi){
+    var hi = findServingHeadendZone(zi);
     zone.cams.forEach(function(cam){
-      cam.__cableId = 'C-' + String(cableIdx).padStart(2, '0');
-      cam.__cableLenDisplay = fmtRiserCableLen(cam);
+      cam.__cableId             = 'C-' + String(cableIdx).padStart(2, '0');
+      cam.__cableLenDisplay     = fmtRiserCableLen(cam);
+      cam.__servingHeadendZone  = hi;          // -1 = dangling
       cableIdx++;
     });
   });
@@ -4924,19 +5196,128 @@ function computeRiserModel(){
   return { camCount: camCount, ports: ports, switchCount: switchCount, nvrChannels: nvrChannels, zones: zones };
 }
 
-// Top-to-bottom display order: roof at top, basement/parkade at bottom,
-// unassigned at the very bottom. Unknown zone names land between named floors
-// and the underground section; alphabetical tiebreaker.
-function zoneOrderKey(name){
-  if(!name) return -10000;
-  if(/roof/i.test(name)) return 9000;
-  var fl = name.match(/floor\s*(\d+)/i);
-  if(fl) return 100 * parseInt(fl[1], 10);
-  if(/lobby|reception|entrance/i.test(name)) return 75;
-  if(/exterior|outside|outdoor|grounds/i.test(name)) return 50;
-  if(/loading\s*dock/i.test(name)) return -50;
-  if(/parkade|garage|basement|crawl/i.test(name)) return -100;
-  return 1;
+// ─── Pass A.7: smart-parse comparator for riser floor order ──────────────────
+// `compareForRiser(idxA, idxB)` returns a negative number when page A should
+// sit BELOW page B on the riser (i.e., A has lower elevation). Reads page
+// names from the live `pages[]` array; typical-page sort uses the lowest
+// floor in the configured range. Final tiebreak: tab strip order (page index).
+//
+// Heuristic key (riserSortKey) — higher key = higher elevation:
+//   Roof / Rooftop / MPH / Mech Penthouse   → +9000
+//   Penthouse / PH                          → +5000
+//   Numbered floor "Floor 7" / "Level 5"    → 100 × N (typical pages key on
+//                                            the lowest floor in their range)
+//   Lobby / Ground / Main                   → +50
+//   Parkade / Garage / Basement / Cellar    → −1000
+//   "P1", "P2", "P3" parkade levels         → −1000 − N (P2 below P1)
+//   Anything else                           → 0
+//
+// Case-insensitive partial match. "Floor 3 Amenity" matches the numbered rule
+// on "3" → 300. "Sub-basement", "Mezzanine", "M1" intentionally won't parse
+// perfectly — that's what drag-reorder is for.
+function riserSortKey(pageIdx){
+  var pg = pages[pageIdx];
+  if(!pg) return 0;
+  // Typical-page override: rank by the LOWEST floor in the configured range
+  // ("Tower Typical · F3-17" → keys at 300, matching the F3 floor it starts
+  // from). Falls through to name-parse if typical is disabled/missing.
+  if(pg.typical && pg.typical.enabled){
+    var from = parseInt(pg.typical.fromFloor, 10);
+    if(isFinite(from)) return 100 * from;
+  }
+  var name = (pg.name || pg.label || '').toLowerCase();
+  if(!name) return 0;
+  // Roof bucket — must check BEFORE penthouse so "Mech Penthouse" lands here.
+  if(/\b(roof|rooftop|mph|mech penthouse)\b/.test(name)) return 9000;
+  if(/\b(penthouse|ph)\b/.test(name)) return 5000;
+  // Parkade levels — "P1", "P2" go below the parkade bucket. Match the digit
+  // so P2 (-1002) sits below P1 (-1001). Plain "Parkade" / "Garage" → -1000.
+  var pm = name.match(/\bp\s*(\d+)\b/);
+  if(pm) return -1000 - parseInt(pm[1], 10);
+  if(/\b(parkade|garage|basement|cellar|sub-?basement)\b/.test(name)) return -1000;
+  // Numbered floor: "Floor 7", "Level 5", "L7", or a bare number after the
+  // word. Captures the FIRST integer found in the name. "Floor 3 Amenity" →
+  // 300. "L7" → 700. A bare "3rd Floor" also picks up the 3.
+  var fm = name.match(/(?:floor|level|l)\s*(\d+)/) || name.match(/(\d+)/);
+  if(fm) return 100 * parseInt(fm[1], 10);
+  // Ground-level bucket — check AFTER numbered floors so "Floor 1 Lobby"
+  // still sorts as Floor 1 (100), not Lobby (50).
+  if(/\b(lobby|ground|main)\b/.test(name)) return 50;
+  return 0;
+}
+
+function compareForRiser(idxA, idxB){
+  var ka = riserSortKey(idxA);
+  var kb = riserSortKey(idxB);
+  if(ka !== kb) return ka - kb;                 // lower key = below
+  return idxA - idxB;                           // fallback: tab strip order
+}
+
+// Returns page indices in ASCENDING elevation (low → high). Render reverses
+// to draw top-to-bottom from highest. Priority:
+//   1. `tabOrder` if set (user dragged tabs — leftmost = lowest elevation
+//      per brief)
+//   2. Smart parse via compareForRiser (which falls back to tab index when
+//      keys tie)
+// Always returns a fresh array of length pages.length, never mutates state.
+function getRiserOrder(){
+  var n = pages.length;
+  if(n === 0) return [];
+  if(tabOrder && tabOrder.length === n){
+    return tabOrder.slice();
+  }
+  var idxs = [];
+  for(var i = 0; i < n; i++) idxs.push(i);
+  idxs.sort(compareForRiser);
+  return idxs;
+}
+
+// ─── Pass A.7: standalone test for compareForRiser ───────────────────────────
+// Console-callable: `testCompareForRiser()`. Sets up fake pages[] entries
+// temporarily, runs each brief test case, restores state in finally, prints
+// `PASS: N/M` or itemized failures. No assertion framework.
+function testCompareForRiser(){
+  var origPages = pages;
+  function mkPage(name, typical){
+    return { name: name, label: name, offCanvas: null, logW: 0, logH: 0, typical: typical || null };
+  }
+  // Each case: [nameA, typicalA, nameB, typicalB, expected]
+  // expected: 'A_below' | 'B_below' | 'either'
+  var cases = [
+    ['Parkade',          null,                                'Floor 1',  null, 'A_below'],
+    ['P1',               null,                                'Lobby',    null, 'A_below'],
+    ['Floor 1',          null,                                'Floor 2',  null, 'A_below'],
+    ['Floor 3 Amenity',  null,                                'Floor 17', null, 'A_below'],
+    ['Floor 17',         null,                                'Roof',     null, 'A_below'],
+    ['Penthouse',        null,                                'Floor 17', null, 'B_below'],
+    ['MPH',              null,                                'Roof',     null, 'either'],
+    ['Tower Typical',    {enabled:true, fromFloor:3, toFloor:17}, 'Floor 18', null, 'A_below'],
+    ['Site Plan',        null,                                'Notes',    null, 'either'],
+    ['P2',               null,                                'P1',       null, 'A_below'],
+    ['Lobby',            null,                                'Floor 1',  null, 'A_below']
+  ];
+  var passed = 0, failed = [];
+  try {
+    cases.forEach(function(c, i){
+      pages = [mkPage(c[0], c[1]), mkPage(c[2], c[3])];
+      var r = compareForRiser(0, 1);
+      var ok;
+      if(c[4] === 'A_below')      ok = r < 0;
+      else if(c[4] === 'B_below') ok = r > 0;
+      else                        ok = true;     // 'either' — any sign is fine
+      if(ok) passed++;
+      else   failed.push('#' + (i + 1) + ' "' + c[0] + '" vs "' + c[2] + '" expected ' + c[4] + ' but got cmp=' + r);
+    });
+  } finally {
+    pages = origPages;
+  }
+  if(failed.length === 0){
+    console.log('compareForRiser: PASS ' + passed + '/' + cases.length);
+  } else {
+    console.log('compareForRiser: FAIL ' + passed + '/' + cases.length);
+    failed.forEach(function(f){ console.log('  ' + f); });
+  }
+  return { passed: passed, total: cases.length, failures: failed };
 }
 
 function fmtRiserCableLen(cam){
@@ -4954,105 +5335,181 @@ function fmtRiserCableLen(cam){
   return s;
 }
 
+// Pass A.7: riser layout — head-end appears INSIDE its page's band rather
+// than as a separate row at the top of the diagram. A single vertical trunk
+// runs through all bands; each head-end-having band has a short horizontal
+// connector from its cluster to the trunk. Per-band heights are proportional
+// to camera count (clamped to [RISER_MIN_BAND_PT, RISER_MAX_BAND_PT]); empty
+// bands collapse to RISER_EMPTY_BAND_PT. Floors render top-to-bottom from
+// highest elevation (model.zones is already in render order from
+// computeRiserModel; see getRiserOrder). The diagram anchors to the top of
+// the content area — small projects don't sprawl to fill the page.
+var RISER_EMPTY_BAND_PT = 30;   // empty bands collapse to this height
+var RISER_MIN_BAND_PT   = 50;   // non-empty band minimum
+var RISER_MAX_BAND_PT   = 120;  // cap so a small project doesn't sprawl
+var RISER_LABEL_W       = 64;   // left column reserved for the floor name
+var RISER_HEAD_W        = 130;  // horizontal span the head-end cluster occupies
 function drawRiserDiagram(doc, x0, y0, w, h, model){
-  if(model.camCount === 0){
+  var n = model.zones.length;
+  // True empty state: no pages AND no cameras AND no head-ends.
+  if(n === 0 || (model.camCount === 0 && !model.zones.some(function(z){ return z.hasHeadend; }))){
     doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120,120,140);
     doc.text('No cameras placed.', x0 + w/2, y0 + 60, {align:'center'});
     return;
   }
 
-  // Head-end row
-  var nvrW = 50, swW = 60, upsW = 38, gap = 12;
-  var swCount = model.switchCount;
-  var totalHeadW = nvrW + gap + (swW + gap) * swCount + upsW;
-  var scale = Math.min(1, (w - 14) / totalHeadW);
-  var headBoxH = 24;
-  var headBoxY = y0 + 18;
-  var startX = x0 + (w - totalHeadW * scale) / 2;
-
-  drawRiserNvrBox(doc, startX, headBoxY, nvrW * scale, headBoxH, model.nvrChannels);
-  var sx = startX + nvrW * scale + gap * scale;
-  for(var s=0; s<swCount; s++){
-    drawRiserSwitchBox(doc, sx, headBoxY, swW * scale, headBoxH, model.ports);
-    sx += swW * scale + gap * scale;
+  // Band heights — three-tier rule:
+  //   - Empty bands (zero cams)                → RISER_EMPTY_BAND_PT (30 pt)
+  //   - Non-empty: MIN + proportional share    → clamped to [MIN, MAX]
+  //   - If contentH < sum of bases             → shrink equally (overflow
+  //                                              still preferable to clipping)
+  // Total may be < h, in which case the diagram anchors at the top with
+  // whitespace below — small projects shouldn't sprawl.
+  var totalCams  = model.zones.reduce(function(s, z){ return s + z.cams.length; }, 0);
+  var baseHeights = model.zones.map(function(z){
+    return z.cams.length === 0 ? RISER_EMPTY_BAND_PT : RISER_MIN_BAND_PT;
+  });
+  var baseTotal = baseHeights.reduce(function(a, b){ return a + b; }, 0);
+  var bandHeights;
+  if(totalCams === 0 || h <= baseTotal){
+    bandHeights = baseHeights;
+  } else {
+    var extra = h - baseTotal;
+    bandHeights = model.zones.map(function(z, zi){
+      if(z.cams.length === 0) return baseHeights[zi];
+      var grew = RISER_MIN_BAND_PT + extra * z.cams.length / totalCams;
+      return Math.min(RISER_MAX_BAND_PT, grew);
+    });
   }
-  drawRiserUpsBox(doc, sx, headBoxY, upsW * scale, headBoxH);
+  var totalBandH = bandHeights.reduce(function(a, b){ return a + b; }, 0);
 
-  // Bus bar under the switches; trunk descends from the centerline
-  var switchesLeft = startX + nvrW * scale + gap * scale;
-  var switchesRight = switchesLeft + (swW * scale) * swCount + (gap * scale) * (swCount - 1);
-  var busY = headBoxY + headBoxH + 10;
-  doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.7);
-  doc.line(switchesLeft, busY, switchesRight, busY);
-  for(var k=0; k<swCount; k++){
-    var swCx = switchesLeft + k * (swW * scale + gap * scale) + (swW * scale) / 2;
-    doc.line(swCx, headBoxY + headBoxH, swCx, busY);
-  }
-  var trunkX = (switchesLeft + switchesRight) / 2;
+  // Trunk x lives between the head-end zone and the camera rail. Placed at
+  // the right edge of the head-end footprint so each head-end's cluster
+  // butts up against it with a short horizontal connector.
+  var trunkX = x0 + RISER_LABEL_W + RISER_HEAD_W;
 
-  // Zone bands
-  var bandsTop = busY + 14;
-  var bandsBottom = y0 + h - 6;
-  var bandsAreaH = bandsBottom - bandsTop;
-  var bandH = bandsAreaH / Math.max(1, model.zones.length);
-
-  // Vertical trunk down to last band's mid-line
-  doc.setLineWidth(0.7);
-  doc.line(trunkX, busY, trunkX, bandsTop + bandH * (model.zones.length - 0.5));
-
+  // First pass — band divider lines, floor labels, and the continuous trunk.
+  // Hairline dividers between bands (subtle, per brief).
+  doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3);
+  doc.line(x0, y0, x0 + w, y0);   // top edge
+  var by = y0;
   model.zones.forEach(function(zone, zi){
-    var bandY = bandsTop + zi * bandH;
-    drawRiserZoneBand(doc, x0, bandY, w, bandH, zone, trunkX);
+    by += bandHeights[zi];
+    doc.line(x0, by, x0 + w, by);
+  });
+
+  // Trunk spans the bands' actual extent, not the full content height
+  // (otherwise it'd dangle into the whitespace below a small project).
+  doc.setDrawColor(31, 41, 55); doc.setLineWidth(0.7);
+  doc.line(trunkX, y0, trunkX, y0 + totalBandH);
+
+  // Floor labels — bold charcoal in the left margin, vertically centered.
+  by = y0;
+  doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(31, 41, 55);
+  model.zones.forEach(function(zone, zi){
+    var bh = bandHeights[zi];
+    var label = (zone.displayName || zone.name || 'Unassigned').toUpperCase();
+    doc.text(label, x0 + 4, by + bh/2 + 3);
+    by += bh;
+  });
+
+  // Second pass — band interiors (head-end clusters, camera rails, cables).
+  by = y0;
+  model.zones.forEach(function(zone, zi){
+    drawRiserBandInterior(doc, x0, by, w, bandHeights[zi], zone, zi, model, trunkX);
+    by += bandHeights[zi];
   });
 }
 
-function drawRiserZoneBand(doc, x0, y0, w, h, zone, trunkX){
-  // Zone label on the far left
-  doc.setFont('courier','bold'); doc.setFontSize(8);
-  doc.setTextColor(31, 41, 55);
-  // Augmented: includes typical-floor range/multiplier when applicable.
-  var labelText = (zone.displayName || zone.name || 'Unassigned').toUpperCase();
-  doc.text(labelText, x0 + 4, y0 + 12);
+// Render one band's content — optional head-end cluster on the left interior,
+// then a horizontal camera rail from the trunk to the right edge with cameras
+// stubbing down from the rail. Dangling-cable hint shown for bands whose
+// cameras couldn't resolve a serving head-end.
+function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
+  var midY = y0 + h / 2;
 
-  // Horizontal rail across the band
-  var railY = y0 + Math.min(h * 0.4, 22);
-  var railLeft = x0 + 70;
-  var railRight = x0 + w - 6;
-  doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.5);
-  doc.line(railLeft, railY, railRight, railY);
+  if(zone.hasHeadend){
+    // Compact head-end cluster: NVR, one switch (with "× N" badge if multi-
+    // switch), UPS. Centered vertically in the band, anchored to the left
+    // interior with the right edge of UPS aligned just inside trunkX.
+    var nvrW = 36, swW = 44, upsW = 30, gap = 6, hH = 20;
+    var multiSw = model.switchCount > 1;
+    var multW = multiSw ? 16 : 0;
+    var clusterW = nvrW + gap + swW + multW + gap + upsW;
+    var clusterX = trunkX - clusterW - 4;
+    if(clusterX < x0 + RISER_LABEL_W + 4) clusterX = x0 + RISER_LABEL_W + 4;
+    var clusterY = midY - hH/2;
 
-  // Place cameras evenly along the rail
+    drawRiserNvrBox(doc, clusterX, clusterY, nvrW, hH, model.nvrChannels);
+    var hx = clusterX + nvrW + gap;
+    drawRiserSwitchBox(doc, hx, clusterY, swW, hH, model.ports);
+    if(multiSw){
+      doc.setFont('courier','bold'); doc.setFontSize(7);
+      doc.setTextColor(40, 40, 60);
+      doc.text('× ' + model.switchCount, hx + swW + 2, clusterY + hH/2 + 2);
+    }
+    hx += swW + multW + gap;
+    drawRiserUpsBox(doc, hx, clusterY, upsW, hH);
+
+    // Connector from cluster's right edge to the trunk
+    doc.setDrawColor(31, 41, 55); doc.setLineWidth(0.6);
+    doc.line(hx + upsW, midY, trunkX, midY);
+  }
+
+  // Camera rail — from the trunk to the right edge. Skip drawing the rail
+  // line when the band has no cameras (empty band — cleaner). The trunk
+  // still passes through the band vertically, drawn by the parent.
   var cams = zone.cams;
   var n = cams.length;
   if(n === 0) return;
-  var avail = railRight - railLeft - 8;
+
+  var railLeft  = trunkX + 4;
+  var railRight = x0 + w - 6;
+  var railY     = midY;
+  doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.5);
+  doc.line(railLeft, railY, railRight, railY);
+
+  // Distribute camera icons below the rail; icon size shrinks slightly when
+  // packed densely. Each icon stubs up to the rail with a thin connector.
+  var avail   = railRight - railLeft - 8;
   var spacing = avail / (n + 1);
   var iconSize = Math.min(13, Math.max(8, spacing * 0.55));
-  var iconY = Math.min(railY + Math.max(18, h - 18), y0 + h - iconSize/2 - 9);
+  // Icons sit below the rail; clamp so the bottom + label fits in the band.
+  var iconY = Math.min(railY + 18, y0 + h - iconSize/2 - 8);
 
   cams.forEach(function(cam, i){
     var cx = railLeft + 4 + spacing * (i + 1);
-    // branch: short vertical stub from icon up to rail
+    // Stub: rail down to icon
     doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
     doc.line(cx, railY, cx, iconY - iconSize/2 - 1);
-    // Cable ID just above icon (between rail and icon)
+
+    // Cable ID + length, above the rail at the cam's vertical line
     doc.setFont('courier','normal'); doc.setFontSize(5.5);
     doc.setTextColor(60, 60, 80);
-    doc.text(cam.__cableId, cx + 1.5, railY + 6);
+    doc.text(cam.__cableId, cx + 1.5, railY - 1);
     if(cam.__cableLenDisplay && cam.__cableLenDisplay !== '—'){
-      doc.setFontSize(4.8);
-      doc.setTextColor(110, 110, 130);
-      doc.text(cam.__cableLenDisplay, cx + 1.5, railY + 11);
+      doc.setFontSize(4.8); doc.setTextColor(110, 110, 130);
+      doc.text(cam.__cableLenDisplay, cx + 1.5, railY + 5);
     }
-    // Icon
+
     drawRiserCamIcon(doc, cam, cx, iconY, iconSize);
-    // Camera ID under icon
+
+    // Camera ID below icon
     doc.setFont('courier','bold'); doc.setFontSize(5.5);
     doc.setTextColor(40, 40, 60);
     var lab = cam.label || '';
     if(lab.length > 11) lab = lab.slice(0, 10) + '…';
     doc.text(lab, cx, iconY + iconSize/2 + 6, {align:'center'});
   });
+
+  // Dangling cables — visual hint near the rail's left end. Triggered when
+  // there's no head-end anywhere in the project (cascade returned -1 for
+  // any of this band's cams).
+  if(cams.some(function(c){ return c.__servingHeadendZone === -1; })){
+    doc.setFont('courier','italic'); doc.setFontSize(5);
+    doc.setTextColor(180, 32, 44);
+    doc.text('(no head-end)', railLeft + 2, railY - 3);
+  }
 }
 
 function drawRiserNvrBox(doc, x, y, w, h, channels){
@@ -5154,30 +5611,43 @@ function hexToRgbArr(hex){
 }
 
 function buildRiserScheduleRows(model){
+  // Pass A.7 (followup): head-end equipment is rolled into its floor's
+  // section rather than appearing as a separate top-level "HEAD-END
+  // EQUIPMENT" section. For each zone with hasHeadend, NVR/SW/UPS rows
+  // precede the camera rows under the same section header. Empty bands
+  // still get a section header (consistent with the diagram's "every
+  // floor visible" rule from M2). Multi-head-end edge case: the same
+  // NVR/SW/UPS rows render under EACH head-end-having band — matches the
+  // M2 diagram simplification (no per-head-end sizing).
   var rows = [];
-  rows.push({type:'section', text:'HEAD-END EQUIPMENT', accent:'gray'});
-  rows.push({type:'equip', id:'NVR-1', kind:'NVR', model: model.nvrChannels + '-Ch NVR'});
-  for(var i=0; i<model.switchCount; i++){
-    rows.push({type:'equip', id:'SW-'+(i+1), kind:'Switch', model: model.ports + '-pt PoE+'});
-  }
-  rows.push({type:'equip', id:'UPS-1', kind:'UPS', model:'Rack UPS'});
+  var anyHeadendZone = model.zones.some(function(z){ return z.hasHeadend; });
+
   model.zones.forEach(function(zone){
     rows.push({type:'section', text:(zone.displayName || zone.name || 'Unassigned').toUpperCase(), accent:'red'});
+    if(zone.hasHeadend){
+      rows.push({type:'equip', id:'NVR-1', model: model.nvrChannels + '-Ch NVR'});
+      for(var i = 0; i < model.switchCount; i++){
+        rows.push({type:'equip', id:'SW-'+(i+1), model: model.ports + '-pt PoE+'});
+      }
+      rows.push({type:'equip', id:'UPS-1', model:'Rack UPS'});
+    }
     zone.cams.forEach(function(cam){
-      // "Floors" column: range string for typicals (e.g. "F3–17"); otherwise
-      // the floor name (or "Unassigned").
-      var floorTxt = pageFloorRange(cam.page) || (zone.name || 'Unassigned');
       rows.push({
         type:'cam',
         id: cam.label || '',
-        kind:'Camera',
-        model: camRiserDisplayModel(cam),
-        floor: floorTxt,
-        cable: cam.__cableId || '',
-        length: cam.__cableLenDisplay || '—'
+        model: camRiserDisplayModel(cam)
       });
     });
   });
+
+  // Orphan-equipment edge case: cameras placed but no head-end anywhere.
+  // We skip the equipment rows entirely (rather than attaching to a random
+  // band) and warn once via console — the dangling-cable hint on the
+  // diagram already flags this to the user visually.
+  if(!anyHeadendZone && model.camCount > 0 && typeof console !== 'undefined' && console.warn){
+    console.warn('[riser-schedule] Cameras exist but no head-end placed; head-end equipment omitted from schedule.');
+  }
+
   return rows;
 }
 
@@ -5190,27 +5660,34 @@ function camRiserDisplayModel(cam){
 }
 
 function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
-  // Column geometry within w
-  var cols = [
-    { x: 0,   w: 38, label: 'ID' },
-    { x: 38,  w: 26, label: 'TYPE' },
-    { x: 64,  w: 56, label: 'MODEL' },
-    { x: 120, w: 28, label: 'FLOOR' },
-    { x: 148, w: 22, label: 'CAB' },
-    { x: 170, w: w - 170, label: 'LENGTH' }
-  ];
-  var rowH = 10.5;
+  // Pass A.7: schedule is an inventory list — ID + MODEL only. FLR / CAB /
+  // LEN dropped; that info still appears on the diagram itself, next to
+  // each camera icon. At 30 % page width (≈ 156 pt), MODEL gets the bulk
+  // (~109 pt = ~20 chars at 9 pt courier) so full model names render
+  // without truncation — "Eagle Eye DD08", "Hanwha XNV-12345", etc.
+  // Body 9 pt, header/section rows 10 pt bold. Left padding 1.5 pt.
+  var weights = [0.30, 0.70];                              // sums to 1.00
+  var labels  = ['ID',  'MODEL'];
+  var cols = [];
+  var xCursor = 0;
+  for(var ci = 0; ci < weights.length; ci++){
+    cols.push({ x: xCursor, w: w * weights[ci], label: labels[ci] });
+    xCursor += w * weights[ci];
+  }
+  var pad        = 1.5;       // was 2 — ~25% tighter per brief
+  var rowH       = 12;        // 9 pt body needs ~12 pt line-height
+  var headerRowH = 13;        // 10 pt header
 
-  doc.setFont('courier','bold'); doc.setFontSize(9); doc.setTextColor(31, 41, 55);
+  doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
   doc.text('EQUIPMENT SCHEDULE', x0, y0 + 2);
-  var y = y0 + 8;
+  var y = y0 + 10;
 
   function drawHeaderRow(){
-    doc.setFont('courier','bold'); doc.setFontSize(7);
+    doc.setFont('courier','bold'); doc.setFontSize(10);
     doc.setFillColor(31, 41, 55); doc.setTextColor(255, 255, 255);
-    doc.rect(x0, y, w, 11, 'F');
-    cols.forEach(function(c){ doc.text(c.label, x0 + c.x + 2, y + 7.5); });
-    y += 11;
+    doc.rect(x0, y, w, headerRowH, 'F');
+    cols.forEach(function(c){ doc.text(c.label, x0 + c.x + pad, y + headerRowH - 4); });
+    y += headerRowH;
   }
 
   function newSchedulePage(){
@@ -5218,16 +5695,13 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
     drawPageHeader(doc, pageW, 'System Riser — Schedule (cont.)');
     drawPageFooter(doc, pageW, pageH);
     y = 80;
-    doc.setFont('courier','bold'); doc.setFontSize(9); doc.setTextColor(31, 41, 55);
-    doc.text('EQUIPMENT SCHEDULE (continued)', 40, y); y += 8;
+    doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
+    doc.text('EQUIPMENT SCHEDULE (continued)', 40, y); y += 10;
     drawHeaderRow();
   }
 
   function ensureSpace(){
-    var bottom = (y > pageH - 60) ? null : pageH - 60;
-    if(bottom == null || y + rowH > pageH - 50){
-      newSchedulePage();
-    }
+    if(y + rowH > pageH - 50) newSchedulePage();
   }
 
   drawHeaderRow();
@@ -5235,28 +5709,28 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
   rows.forEach(function(row){
     ensureSpace();
     if(row.type === 'section'){
-      doc.setFont('courier','bold'); doc.setFontSize(7);
+      // 10 pt bold + accent. Spans full schedule width — no column-fit risk.
+      doc.setFont('courier','bold'); doc.setFontSize(10);
       doc.setFillColor(245, 244, 240);
-      doc.rect(x0, y, w, rowH, 'F');
+      doc.rect(x0, y, w, headerRowH, 'F');
       doc.setTextColor(row.accent === 'red' ? 200 : 100, row.accent === 'red' ? 32 : 100, row.accent === 'red' ? 44 : 120);
-      doc.text(row.text, x0 + 3, y + 7.5);
-      y += rowH;
+      doc.text(row.text, x0 + pad + 1, y + headerRowH - 4);
+      y += headerRowH;
     } else if(row.type === 'equip'){
-      doc.setFont('courier','normal'); doc.setFontSize(7);
+      // 9 pt body. ID slice 8 chars fits the 46.8 pt column comfortably;
+      // MODEL slice 18 chars fits the 109.2 pt column with margin to spare
+      // at 9 pt courier (~5.4 pt/char). Names like "Hanwha XNV-12345" or
+      // "Eagle DD08" render in full.
+      doc.setFont('courier','normal'); doc.setFontSize(9);
       doc.setTextColor(40, 40, 60);
-      doc.text((row.id || '').slice(0, 10),    x0 + cols[0].x + 2, y + 7.5);
-      doc.text((row.kind || '').slice(0, 7),    x0 + cols[1].x + 2, y + 7.5);
-      doc.text((row.model || '').slice(0, 18),  x0 + cols[2].x + 2, y + 7.5);
+      doc.text((row.id    || '').slice(0, 8),  x0 + cols[0].x + pad, y + rowH - 3);
+      doc.text((row.model || '').slice(0, 18), x0 + cols[1].x + pad, y + rowH - 3);
       y += rowH;
     } else if(row.type === 'cam'){
-      doc.setFont('courier','normal'); doc.setFontSize(7);
+      doc.setFont('courier','normal'); doc.setFontSize(9);
       doc.setTextColor(40, 40, 60);
-      doc.text((row.id || '').slice(0, 10),    x0 + cols[0].x + 2, y + 7.5);
-      doc.text((row.kind || '').slice(0, 7),    x0 + cols[1].x + 2, y + 7.5);
-      doc.text((row.model || '').slice(0, 18),  x0 + cols[2].x + 2, y + 7.5);
-      doc.text((row.floor || '').slice(0, 9),   x0 + cols[3].x + 2, y + 7.5);
-      doc.text((row.cable || '').slice(0, 6),   x0 + cols[4].x + 2, y + 7.5);
-      doc.text((row.length || '').slice(0, 18), x0 + cols[5].x + 2, y + 7.5);
+      doc.text((row.id    || '').slice(0, 8),  x0 + cols[0].x + pad, y + rowH - 3);
+      doc.text((row.model || '').slice(0, 18), x0 + cols[1].x + pad, y + rowH - 3);
       y += rowH;
     }
   });
@@ -5854,6 +6328,28 @@ function saveProjectInfo(){
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+// Pass A.7: dev quiet flag — silences both modal prompts (auto-calibration
+// and autosave recovery) for testing. Set persistently via:
+//   localStorage.setItem('dev_quiet', '1')
+// Clear with:
+//   localStorage.removeItem('dev_quiet')
+// Applied at script load; toggling in-session requires a reload.
+try {
+  if(localStorage.getItem('dev_quiet') === '1'){
+    SUPPRESS_AUTO_CALIBRATION_PROMPT = true;
+    SUPPRESS_AUTOSAVE_RECOVERY       = true;
+  }
+} catch(e){ /* private mode / storage error — skip silently */ }
+
+// Pass A.7: when the user types in the camera-label field, flag source so
+// addCamera uses the typed value (and continues the sequence). Programmatic
+// .value = X assignments do NOT fire 'input', so this only catches real user
+// typing/deletion — exactly what we want.
+(function(){
+  var el = document.getElementById('inp-label');
+  if(el) el.addEventListener('input', function(){ _inpLabelSource = 'typed'; });
+})();
+
 syncLabels(); updateList(); updateScaleIndicator(); updateDoriInfo();
 // Pass D: drive the auto-save loop and indicator clock. The 60 s indicator
 // tick is mostly redundant with autoSaveTick (which also refreshes), but
