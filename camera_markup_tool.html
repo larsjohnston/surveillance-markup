@@ -5207,25 +5207,16 @@ function computeRiserModel(){
     };
   });
 
-  // Pass A.7: per-zone head-end resolution. Each zone's cameras route to a
-  // serving head-end via the cascade: own band → nearest below in render
-  // order (= higher zone[] index, since zones are top-down) → nearest above
-  // → -1 (dangling — rendered with a "(no head-end)" hint). Indexed by zones.
-  function findServingHeadendZone(zi){
-    if(zones[zi].hasHeadend) return zi;
-    for(var i = zi + 1; i < zones.length; i++) if(zones[i].hasHeadend) return i;
-    for(var i = zi - 1; i >= 0; i--)            if(zones[i].hasHeadend) return i;
-    return -1;
-  }
-
   // Sequential project-wide cable IDs in render order (top-to-bottom).
+  // Pass A.7.5: the per-zone "(no head-end)" hint and the dual-unit cable
+  // length label were descoped from the diagram, so the head-end-cascade
+  // resolution and the __cableLenDisplay computation that fed them are no
+  // longer needed. The dangling-cable case is now indicated by a single
+  // page-level placeholder rendered in drawRiserDiagram.
   var cableIdx = 1;
-  zones.forEach(function(zone, zi){
-    var hi = findServingHeadendZone(zi);
+  zones.forEach(function(zone){
     zone.cams.forEach(function(cam){
-      cam.__cableId             = 'C-' + String(cableIdx).padStart(2, '0');
-      cam.__cableLenDisplay     = fmtRiserCableLen(cam);
-      cam.__servingHeadendZone  = hi;          // -1 = dangling
+      cam.__cableId = 'C-' + String(cableIdx).padStart(2, '0');
       cableIdx++;
     });
   });
@@ -5357,20 +5348,6 @@ function testCompareForRiser(){
   return { passed: passed, total: cases.length, failures: failed };
 }
 
-function fmtRiserCableLen(cam){
-  var lenM = cableLengthM(cam, cam.page);
-  if(lenM == null) return '—';
-  var ftVal = lenM * FT_PER_METER;
-  var unit = getCalibUnit(cam.page);
-  var s = (unit === 'ft')
-    ? (Math.round(ftVal) + ' ft (' + lenM.toFixed(1) + ' m)')
-    : (lenM.toFixed(1) + ' m (' + Math.round(ftVal) + ' ft)');
-  // Pass A.5: typical-floor cable runs happen N times. Annotate with a middot
-  // suffix ("38 ft (11.6 m) · ×15 floors") when multiplier > 1.
-  var mult = pageMultiplier(cam.page);
-  if(mult > 1) s += ' · ×' + mult + ' floors';
-  return s;
-}
 
 // Pass A.7: riser layout — head-end appears INSIDE its page's band rather
 // than as a separate row at the top of the diagram. A single vertical trunk
@@ -5395,26 +5372,45 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
     return;
   }
 
+  // Pass A.7.5: when no head-end exists in the project, reserve a strip
+  // above the zone bands for a single "(Head-end not placed)" notice. The
+  // strip becomes the head-end row naturally when head-end becomes a
+  // first-class object (queue item 2) — drop the `!hasAnyHeadend` branch
+  // then; the placeholder logic is intentionally one if-statement.
+  var hasAnyHeadend = model.zones.some(function(z){ return z.hasHeadend; });
+  var RISER_HEADEND_STRIP_PT = 36;
+  var headendStripH = hasAnyHeadend ? 0 : RISER_HEADEND_STRIP_PT;
+  var bandsY0 = y0 + headendStripH;
+  var bandsH  = h  - headendStripH;
+
   // Band heights — three-tier rule:
   //   - Empty bands (zero cams)                → RISER_EMPTY_BAND_PT (30 pt)
   //   - Non-empty: MIN + proportional share    → clamped to [MIN, MAX]
-  //   - If contentH < sum of bases             → shrink equally (overflow
+  //   - Pass A.7.5: bands with 4+ cams add STAGGER_BASE_PT to MIN so the
+  //     staggered camera-label row fits without clipping.
+  //   - If bandsH < sum of bases               → shrink equally (overflow
   //                                              still preferable to clipping)
-  // Total may be < h, in which case the diagram anchors at the top with
-  // whitespace below — small projects shouldn't sprawl.
+  // Total may be < bandsH, in which case the diagram anchors at the top
+  // with whitespace below — small projects shouldn't sprawl.
+  var STAGGER_BASE_PT = 9;
   var totalCams  = model.zones.reduce(function(s, z){ return s + z.cams.length; }, 0);
   var baseHeights = model.zones.map(function(z){
-    return z.cams.length === 0 ? RISER_EMPTY_BAND_PT : RISER_MIN_BAND_PT;
+    if(z.cams.length === 0) return RISER_EMPTY_BAND_PT;
+    return RISER_MIN_BAND_PT + (z.cams.length >= 4 ? STAGGER_BASE_PT : 0);
   });
   var baseTotal = baseHeights.reduce(function(a, b){ return a + b; }, 0);
   var bandHeights;
-  if(totalCams === 0 || h <= baseTotal){
+  if(totalCams === 0 || bandsH <= baseTotal){
     bandHeights = baseHeights;
+    if(baseTotal > bandsH){
+      // Overflow — bands clip. Brief says flag rather than auto-compensate.
+      try { console.warn('[riser] band base heights exceed available content height; layout may clip.'); } catch(_){}
+    }
   } else {
-    var extra = h - baseTotal;
+    var extra = bandsH - baseTotal;
     bandHeights = model.zones.map(function(z, zi){
       if(z.cams.length === 0) return baseHeights[zi];
-      var grew = RISER_MIN_BAND_PT + extra * z.cams.length / totalCams;
+      var grew = baseHeights[zi] + extra * z.cams.length / totalCams;
       return Math.min(RISER_MAX_BAND_PT, grew);
     });
   }
@@ -5425,11 +5421,21 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
   // butts up against it with a short horizontal connector.
   var trunkX = x0 + RISER_LABEL_W + RISER_HEAD_W;
 
+  // Pass A.7.5: head-end placeholder. Single centered bold notice when no
+  // zone has a head-end placed. Removed per-zone "(no head-end)" hints that
+  // used to render inside drawRiserBandInterior. Single if-statement so the
+  // future first-class head-end work can drop this in one line.
+  if(!hasAnyHeadend){
+    doc.setFont('courier','bold'); doc.setFontSize(11);
+    doc.setTextColor(31, 41, 55);
+    doc.text('(Head-end not placed)', x0 + w/2, y0 + headendStripH/2 + 3, {align:'center'});
+  }
+
   // First pass — band divider lines, floor labels, and the continuous trunk.
   // Hairline dividers between bands (subtle, per brief).
   doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3);
-  doc.line(x0, y0, x0 + w, y0);   // top edge
-  var by = y0;
+  doc.line(x0, bandsY0, x0 + w, bandsY0);   // top edge of bands area
+  var by = bandsY0;
   model.zones.forEach(function(zone, zi){
     by += bandHeights[zi];
     doc.line(x0, by, x0 + w, by);
@@ -5438,10 +5444,10 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
   // Trunk spans the bands' actual extent, not the full content height
   // (otherwise it'd dangle into the whitespace below a small project).
   doc.setDrawColor(31, 41, 55); doc.setLineWidth(0.7);
-  doc.line(trunkX, y0, trunkX, y0 + totalBandH);
+  doc.line(trunkX, bandsY0, trunkX, bandsY0 + totalBandH);
 
   // Floor labels — bold charcoal in the left margin, vertically centered.
-  by = y0;
+  by = bandsY0;
   doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(31, 41, 55);
   model.zones.forEach(function(zone, zi){
     var bh = bandHeights[zi];
@@ -5451,7 +5457,7 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
   });
 
   // Second pass — band interiors (head-end clusters, camera rails, cables).
-  by = y0;
+  by = bandsY0;
   model.zones.forEach(function(zone, zi){
     drawRiserBandInterior(doc, x0, by, w, bandHeights[zi], zone, zi, model, trunkX);
     by += bandHeights[zi];
@@ -5506,13 +5512,23 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
   doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.5);
   doc.line(railLeft, railY, railRight, railY);
 
+  // Pass A.7.5: stagger camera-ID labels in two rows when 4+ cams in a
+  // zone to prevent label overlap. Odd-indexed (1, 3, 5, ...) labels
+  // render lower with a thin leader line connecting them to their icon.
+  // Threshold is per acceptance criterion 4 — zones with <4 cams keep a
+  // single row.
+  var staggerEnabled = n >= 4;
+  var STAGGER_PT = 9;
+
   // Distribute camera icons below the rail; icon size shrinks slightly when
   // packed densely. Each icon stubs up to the rail with a thin connector.
   var avail   = railRight - railLeft - 8;
   var spacing = avail / (n + 1);
   var iconSize = Math.min(13, Math.max(8, spacing * 0.55));
-  // Icons sit below the rail; clamp so the bottom + label fits in the band.
-  var iconY = Math.min(railY + 18, y0 + h - iconSize/2 - 8);
+  // Icons sit below the rail. Bottom margin reserves space for the label —
+  // 8 pt single-row, 18 pt when staggered so the lower row clears.
+  var bottomMargin = staggerEnabled ? 18 : 8;
+  var iconY = Math.min(railY + 18, y0 + h - iconSize/2 - bottomMargin);
 
   cams.forEach(function(cam, i){
     var cx = railLeft + 4 + spacing * (i + 1);
@@ -5520,33 +5536,34 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
     doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
     doc.line(cx, railY, cx, iconY - iconSize/2 - 1);
 
-    // Cable ID + length, above the rail at the cam's vertical line
+    // Cable ID above the rail at the cam's vertical line. Pass A.7.5
+    // amended spec: dual-unit length labels descoped from the diagram;
+    // only the C-NN identifier renders here.
     doc.setFont('courier','normal'); doc.setFontSize(5.5);
     doc.setTextColor(60, 60, 80);
     doc.text(cam.__cableId, cx + 1.5, railY - 1);
-    if(cam.__cableLenDisplay && cam.__cableLenDisplay !== '—'){
-      doc.setFontSize(4.8); doc.setTextColor(110, 110, 130);
-      doc.text(cam.__cableLenDisplay, cx + 1.5, railY + 5);
-    }
 
     drawRiserCamIcon(doc, cam, cx, iconY, iconSize);
 
-    // Camera ID below icon
+    // Camera ID label below the icon. Pass A.7.5 staggers odd-indexed
+    // cams to a second row with a thin leader connecting icon to label
+    // (only when staggerEnabled — zone has 4+ cams).
+    var labelBaseline = iconY + iconSize/2 + 6;
+    if(staggerEnabled && (i % 2 === 1)){
+      labelBaseline += STAGGER_PT;
+      doc.setDrawColor(159, 165, 175); doc.setLineWidth(0.3);
+      doc.line(cx, iconY + iconSize/2 + 1, cx, labelBaseline - 4);
+    }
     doc.setFont('courier','bold'); doc.setFontSize(5.5);
     doc.setTextColor(40, 40, 60);
     var lab = cam.label || '';
     if(lab.length > 11) lab = lab.slice(0, 10) + '…';
-    doc.text(lab, cx, iconY + iconSize/2 + 6, {align:'center'});
+    doc.text(lab, cx, labelBaseline, {align:'center'});
   });
 
-  // Dangling cables — visual hint near the rail's left end. Triggered when
-  // there's no head-end anywhere in the project (cascade returned -1 for
-  // any of this band's cams).
-  if(cams.some(function(c){ return c.__servingHeadendZone === -1; })){
-    doc.setFont('courier','italic'); doc.setFontSize(5);
-    doc.setTextColor(180, 32, 44);
-    doc.text('(no head-end)', railLeft + 2, railY - 3);
-  }
+  // (Pass A.7.5: the per-zone "(no head-end)" red italic hint that used to
+  // render here is gone. Single page-level placeholder is rendered by
+  // drawRiserDiagram when no zone has a head-end placed.)
 }
 
 function drawRiserNvrBox(doc, x, y, w, h, channels){

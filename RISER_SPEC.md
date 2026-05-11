@@ -37,6 +37,22 @@ Strict top-to-bottom flow. From top of page to bottom:
 
 Floor 1 / parkade / lower zones go at the bottom. Upper floors / roof go at the top of the bands area (just below the head-end). This mirrors physical building elevation — feels intuitive when reviewing.
 
+## Head-end placeholder
+
+Added 2026-05-11.
+
+When no head-end equipment exists in the project, render exactly one notice in the vertical space where the head-end row would normally appear (between the page header and the first zone band):
+
+- Text: `(Head-end not placed)`
+- Font: Courier, bold, 11 pt (matches riser section-header weight)
+- Color: dark navy — `setTextColor(31, 41, 55)` (matches proposal page text and band labels)
+- Position: centered horizontally in the riser drawing area; vertically centered in the reserved strip above the zone bands
+- No surrounding box, border, or accent line
+
+When at least one zone has a head-end placed, the notice is suppressed; the reserved strip collapses; zone bands fill the full drawing area. Implementation is a single `if(!anyHeadendExists){ … }` branch so the placeholder removes cleanly when head-end becomes a first-class object (queue item 2).
+
+Per-zone "(no head-end)" red italic text from the initial Pass A.7 implementation is removed. The placeholder appears exactly once per page or not at all.
+
 ## Zone grouping
 
 Each camera gets a `zone` field. New camera UI panel needs a "Zone" text input near the existing Tier and Mount Height fields. It's a free-text field with autocomplete that suggests existing zone names already in use on the project (so users naturally cluster onto consistent names).
@@ -62,12 +78,12 @@ Keep the styling consistent with the rest of the tool: Courier New font, dark na
 
 Every cable run on the riser gets labeled. Format: `C-NN` where NN is a two-digit number, sequential project-wide. So a project with 23 cameras has cables C-01 through C-23.
 
-Each cable also shows length in **both units** in brackets:
-- If page was calibrated in feet: `C-04: 38 ft (11.6 m)`
-- If page was calibrated in meters: `C-04: 11.6 m (38 ft)`
-- If the camera's page is uncalibrated: `C-04: —` (no length, but cable still labeled)
+Amended 2026-05-11: Dual-unit length labels descoped from the riser diagram — `C-NN` only. Length is still computed in floor plan view; it is not displayed on the riser for now. May return in a future iteration.
 
-Length comes from the existing cable run length already calculated in the floor plan view (camera position to head-end position, with the existing routing overhead multiplier).
+Previously specified:
+- `C-04: 38 ft (11.6 m)` (page calibrated in feet)
+- `C-04: 11.6 m (38 ft)` (page calibrated in meters)
+- `C-04: —` (page uncalibrated)
 
 Cable lines are thin solid lines connecting the switch to each camera. Don't draw 23 separate lines from the switch — use a vertical trunk line per zone with branches. Looks much cleaner.
 
@@ -77,13 +93,13 @@ Put the equipment schedule directly on the same page as the riser, not on its ow
 
 The schedule is a single table with these columns:
 - ID
-- Type (NVR / Switch / Camera / UPS)
 - Model
-- Zone (cameras only)
-- Cable ID (cameras only)
-- Cable length
 
-Rows are grouped: head-end equipment first (NVR, switches, UPS), then cameras grouped by zone with subheaders for each zone.
+Amended 2026-05-11: Type, Zone, Cable ID, Cable length columns descoped to keep the schedule legible in the 30% page width (Pass A.7 widened the riser drawing to 70%). Zone remains visible via section subheaders. Head-end equipment (NVR / Switch / UPS) rolls into the floor section where the head-end is placed (per Pass A.7 implementation). May return in a future iteration.
+
+Previously specified columns: ID / Type / Model / Zone / Cable ID / Cable length.
+
+Rows are grouped: cameras grouped by floor (page) with section subheaders for each floor; the head-end's floor section also includes NVR/Switch/UPS rows before its cameras.
 
 Page is US Letter portrait. If the schedule overflows, continue it onto a second riser page that contains only the remaining schedule rows (no second copy of the diagram).
 
