@@ -394,6 +394,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 
 .export-opts label { display:block; padding:5px 0; font:700 11px var(--font-ui); color:#1a1a2e; cursor:pointer; user-select:none; }
 .export-opts input[type=checkbox] { margin-right:9px; transform:scale(1.15); accent-color:var(--primary); cursor:pointer; vertical-align:middle; }
+/* Pass A.6: section dividers inside the Export modal. First header in the
+   box has no top border so it sits flush under the modal title. */
+.export-section-hdr { font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em; margin:14px 0 4px; padding-top:10px; border-top:1px solid var(--border); }
+.export-section-hdr:first-of-type { margin-top:6px; padding-top:0; border-top:0; }
+/* Pass A.6: × dismiss button in Export modal top-right. Scoped position
+   to #export-modal so other modals using .modal-box aren't disturbed. */
+#export-modal .modal-box { position:relative; }
+.modal-close-x { position:absolute; top:10px; right:12px; background:transparent; border:none; font:700 22px sans-serif; line-height:1; color:var(--text-muted); cursor:pointer; padding:4px 8px; border-radius:4px; }
+.modal-close-x:hover { color:var(--text); background:var(--surface-soft); }
 
 #zoom-bar { position:absolute; bottom:12px; left:12px; display:flex; gap:4px; z-index:10; }
 #zoom-bar.hidden { display:none; }
@@ -1210,15 +1219,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div class="proj-field full"><label>Scope / Notes</label><textarea id="proj-scope" placeholder="Brief project description, scope of work, special requirements..."></textarea></div>
     </div>
 
-    <h3 style="margin-top:8px;">&#128196; Proposal Sections</h3>
-    <p style="font-size:10px; color:#6b7280; margin-bottom:10px;">Toggle which sections the PDF export includes. Page order is fixed: Cover &rarr; BOM &rarr; Riser &rarr; Floor Plans.</p>
-    <div class="export-opts" style="margin-bottom:10px;">
-      <label><input type="checkbox" id="proj-sec-cover" checked> Cover Page</label>
-      <label><input type="checkbox" id="proj-sec-bom"   checked> Bill of Materials</label>
-      <label><input type="checkbox" id="proj-sec-riser" checked> Riser Diagram</label>
-      <label><input type="checkbox" id="proj-sec-plans" checked> Floor Plan Pages</label>
-    </div>
-
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeProjectModal()">Close</button>
       <button class="btn btn-green" onclick="saveProjectInfo()">Save</button>
@@ -1226,18 +1226,29 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
 </div>
 
-<!-- Export PDF Modal -->
-<div id="export-modal" class="big-modal">
-  <div class="modal-box" style="min-width:380px;">
-    <h3>&#128196; Export PDF</h3>
-    <p style="margin-bottom:10px;">Section toggles live in <b>Project Info &rarr; Proposal Sections</b>. The page order is Cover &rarr; BOM &rarr; Riser &rarr; Floor Plans.</p>
+<!-- Export PDF Modal (Pass A.6: section toggles moved here from Project Info) -->
+<div id="export-modal" class="big-modal" onclick="if(event.target===this) closeExportModal()">
+  <div class="modal-box" style="min-width:420px;">
+    <button class="modal-close-x" onclick="closeExportModal()" title="Close" aria-label="Close">&times;</button>
+    <h3>&#128196; Export Proposal PDF</h3>
+
+    <div class="export-section-hdr">Sections to Include</div>
     <div class="export-opts">
+      <label><input type="checkbox" id="export-cover" oninput="updateExportAllDisabledHint()" checked> Cover Page</label>
+      <label><input type="checkbox" id="export-bom"   oninput="updateExportAllDisabledHint()" checked> Bill of Materials</label>
+      <label><input type="checkbox" id="export-riser" oninput="updateExportAllDisabledHint()" checked> Riser Diagram</label>
+      <label><input type="checkbox" id="export-plans" oninput="updateExportAllDisabledHint()" checked> Floor Plan Pages</label>
+    </div>
+    <p id="export-empty-hint" style="display:none; color:var(--text-muted); font:italic 11px var(--font-ui); margin:4px 0 0;">All sections off &mdash; PDF will contain only page headers.</p>
+
+    <div class="export-section-hdr">Options</div>
+    <div id="export-options-section" class="export-opts">
       <label><input type="checkbox" id="exp-current-only"> Only export the current floor plan page</label>
     </div>
-    <p id="exp-warn" style="color:var(--primary); font-size:10px; display:none; margin-top:8px;"></p>
+
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeExportModal()">Cancel</button>
-      <button class="btn btn-green" id="btn-export-go" onclick="runExportPDF()">Export &rarr;</button>
+      <button class="btn btn-green" id="btn-export-go" onclick="runExportPDF()">Export PDF</button>
     </div>
   </div>
 </div>
@@ -3508,6 +3519,7 @@ document.addEventListener('keydown',function(e){
       if(document.getElementById('calib-dialog').classList.contains('show')){ closeCalibDialog(); return; }
       if(isCalibrationPromptOpen()){ closeCalibrationPrompt(); return; }
       if(document.getElementById('recovery-modal').classList.contains('show')){ discardRecovery(); return; }
+      if(document.getElementById('export-modal').classList.contains('show')){ closeExportModal(); return; }
       if(calibMode){ cancelCalibrationFlow(); }
     }
     // Enter inside the tab-edit modal name field: commit save.
@@ -3528,6 +3540,7 @@ document.addEventListener('keydown',function(e){
     if(document.getElementById('calib-dialog').classList.contains('show')){ closeCalibDialog(); return; }
     if(isCalibrationPromptOpen()){ closeCalibrationPrompt(); return; }
     if(document.getElementById('recovery-modal').classList.contains('show')){ discardRecovery(); return; }
+    if(document.getElementById('export-modal').classList.contains('show')){ closeExportModal(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
     // closeRightPanel handles the camera-selected case (clears selectedId,
@@ -4744,29 +4757,53 @@ document.getElementById('json-input').addEventListener('change', function(e){
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 function openExportModal(){
   if(!pdfLoaded||!pages.length) return;
-  document.getElementById('exp-warn').style.display = 'none';
-  document.getElementById('exp-warn').textContent = '';
+  // Pass A.6: populate section checkboxes from the project's last-saved
+  // settings. `!== false` semantics mean missing fields (legacy projects,
+  // brand-new sessions) default to checked.
+  var sec = projectInfo.proposalSections || {};
+  document.getElementById('export-cover').checked = sec.cover !== false;
+  document.getElementById('export-bom').checked   = sec.bom   !== false;
+  document.getElementById('export-riser').checked = sec.riser !== false;
+  document.getElementById('export-plans').checked = sec.plans !== false;
+  updateExportAllDisabledHint();
   document.getElementById('export-modal').classList.add('show');
 }
 function closeExportModal(){
   document.getElementById('export-modal').classList.remove('show');
 }
 
+// Pass A.6: toggle the subtle "all sections off" hint reactively as the
+// user (un)checks the four section boxes. Soft warning only — Export PDF
+// still proceeds and produces a header-only document.
+function updateExportAllDisabledHint(){
+  var anyOn = ['export-cover','export-bom','export-riser','export-plans']
+    .some(function(id){
+      var el = document.getElementById(id);
+      return el && el.checked;
+    });
+  var hint = document.getElementById('export-empty-hint');
+  if(hint) hint.style.display = anyOn ? 'none' : 'block';
+}
+
 async function runExportPDF(){
-  var sec = (projectInfo.proposalSections) || { cover:true, bom:true, riser:true, plans:true };
+  // Pass A.6: read section checkboxes, persist back to projectInfo, then
+  // proceed. The all-disabled case used to be a hard block; now it's a soft
+  // hint (rendered by updateExportAllDisabledHint) and we let the export run
+  // — the user gets a header-only PDF if that's what they asked for.
   var opts = {
-    cover:       sec.cover !== false,
-    bom:         sec.bom   !== false,
-    riser:       sec.riser !== false,
-    plans:       sec.plans !== false,
+    cover:       document.getElementById('export-cover').checked,
+    bom:         document.getElementById('export-bom').checked,
+    riser:       document.getElementById('export-riser').checked,
+    plans:       document.getElementById('export-plans').checked,
     currentOnly: document.getElementById('exp-current-only').checked
   };
-  if(!opts.cover && !opts.bom && !opts.riser && !opts.plans){
-    var warn = document.getElementById('exp-warn');
-    warn.textContent = 'All proposal sections are disabled in Project Info → Proposal Sections. Enable at least one and try again.';
-    warn.style.display = 'block';
-    return;
-  }
+  projectInfo.proposalSections = {
+    cover: opts.cover,
+    bom:   opts.bom,
+    riser: opts.riser,
+    plans: opts.plans
+  };
+  markDirty();
   closeExportModal();
   if(!pdfLoaded||!pages.length) return;
   showProgress('Generating PDF\u2026',0);
@@ -6284,11 +6321,8 @@ function openProjectModal(){
   document.getElementById('proj-sales').value   = projectInfo.sales || '';
   document.getElementById('proj-company').value = projectInfo.company || '';
   document.getElementById('proj-scope').value   = projectInfo.scope || '';
-  var ps = projectInfo.proposalSections || { cover:true, bom:true, riser:true, plans:true };
-  document.getElementById('proj-sec-cover').checked = ps.cover !== false;
-  document.getElementById('proj-sec-bom').checked   = ps.bom   !== false;
-  document.getElementById('proj-sec-riser').checked = ps.riser !== false;
-  document.getElementById('proj-sec-plans').checked = ps.plans !== false;
+  // Pass A.6: proposalSections toggles moved to the Export modal. The field
+  // itself still lives on projectInfo; we just don't render/edit it here.
   document.getElementById('project-modal').classList.add('show');
 }
 function closeProjectModal(){
@@ -6306,6 +6340,7 @@ function closeHelpModal(){
   document.getElementById('help-modal').classList.remove('show');
 }
 function saveProjectInfo(){
+  // Pass A.6: proposalSections is preserved (edited via Export modal now).
   projectInfo = {
     name:    document.getElementById('proj-name').value,
     ref:     document.getElementById('proj-ref').value,
@@ -6316,12 +6351,7 @@ function saveProjectInfo(){
     sales:   document.getElementById('proj-sales').value,
     company: document.getElementById('proj-company').value,
     scope:   document.getElementById('proj-scope').value,
-    proposalSections: {
-      cover: document.getElementById('proj-sec-cover').checked,
-      bom:   document.getElementById('proj-sec-bom').checked,
-      riser: document.getElementById('proj-sec-riser').checked,
-      plans: document.getElementById('proj-sec-plans').checked
-    }
+    proposalSections: projectInfo.proposalSections || { cover:true, bom:true, riser:true, plans:true }
   };
   markDirty();
   closeProjectModal();
