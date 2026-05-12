@@ -5391,7 +5391,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 14,             // generation tag — autosave was produced by a v14-aware tool (Pass A.7)
+      version: 15,             // generation tag — autosave was produced by a v15-aware tool (Pass Left-Pane M5)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -5602,7 +5602,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 14,
+    version: 15,
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -5705,6 +5705,41 @@ function applyProjectState(data){
   // Pass A.8: readers gained an editable `notes` field in v12. Older saves
   // (v9–v11) don't have it; default to empty so the right-panel input is safe.
   acDevices.forEach(function(dev){ if(typeof dev.notes !== 'string') dev.notes = ''; });
+  // Pass Left-Pane M5 (v15 migration): legacy v14 AC devices were stored
+  // as just {id, page, x, y, model, label, notes}. M3 added per-device
+  // category/subcategory/variantValue/sku metadata for the drill-down.
+  // Reverse-lookup each legacy device's dev.model in BRIVO_CATALOG —
+  // every v14 reader was placed via the 3-tile picker which emitted
+  // only Brivo reader SKUs, and each SKU uniquely identifies the
+  // category / subcategory / variant. This preserves the user's
+  // actual data with zero remediation needed (a Keypad Tri-tech stays
+  // a Keypad Tri-tech across the version boundary).
+  //
+  // Defensive fallback: if dev.model doesn't match any catalog row
+  // (hand-edited save, stale SKU we've since removed), fall back to
+  // Mullion / Dual-tech and log a warning. _legacyAcMigrated still
+  // fires on either path — banner shows once per load.
+  var _legacyAcMigrated = false;
+  var _legacyAcFallbackSku = resolveSku('Readers', 'Mullion', 'Dual-tech');  // 'B-BSMF-B'
+  acDevices.forEach(function(dev){
+    if(dev.category && dev.subcategory && dev.variantValue && dev.sku) return;
+    var row = BRIVO_CATALOG.find(function(r){ return r.sku === dev.model; });
+    if(row){
+      dev.category     = row.category;
+      dev.subcategory  = row.subcategory;
+      dev.variantValue = row.variant_value;
+      dev.sku          = row.sku;
+      // dev.model stays as-is — it was already the correct SKU.
+    } else {
+      try { console.warn('[migration] unknown v14 reader SKU: ' + dev.model); } catch(_){}
+      dev.category     = 'Readers';
+      dev.subcategory  = 'Mullion';
+      dev.variantValue = 'Dual-tech';
+      dev.sku          = _legacyAcFallbackSku;
+      dev.model        = _legacyAcFallbackSku;
+    }
+    _legacyAcMigrated = true;
+  });
   // v9+ persists per-page floor names; v11+ also persists per-page typical-floor
   // config. v8 has no `pages` array — defaults stay. v9/v10 saves have no
   // `typical` field — leave it null so multiplier stays 1.
@@ -5739,6 +5774,18 @@ function applyProjectState(data){
   if(_legacyReachMigrated){
     setTimeout(function(){
       alert('Camera reach values updated to reflect manufacturer specs. FOV cones now scale to real-world coverage.');
+    }, 0);
+  }
+  // Pass Left-Pane M5: AC migration banner. Fires only when at least
+  // one device was backfilled. Once the user re-saves (now v15-shape),
+  // the four metadata fields are present on every device and the
+  // migration loop above no-ops on subsequent loads — banner doesn't
+  // re-fire. If BOTH reach (v13) and AC (v15) migrations ran on the
+  // same load, the user dismisses two banners in sequence (reach first
+  // since its setTimeout was queued first).
+  if(_legacyAcMigrated){
+    setTimeout(function(){
+      alert('AC reader categorization updated. Existing readers preserved with their original SKUs.');
     }, 0);
   }
 }
