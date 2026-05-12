@@ -59,6 +59,8 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 - The HTML file is large — favor targeted `str_replace` edits over rewrites.
 - After any significant edit, do a JS syntax check: `node --check` on the script block.
 
+**Local testing protocol.** Run `python -m http.server 8000` from the project folder and open http://localhost:8000/camera_markup_tool.html for testing. Do NOT open the HTML directly via file:// — Edge caches aggressively at file:// origins and creates phantom bugs where on-disk code disagrees with browser behavior. This has bitten us twice during the scale UI pass and cost real session time.
+
 # General rules
 
 These rules apply to every task in this project unless explicitly overridden.
@@ -89,7 +91,7 @@ Surface uncertainty, don't hide it.
 - **Stack:** single-file vanilla HTML/JS/CSS tool. No build step. No framework. No package.json. No tests.
 - **Main file:** `camera_markup_tool.html` — contains all CSS, HTML, and JS in one file.
 - **Verification command:** `node --check` (on extracted script block). Browser-only; no test suite.
-- **Run locally:** Open the HTML file directly in a browser (file:// URL). No dev server.
+- **Run locally:** Serve via local HTTP — `python -m http.server 8000` from the project folder, then open http://localhost:8000/camera_markup_tool.html. See "Local testing protocol" at top.
 - **Where things live:** Everything is in one file. Convention is `// ─── Section Name ───` comment dividers for navigation.
 - **Conventions worth knowing:**
   - Vanilla JS, `var` declarations (not `let`/`const`). Match existing style.
@@ -198,15 +200,15 @@ State changes that do NOT trigger markDirty (read-only navigation):
 
 When adding new state-change features, audit whether `markDirty()` should fire and add the call at the commit point of the change (after the data model update, before redraw).
 
-### Cache discipline (Edge file:// URL caching)
+### Cache discipline
 
-Edge aggressively caches JavaScript loaded from `file://` URLs. After any code change, the procedure to test reliably is:
+The local testing protocol (HTTP server, see top of file) eliminates most cache issues. If you still see "it didn't take" behavior — function returns wrong value, version banner says old number, behavior unchanged after code change — the diagnostic order is:
 
-1. Close the browser tab entirely
-2. Reopen the file from File Explorer (double-click `camera_markup_tool.html`)
-3. Press Ctrl+Shift+R (hard reload, force-fetches everything from disk)
+1. Hard reload in the localhost tab (Ctrl+Shift+R)
+2. Verify the loaded code matches disk via console: `typeof functionName` returns 'function', or paste a function's .toString() and grep for a known recent change
+3. If still wrong, check that the local server is serving from the right folder (the python -m http.server output shows the cwd)
 
-Without this, console may report functions as undefined, version numbers as the old value, and behavior as unchanged when the source actually IS updated. Always assume "it didn't take" diagnoses are cache before assuming code bugs. Verify via `typeof functionName` in console.
+If testing via file:// for any reason (don't, but if forced): close tab, reopen from File Explorer, hard-reload. Edge caches file:// origins aggressively. This cost us two debug rounds during Pass Scale UI.
 
 ### Math constants — use existing ones
 
