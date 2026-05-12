@@ -566,14 +566,59 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .brand-hwa    { background:linear-gradient(135deg,#1e40af 0%,#1e3a8a 100%); }
 .brand-custom { background:linear-gradient(135deg,#6b7280 0%,#374151 100%); color:#fff; }
 
-#model-info { font-size:9px; color:#374151; padding:6px 8px; background:#f9fafb; border-radius:3px; border:1px solid #e5e7eb; line-height:1.4; margin-bottom:9px; min-height:32px; }
-#model-info.empty { color:#9ca3af; font-style:italic; }
-#model-info b { color:var(--primary); }
-#model-info .clear-model { float:right; color:#9ca3af; cursor:pointer; font-size:11px; padding:0 4px; }
-#model-info .clear-model:hover { color:var(--primary); }
+/* ── Pass Left-Pane: drill-down tiers + breadcrumb ──────── */
+.lp-tier-row { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-bottom:6px; }
+.lp-breadcrumb { font:500 9px var(--font-ui); color:var(--text-faint); letter-spacing:.03em; padding:0 2px; margin-bottom:6px; min-height:11px; line-height:1.3; }
+.lp-breadcrumb b { color:var(--text-muted); font-weight:700; }
 
-/* ── Camera style buttons (with flat SVG icons) ──────────── */
-#type-row { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-bottom:9px; }
+.tier2-tile {
+  padding:7px 4px 5px; border:2px solid var(--border); border-radius:4px; background:#fff;
+  font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
+  cursor:pointer; text-align:center; color:#6b7280;
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  transition:all .12s;
+}
+.tier2-tile:hover { background:#f9fafb; }
+.tier2-tile .ts-icon { width:22px; height:22px; }
+.tier2-tile.active-dome    { border-color:var(--dome);    background:#fff1f1; color:var(--dome); }
+.tier2-tile.active-bullet  { border-color:var(--bullet);  background:#eff6ff; color:var(--bullet); }
+.tier2-tile.active-turret  { border-color:var(--turret);  background:#ecfeff; color:var(--turret); }
+.tier2-tile.active-fisheye { border-color:var(--fisheye); background:#f0fdf4; color:var(--fisheye); }
+.tier2-tile.active-ptz     { border-color:var(--ptz);     background:#f5f3ff; color:var(--ptz); }
+.tier2-tile.active-lpr     { border-color:var(--lpr);     background:#fffbeb; color:var(--lpr); }
+/* Generic active treatment for AC Tier 2 / Tier 3 tiles. Per M3 icons
+   addendum acceptance #3: navy fill + white text/icon when active,
+   white bg + grey border + dark icon when inactive (inherited from the
+   .tier2-tile base rule above). #1d4ed8 matches the reader fill color
+   used by drawReader and the .dot-reader badge. */
+.tier2-tile.active         { border-color:#1d4ed8; background:#1d4ed8; color:#fff; }
+
+/* AC Tier 1 brand grid — same column layout as camera brand grid. */
+#ac-brand-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px; }
+
+/* Inline variant default — single row under the active Tier 3 leaf. */
+#lp-ac-variant { margin:4px 0 8px; min-height:0; }
+.ac-variant-row { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#f9fafb; border:1px solid var(--border); border-radius:4px; font:11px var(--font-ui); }
+.ac-variant-row label { color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; font:700 9px var(--font-ui); }
+.ac-variant-row select { flex:1; padding:5px 8px; border:1px solid var(--border); border-radius:4px; font:600 11px var(--font-ui); background:#fff; }
+.ac-variant-row select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 2px var(--primary-faint); }
+
+.lp-tier3-list { max-height:200px; overflow-y:auto; margin-bottom:8px; border:1px solid var(--border); border-radius:3px; background:#fff; }
+.tier3-row {
+  display:grid; grid-template-columns:14px 1fr auto; gap:8px; align-items:center;
+  padding:6px 8px; cursor:pointer; border-bottom:1px solid #f3f4f6;
+  font:11px var(--font-ui); transition:background .1s;
+}
+.tier3-row:last-child { border-bottom:none; }
+.tier3-row:hover { background:#f9fafb; }
+.tier3-row.active { background:#eff6ff; outline:2px solid var(--blue); outline-offset:-2px; }
+.tier3-row .t3-radio { font-size:13px; color:#9ca3af; text-align:center; }
+.tier3-row.active .t3-radio { color:var(--blue); }
+.tier3-row .t3-name { font-weight:700; color:#111; font-family:var(--font-mono); }
+.tier3-row .t3-spec { font:700 9px var(--font-ui); color:#9ca3af; text-align:right; white-space:nowrap; }
+
+/* CMVR head-end placement — relocated from the old #type-row. Charcoal-
+   accented to match the canvas head-end marker. */
 .type-btn {
   padding:7px 4px 5px; border:2px solid var(--border); border-radius:4px; background:#fff;
   font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
@@ -583,15 +628,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 }
 .type-btn:hover { background:#f9fafb; }
 .type-btn .ts-icon { width:22px; height:22px; }
-.type-btn.active-dome    { border-color:var(--dome);    background:#fff1f1; color:var(--dome); }
-.type-btn.active-bullet  { border-color:var(--bullet);  background:#eff6ff; color:var(--bullet); }
-.type-btn.active-turret  { border-color:var(--turret);  background:#ecfeff; color:var(--turret); }
-.type-btn.active-fisheye { border-color:var(--fisheye); background:#f0fdf4; color:var(--fisheye); }
-.type-btn.active-ptz     { border-color:var(--ptz);     background:#f5f3ff; color:var(--ptz); }
-.type-btn.active-lpr     { border-color:var(--lpr);     background:#fffbeb; color:var(--lpr); }
-/* CMVR / NVR is a head-end placement entry point, styled charcoal to match the canvas head-end marker. */
 .type-btn-cmvr { font-size:7.5px; }
 .type-btn-cmvr.active     { border-color:#1e3a8a;        background:#eef2ff; color:#1e3a8a; }
+#lp-cmvr-row { margin:6px 0 9px; }
+#lp-cmvr-row .type-btn-cmvr { width:100%; padding:8px 6px 6px; }
 
 /* ── Style filter chips (in modal) ───────────────────────── */
 #style-filter-row { display:flex; gap:5px; margin-bottom:14px; flex-wrap:wrap; }
@@ -684,24 +724,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #panel[data-mode="cameras"] .panel-body[data-mode-section="access"] { display:none; }
 #panel[data-mode="access"]  .panel-body[data-mode-section="cameras"] { display:none; }
 
-/* ── Access Control: reader picker tree ──────────────────── */
+/* ── Access Control: drill-down container ──────────────────────────────── */
 #ac-controls { padding:12px 16px; border-bottom:1px solid var(--border); }
-/* Reader form-factor tiles — mirrors .brand-tile aesthetic. Each tile also
-   carries .ac-model so the existing pickReader iteration keeps working. */
-#reader-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
-.reader-tile {
-  border:1.5px solid var(--border); border-radius:6px; background:#fff;
-  padding:10px 6px 8px; cursor:pointer;
-  display:flex; flex-direction:column; align-items:center; gap:4px;
-  transition:background-color .15s, border-color .15s, box-shadow .15s, transform .1s;
-}
-.reader-tile:hover:not(.active) { border-color:#9ca3af; background:var(--surface-soft); transform:translateY(-1px); }
-.reader-tile.active { border-color:var(--primary); background:var(--primary-faint); color:var(--primary); box-shadow:0 0 0 2px rgba(29,78,216,.12); }
-.reader-tile-icon { width:24px; height:24px; color:var(--text-muted); }
-.reader-tile.active .reader-tile-icon { color:var(--primary); }
-.reader-tile-label { font:700 10px var(--font-ui); text-transform:uppercase; letter-spacing:.04em; color:var(--text); text-align:center; }
-.reader-tile.active .reader-tile-label { color:var(--primary); }
-.reader-tile-sub { font:500 9px var(--font-ui); color:var(--text-faint); text-align:center; }
 .reader-hint { font:11px var(--font-ui); color:var(--text-muted); line-height:1.5; margin-top:8px; }
 
 #ac-list { flex:1; overflow-y:auto; }
@@ -836,55 +860,47 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="panel-body" data-mode-section="cameras">
     <div class="phdr">Camera Model</div>
     <div id="controls">
-      <!-- Brand picker grid -->
+      <!-- Pass Left-Pane: Tier 1 manufacturer tiles. .brand-tile class
+           reused from the previous flow (D2). Clicks route through
+           lpPickCamerasBrand which sets currentBrand and re-renders the
+           drill-down. "Other" Tier 1 single-clicks to a generic-camera
+           placement (no Tier 2/3 expansion) per brief acceptance #8. -->
       <div id="brand-grid">
-        <div class="brand-tile" data-brand="custom" onclick="openBrand('custom')">
-          <div class="brand-logo brand-custom">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 4v16M4 12h16"/></svg>
-          </div>
-          <div class="brand-name">Custom</div>
-        </div>
-        <div class="brand-tile" data-brand="een" onclick="openBrand('een')">
+        <div class="brand-tile" data-brand="een" onclick="lpPickCamerasBrand('een')">
           <div class="brand-logo brand-een">EE</div>
           <div class="brand-name">Eagle Eye</div>
         </div>
-        <div class="brand-tile" data-brand="hwa" onclick="openBrand('hwa')">
+        <div class="brand-tile" data-brand="hwa" onclick="lpPickCamerasBrand('hwa')">
           <div class="brand-logo brand-hwa">HW</div>
           <div class="brand-name">Hanwha</div>
         </div>
+        <div class="brand-tile" data-brand="other" onclick="lpPickCamerasBrand('other')">
+          <div class="brand-logo brand-custom">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 4v16M4 12h16"/></svg>
+          </div>
+          <div class="brand-name">Other</div>
+        </div>
       </div>
+      <!-- Breadcrumb between Tier 1 and Tier 2. -->
+      <div class="lp-breadcrumb" id="lp-bc1"></div>
 
-      <div id="model-info" class="empty">Select a manufacturer to browse models, or use Custom for manual specs.</div>
+      <!-- Tier 2 style tiles, dynamically rendered. Hidden when brand=other. -->
+      <div id="lp-tier2-cameras" class="lp-tier-row"></div>
+      <!-- Breadcrumb between Tier 2 and Tier 3. -->
+      <div class="lp-breadcrumb" id="lp-bc2"></div>
 
-      <div id="type-row">
-        <div class="type-btn active-dome" id="tb-dome"   onclick="setType('dome')" title="Dome">
-          <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 16h18a9 9 0 0 0-18 0z"/><circle cx="12" cy="11" r="3" fill="currentColor"/></svg>
-          Dome
-        </div>
-        <div class="type-btn" id="tb-bullet" onclick="setType('bullet')" title="Bullet">
-          <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="14" height="6" rx="1.5"/><circle cx="17" cy="12" r="2" fill="currentColor"/><path d="M9 9V7M9 17v-2"/></svg>
-          Bullet
-        </div>
-        <div class="type-btn" id="tb-turret" onclick="setType('turret')" title="Turret / Eyeball">
-          <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17a7 7 0 0 1 14 0z"/><circle cx="12" cy="11" r="4" fill="currentColor" stroke="none"/><circle cx="13" cy="10" r="1.2" fill="#fff" stroke="none"/></svg>
-          Turret
-        </div>
-        <div class="type-btn" id="tb-fisheye" onclick="setType('fisheye')" title="Fisheye / 360°">
-          <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="#fff" stroke="none"/></svg>
-          Fisheye
-        </div>
-        <div class="type-btn" id="tb-ptz" onclick="setType('ptz')" title="PTZ">
-          <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
-          PTZ
-        </div>
-        <div class="type-btn" id="tb-lpr" onclick="setType('lpr')" title="LPR / License Plate">
-          <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="9" rx="1.5"/><path d="M7 12h2M11 12h2M15 12h2"/></svg>
-          LPR
-        </div>
-        <div class="type-btn type-btn-cmvr" id="tb-cmvr" onclick="startHeadendPlacement()" title="Place CMVR / NVR head-end on this page">
+      <!-- Tier 3 model list, dynamically rendered. Hidden when brand=other. -->
+      <div id="lp-tier3-cameras" class="lp-tier3-list"></div>
+
+      <!-- Pass Left-Pane: CMVR head-end placement relocated from the old
+           #type-row (which was deleted with the style buttons). Standalone
+           control below the drill-down. The Tools menu's "Place Head-End"
+           (id=btn-headend) is the same entry point. Either path works. -->
+      <div id="lp-cmvr-row">
+        <button class="type-btn type-btn-cmvr" id="tb-cmvr" onclick="startHeadendPlacement()" title="Place CMVR / NVR head-end on this page">
           <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><circle cx="8" cy="7" r=".7" fill="currentColor"/><circle cx="8" cy="17" r=".7" fill="currentColor"/><path d="M12 7h4M12 17h4"/></svg>
           CMVR / NVR
-        </div>
+        </button>
       </div>
       <!-- Editable detail fields (Label / Resolution / Angle / FOV / Reach /
            Mount / Notes) live in #right-panel now. Tier and Floor remain
@@ -972,41 +988,40 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </div><!-- /panel-body cameras -->
 
     <div class="panel-body" data-mode-section="access">
-      <div class="phdr">Brivo Smart Reader</div>
+      <div class="phdr">AC Equipment</div>
       <div id="ac-controls">
-        <div id="reader-grid">
-          <div class="reader-tile ac-model" data-model="B-BSMF-B" onclick="pickReader('B-BSMF-B')" title="B-BSMF-B">
-            <svg viewBox="0 0 24 24" class="reader-tile-icon" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="9" y="2" width="6" height="20" rx="1.5"/>
-              <circle cx="12" cy="8" r="1.2" fill="currentColor"/>
-            </svg>
-            <div class="reader-tile-label">Mullion</div>
-            <div class="reader-tile-sub">Dual-tech</div>
+        <!-- Pass Left-Pane M3: Tier 1 — Brivo / Other. .brand-tile class
+             reused for visual consistency with the cameras drill-down.
+             setActiveBrandTile is scoped to #brand-grid so it does not
+             touch these AC tiles. -->
+        <div id="ac-brand-grid">
+          <div class="brand-tile" data-brand="brivo" onclick="lpPickAcBrand('brivo')">
+            <div class="brand-logo brand-hwa" style="background:linear-gradient(135deg,#0e7490 0%,#0c4a6e 100%);">BR</div>
+            <div class="brand-name">Brivo</div>
           </div>
-          <div class="reader-tile ac-model" data-model="B-BSSF-B" onclick="pickReader('B-BSSF-B')" title="B-BSSF-B">
-            <svg viewBox="0 0 24 24" class="reader-tile-icon" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="4" y="4" width="16" height="16" rx="1.5"/>
-              <circle cx="12" cy="9" r="1.4" fill="currentColor"/>
-              <path d="M7 14h10"/>
-            </svg>
-            <div class="reader-tile-label">Single-Gang</div>
-            <div class="reader-tile-sub">Dual-tech</div>
-          </div>
-          <div class="reader-tile ac-model" data-model="B-BSKF-B" onclick="pickReader('B-BSKF-B')" title="B-BSKF-B">
-            <svg viewBox="0 0 24 24" class="reader-tile-icon" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="4" y="3" width="16" height="18" rx="1.5"/>
-              <path d="M7 7h10"/>
-              <circle cx="9" cy="11.5" r=".7" fill="currentColor"/><circle cx="12" cy="11.5" r=".7" fill="currentColor"/><circle cx="15" cy="11.5" r=".7" fill="currentColor"/>
-              <circle cx="9" cy="14.5" r=".7" fill="currentColor"/><circle cx="12" cy="14.5" r=".7" fill="currentColor"/><circle cx="15" cy="14.5" r=".7" fill="currentColor"/>
-              <circle cx="9" cy="17.5" r=".7" fill="currentColor"/><circle cx="12" cy="17.5" r=".7" fill="currentColor"/><circle cx="15" cy="17.5" r=".7" fill="currentColor"/>
-            </svg>
-            <div class="reader-tile-label">Keypad</div>
-            <div class="reader-tile-sub">Dual-tech</div>
+          <div class="brand-tile" data-brand="other" onclick="lpPickAcBrand('other')">
+            <div class="brand-logo brand-custom">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 4v16M4 12h16"/></svg>
+            </div>
+            <div class="brand-name">Other</div>
           </div>
         </div>
-        <p class="reader-hint">Brivo readers shown in black only. Click a form factor, then click on the floor plan to place.</p>
+        <div class="lp-breadcrumb" id="lp-ac-bc1"></div>
+
+        <!-- Tier 2 — Readers / Controllers. Dynamically rendered. -->
+        <div id="lp-ac-tier2" class="lp-tier-row"></div>
+        <div class="lp-breadcrumb" id="lp-ac-bc2"></div>
+
+        <!-- Tier 3 — leaves per subcategory. Dynamically rendered. -->
+        <div id="lp-ac-tier3" class="lp-tier-row"></div>
+
+        <!-- Inline variant default dropdown for the active Tier 3 leaf.
+             Empty for leaves with no variant axis (ACS300). -->
+        <div id="lp-ac-variant"></div>
+
+        <p class="reader-hint" id="ac-hint">Pick a Brivo device — click on the floor plan to place.</p>
       </div>
-      <div class="phdr">Readers &nbsp;<span id="ac-count" style="color:#9ca3af;font-weight:400"></span></div>
+      <div class="phdr">AC Devices &nbsp;<span id="ac-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="ac-list"></div>
     </div>
 
@@ -1585,6 +1600,14 @@ var tabOrder = null;
 
 // ─── Access Control State ────────────────────────────────────────────────────
 // Brivo Smart Reader catalog. Black-only (white discontinued).
+//
+// Pass Left-Pane: BRIVO_READERS is the canvas-render lookup (mount/keypad
+// shape feed drawReader / readerAt). BRIVO_CATALOG below is the drill-down
+// + variant-resolution lookup (manufacturer/category/subcategory/variant/
+// sku/name). When adding a new reader SKU, update BOTH structures — the
+// startup assertion (_verifyBrivoSchemas) catches drift and console.errors
+// if a BRIVO_READERS key is missing from BRIVO_CATALOG or has a mismatched
+// subcategory.
 var BRIVO_READERS = {
   'B-BSPMF-B': {model:'B-BSPMF-B', mount:'mullion',    keypad:false, tech:'tri',  desc:'Mullion · Tri-tech (Mobile + Smart + Prox 125 kHz) · OSDP · Black'},
   'B-BSMF-B':  {model:'B-BSMF-B',  mount:'mullion',    keypad:false, tech:'dual', desc:'Mullion · Dual-tech (Mobile + Smart 13.56 MHz) · OSDP · Black'},
@@ -1593,10 +1616,134 @@ var BRIVO_READERS = {
   'B-BSPKF-B': {model:'B-BSPKF-B', mount:'singlegang', keypad:true,  tech:'tri',  desc:'Single-gang · Tri-tech + Keypad · OSDP · Black'},
   'B-BSKF-B':  {model:'B-BSKF-B',  mount:'singlegang', keypad:true,  tech:'dual', desc:'Single-gang · Dual-tech + Keypad · OSDP · Black'}
 };
+
+// Pass Left-Pane: full Brivo catalog driving the AC drill-down. Flat list,
+// one row per SKU. (manufacturer, category, subcategory, variant_axis,
+// variant_value) uniquely identify each row. Source of truth for variant
+// resolution at placement time (M3) and the right-panel SKU override (M4).
+// ACS300 has no variant axis (single SKU) — variant_axis/variant_value null.
+var BRIVO_CATALOG = [
+  // Readers / Mullion / Technology
+  { manufacturer:'Brivo', category:'Readers', subcategory:'Mullion', variant_axis:'Technology',  variant_value:'Dual-tech',    sku:'B-BSMF-B',          name:'Brivo Reader Mullion Mount Dual-Technology (black)' },
+  { manufacturer:'Brivo', category:'Readers', subcategory:'Mullion', variant_axis:'Technology',  variant_value:'Tri-tech',     sku:'B-BSPMF-B',         name:'Brivo Reader Mullion Mount Tri-Technology (black)' },
+  // Readers / Single / Technology
+  { manufacturer:'Brivo', category:'Readers', subcategory:'Single',  variant_axis:'Technology',  variant_value:'Dual-tech',    sku:'B-BSSF-B',          name:'Brivo Reader Single Gang Dual-Technology (black)' },
+  { manufacturer:'Brivo', category:'Readers', subcategory:'Single',  variant_axis:'Technology',  variant_value:'Tri-tech',     sku:'B-BSPSF-B',         name:'Brivo Reader Single Gang Tri-Technology (black)' },
+  // Readers / Keypad / Technology
+  { manufacturer:'Brivo', category:'Readers', subcategory:'Keypad',  variant_axis:'Technology',  variant_value:'Dual-tech',    sku:'B-BSKF-B',          name:'Brivo Reader Keypad Dual-Technology (black)' },
+  { manufacturer:'Brivo', category:'Readers', subcategory:'Keypad',  variant_axis:'Technology',  variant_value:'Tri-tech',     sku:'B-BSPKF-B',         name:'Brivo Reader Keypad Tri-Technology (black)' },
+  // Controllers / ACS6100 / Capacity
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS6100', variant_axis:'Capacity',    variant_value:'Regular',      sku:'B-ACS6100R-E',     name:'Brivo ACS6100 Regular Controller' },
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS6100', variant_axis:'Capacity',    variant_value:'Large',        sku:'B-ACS6100L-E',     name:'Brivo ACS6100 Large Controller' },
+  // Controllers / ACS300 / (no variant)
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS300',  variant_axis:null,          variant_value:null,           sku:'B-ACS300-E-B',     name:'Brivo ACS300 Controller' },
+  // Controllers / SDC / Housing
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'SDC',     variant_axis:'Housing',     variant_value:'bare',         sku:'B-ACS-SDC-E',      name:'Brivo SDC Controller (bare)' },
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'SDC',     variant_axis:'Housing',     variant_value:'in Enclosure', sku:'B-ACS-SDC-E-ENC',  name:'Brivo SDC Controller (in Enclosure)' },
+  // Controllers / ACS100 / Form factor (Tri-tech only). Categorized as
+  // Controller in the Left Pane but behaves like a Reader on placement
+  // and riser per acceptance criterion 16 (signoff: Reading A — canvas
+  // zones only this pass; PDF riser stays AC-empty until queue item 4).
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Mullion',      sku:'B-ACS100-E-BSPM-B', name:'Brivo ACS100 Controller + Mullion Reader' },
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Single',       sku:'B-ACS100-E-BSPS-B', name:'Brivo ACS100 Controller + Single Gang Reader' },
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Keypad',       sku:'B-ACS100-E-BSPK-B', name:'Brivo ACS100 Controller + Keypad Reader' }
+];
+
+// Pass Left-Pane: project-wide variant defaults per subcategory. Used by
+// the inline Tier 3 dropdown (M3) and the right-panel override (M4).
+// Per brief: Mullion → Tri-tech, Single → Tri-tech, Keypad → Dual-tech,
+// ACS6100 → Regular, SDC → in Enclosure, ACS100 → Mullion. ACS300 omitted
+// (no variant axis). Single source of truth for new-project init and
+// v14 → v15 backfill.
+var DEFAULT_AC_DEFAULTS = {
+  Mullion:  'Tri-tech',
+  Single:   'Tri-tech',
+  Keypad:   'Dual-tech',
+  ACS6100:  'Regular',
+  SDC:      'in Enclosure',
+  ACS100:   'Mullion'
+};
+
+// Pass Left-Pane: fresh shallow clone of DEFAULT_AC_DEFAULTS. Used at three
+// sites — initial projectInfo literal, applyProjectState v14 backfill, and
+// saveProjectInfo (preserves the field through the modal save). Returning
+// a copy (not a reference) so per-project edits via the M3 dropdown don't
+// mutate the constant.
+function cloneAcDefaults(){
+  var o = {};
+  for(var k in DEFAULT_AC_DEFAULTS){
+    if(DEFAULT_AC_DEFAULTS.hasOwnProperty(k)) o[k] = DEFAULT_AC_DEFAULTS[k];
+  }
+  return o;
+}
+
+// Pass Left-Pane: variant lookup helpers. Used by M3 left-pane render,
+// M4 right-panel override dropdown, and placement code.
+function variantAxisFor(category, subcategory){
+  for(var i = 0; i < BRIVO_CATALOG.length; i++){
+    var row = BRIVO_CATALOG[i];
+    if(row.category === category && row.subcategory === subcategory){
+      return row.variant_axis;
+    }
+  }
+  return null;
+}
+
+function variantValuesFor(category, subcategory){
+  var values = [];
+  BRIVO_CATALOG.forEach(function(row){
+    if(row.category === category && row.subcategory === subcategory && row.variant_value != null){
+      if(values.indexOf(row.variant_value) === -1) values.push(row.variant_value);
+    }
+  });
+  return values;
+}
+
+function resolveSku(category, subcategory, variantValue){
+  for(var i = 0; i < BRIVO_CATALOG.length; i++){
+    var row = BRIVO_CATALOG[i];
+    if(row.category !== category || row.subcategory !== subcategory) continue;
+    if(row.variant_axis == null) return row.sku;
+    if(row.variant_value === variantValue) return row.sku;
+  }
+  return null;
+}
+
+// Pass Left-Pane: startup assertion. BRIVO_READERS feeds canvas rendering
+// (mount/keypad shape); BRIVO_CATALOG feeds drill-down + variant resolution.
+// When the two drift (someone adds a new reader SKU to one but not the
+// other), canvas placement silently falls back to the singlegang default —
+// easy to miss. Console.error per drift, don't throw — degraded rendering
+// is better than a broken tool while the user is mid-quote.
+(function _verifyBrivoSchemas(){
+  Object.keys(BRIVO_READERS).forEach(function(sku){
+    var r = BRIVO_READERS[sku];
+    var cat = null;
+    for(var i = 0; i < BRIVO_CATALOG.length; i++){
+      if(BRIVO_CATALOG[i].sku === sku){ cat = BRIVO_CATALOG[i]; break; }
+    }
+    if(!cat){
+      console.error('[brivo] BRIVO_READERS sku ' + sku + ' missing from BRIVO_CATALOG. Add a row or remove the legacy entry.');
+      return;
+    }
+    var expected = r.mount === 'mullion' ? 'Mullion' : (r.keypad ? 'Keypad' : 'Single');
+    if(cat.subcategory !== expected){
+      console.error('[brivo] BRIVO_READERS sku ' + sku + ' subcategory mismatch — BRIVO_READERS implies "' + expected + '", BRIVO_CATALOG says "' + cat.subcategory + '".');
+    }
+  });
+})();
 var acDevices = [];           // [{id, page, x, y, model, label}]
 var acSelectedId = null;
 var acCounters = {};          // pageIdx -> next counter
 var currentReaderModel = null;
+// Pass Left-Pane M3: AC drill-down state. currentReaderModel (above)
+// remains the armed SKU; these three name the drill-down path that
+// resolved to it. Persisted per-placement on each acDevice as
+// category/subcategory/variantValue/sku (cam.model = cam.sku for
+// canvas-render compat).
+var currentACBrand       = null;       // 'brivo' | 'other' | null (no init)
+var currentACCategory    = null;       // 'Readers' | 'Controllers'
+var currentACSubcategory = null;       // matches BRIVO_CATALOG.subcategory
 // Tracks the last form-factor the user armed in AC mode. Used to restore
 // their pick when re-entering AC mode after the current SKU has been cleared.
 // Default chosen as the "neutral" Mullion dual-tech.
@@ -1618,7 +1765,10 @@ var bomTierFilter = 'all';
 var projectInfo = {
   name:'', ref:'', client:'', address:'', date:'', valid:'',
   sales:'', company:'', scope:'',
-  proposalSections: { cover:true, bom:true, riser:true, plans:true }
+  proposalSections: { cover:true, bom:true, riser:true, plans:true },
+  // Pass Left-Pane: project-wide variant defaults for the AC drill-down.
+  // Persisted in the JSON save (proposed v15 — version bump in M5).
+  acDefaults: cloneAcDefaults()
 };
 
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -1641,17 +1791,23 @@ var BRAND_META = {
   custom: { name:'Custom Camera', short:'+',      prefix:null,    cssClass:'brand-custom' }
 };
 
-var currentBrand = null;        // the brand being browsed in the modal
-var currentStyleFilter = 'all'; // active filter chip
+var currentBrand = null;        // active Tier 1 — 'een' | 'hwa' | 'other' (set by init IIFE)
+var currentStyleFilter = 'all'; // legacy modal filter chip (modal removed in M6)
 var currentModelKey = null;     // currently picked model for next placement
 
 function openBrand(brandKey){
-  if(brandKey === 'custom'){
+  // Pass Left-Pane: legacy modal entry point. New UI calls
+  // lpPickCamerasBrand instead; this function survives only until M6
+  // deletes #brand-modal entirely. Null-guarded so it tolerates removal
+  // of the old #model-info element.
+  if(brandKey === 'custom' || brandKey === 'other'){
     currentModelKey = null;
-    // Clear selected model and let user use manual specs
-    document.getElementById('model-info').innerHTML = '<b>Custom Camera</b> — using manual specs above';
-    document.getElementById('model-info').className = '';
-    setActiveBrandTile('custom');
+    var miEl = document.getElementById('model-info');
+    if(miEl){
+      miEl.innerHTML = '<b>Custom Camera</b> — using manual specs above';
+      miEl.className = '';
+    }
+    setActiveBrandTile('other');
     if(selectedId){
       var cam = cameras.find(function(c){return c.id===selectedId;});
       if(cam){ cam.model = null; redraw(); updateList(); }
@@ -1735,11 +1891,24 @@ function renderBrandModelList(){
   list.innerHTML = html;
 }
 
-function pickModel(key){
+// Pass Left-Pane M2-fix2: pickModel was a single function doing both
+// "arm next placement" (state only) AND "apply this model to the
+// currently-selected camera" (cam mutation). The drill-down tile clicks
+// (lpPickCamerasBrand / lpPickCamerasStyle) call the arming path to set
+// up the next click — but they should NOT retroactively flip the
+// selected camera's model. M2 first-cut bug: placing an EE camera
+// auto-selected it, then clicking the Hanwha Tier 1 tile silently
+// flipped that placed camera's model from EE-PD01 to a HWA SKU (with
+// the original EAG-* label preserved). See the new CLAUDE.md
+// "Drill-down arming vs model assignment" pitfall note.
+//
+// armModel(key) — state only. Sets currentModelKey, currentType,
+// repopulates the input fields, repaints Tier 1/2/3. Safe to call from
+// any arming path even with a camera selected.
+function armModel(key){
   var spec = CAMERA_DB[key];
   if(!spec) return;
   currentModelKey = key;
-  // Apply specs to controls
   setType(spec.type, true);
   document.getElementById('inp-resolution').value = nearestRes(spec.hPx);
   document.getElementById('inp-fov').value = Math.max(20, Math.min(180, spec.fov));
@@ -1747,46 +1916,75 @@ function pickModel(key){
   if(!notesEl.value.trim()) notesEl.value = spec.desc;
   syncLabels();
 
-  // Update info panel
-  document.getElementById('model-info').className = '';
-  document.getElementById('model-info').innerHTML =
-    '<span class="clear-model" onclick="clearModel()" title="Clear">&times;</span>'+
-    '<b>'+spec.brand+' '+spec.model+'</b><br>'+escapeHtml(spec.desc);
-  setActiveBrandTile(key.indexOf('een-')===0 ? 'een' : (key.indexOf('hwa-')===0 ? 'hwa' : null));
-
-  // Apply to selected camera
-  if(selectedId){
-    var cam = cameras.find(function(c){return c.id===selectedId;});
-    if(cam){
-      cam.type = spec.type;
-      cam.resolution = parseInt(document.getElementById('inp-resolution').value);
-      cam.fov = parseInt(document.getElementById('inp-fov').value);
-      cam.model = key;
-      // Pass C: reset reach to the new model's spec value when the user picks
-      // a different model — keeps the cone tied to the chosen camera's specs.
-      cam.reachM = cameraSpecReachM(key);
-      configureReachSlider(cam);
-      if(!cam.notes) cam.notes = spec.desc;
-      markDirty();
-      redraw(); updateList(); updateDoriInfo();
-    }
+  var miEl2 = document.getElementById('model-info');
+  if(miEl2){
+    miEl2.className = '';
+    miEl2.innerHTML =
+      '<span class="clear-model" onclick="clearModel()" title="Clear">&times;</span>'+
+      '<b>'+spec.brand+' '+spec.model+'</b><br>'+escapeHtml(spec.desc);
   }
+  setActiveBrandTile(key.indexOf('een-')===0 ? 'een' : (key.indexOf('hwa-')===0 ? 'hwa' : null));
+  if(typeof renderLeftPaneDrillDown === 'function') renderLeftPaneDrillDown('cameras');
+}
+
+// applyModelToSelected(key) — mutates the currently-selected camera's
+// type / resolution / fov / model / reachM / notes (when notes empty).
+// No-op when there's no selection or the key isn't in CAMERA_DB. Called
+// from pickModel (modal flow) and lpPickCamerasModel (Tier 3 click)
+// where the user is explicitly choosing a model FOR the selection.
+function applyModelToSelected(key){
+  if(!selectedId) return;
+  var spec = CAMERA_DB[key];
+  if(!spec) return;
+  var cam = cameras.find(function(c){return c.id===selectedId;});
+  if(!cam) return;
+  cam.type = spec.type;
+  cam.resolution = parseInt(document.getElementById('inp-resolution').value);
+  cam.fov = parseInt(document.getElementById('inp-fov').value);
+  cam.model = key;
+  // Pass C: reset reach to the new model's spec value when the user picks
+  // a different model — keeps the cone tied to the chosen camera's specs.
+  cam.reachM = cameraSpecReachM(key);
+  configureReachSlider(cam);
+  if(!cam.notes) cam.notes = spec.desc;
+  markDirty();
+  redraw(); updateList(); updateDoriInfo();
+}
+
+// pickModel(key) — legacy/composite entry point. Arms + applies to
+// selection + closes the brand modal. Kept for the legacy modal click
+// (renderBrandModelList → onclick="pickModel(...)") and the Tier 3
+// click via lpPickCamerasModel. Tile-arming paths must NOT call this;
+// use armModel directly.
+function pickModel(key){
+  armModel(key);
+  applyModelToSelected(key);
   closeBrandModal();
 }
 
 function clearModel(){
   currentModelKey = null;
-  document.getElementById('model-info').className = 'empty';
-  document.getElementById('model-info').textContent = 'Select a manufacturer to browse models, or use Custom for manual specs.';
+  // Pass Left-Pane: null-guarded — #model-info element removed from DOM
+  // (callers may still invoke clearModel from console or legacy markup).
+  var miEl3 = document.getElementById('model-info');
+  if(miEl3){
+    miEl3.className = 'empty';
+    miEl3.textContent = 'Select a manufacturer to browse models, or use Custom for manual specs.';
+  }
   setActiveBrandTile(null);
   if(selectedId){
     var cam = cameras.find(function(c){return c.id===selectedId;});
     if(cam){ cam.model = null; redraw(); updateList(); }
   }
+  if(typeof renderLeftPaneDrillDown === 'function') renderLeftPaneDrillDown('cameras');
 }
 
 function setActiveBrandTile(brand){
-  document.querySelectorAll('.brand-tile').forEach(function(t){
+  // Pass Left-Pane M3: scoped to the cameras Tier 1 grid so it doesn't
+  // touch #ac-brand-grid's .brand-tile elements (which share the class
+  // but represent a different drill-down). AC Tier 1 active state is
+  // managed by renderLeftPaneDrillDown('ac').
+  document.querySelectorAll('#brand-grid .brand-tile').forEach(function(t){
     t.classList.toggle('active', t.dataset.brand === brand);
   });
 }
@@ -1805,6 +2003,377 @@ function nearestRes(target){
 document.getElementById('brand-modal').addEventListener('click', function(e){
   if(e.target.id === 'brand-modal') closeBrandModal();
 });
+
+// ─── Pass Left-Pane: Camera drill-down (Tier 1 / 2 / 3) ──────────────────────
+// Replaces the brand-modal flow as the primary entry point. The modal is
+// still in the DOM (deleted in M6) but no UI element opens it anymore.
+//
+// State (reused from the legacy modal flow):
+//   currentBrand     — 'een' | 'hwa' | 'other' (formerly 'custom')
+//   currentType      — camera style ('dome' | 'bullet' | ...)
+//   currentModelKey  — CAMERA_DB key, or null when brand=other (generic)
+//
+// Tier 2 hides styles with zero models in the active brand. Tier 3 is a
+// radio-style model list. "Other" Tier 1 single-clicks to generic
+// camera placement (no Tier 2/3 expansion) per brief acceptance #8.
+function stylesForBrand(brand){
+  var have = {};
+  Object.keys(CAMERA_DB).forEach(function(k){
+    if(brand === 'een' && k.indexOf('een-') !== 0) return;
+    if(brand === 'hwa' && k.indexOf('hwa-') !== 0) return;
+    if(brand !== 'een' && brand !== 'hwa') return;
+    have[CAMERA_DB[k].type] = true;
+  });
+  // Canonical render order — same as the old #type-row.
+  return ['dome','bullet','turret','fisheye','ptz','lpr'].filter(function(s){ return have[s]; });
+}
+function modelsForBrandStyle(brand, style){
+  var prefix = (brand === 'een') ? 'een-' : (brand === 'hwa' ? 'hwa-' : '');
+  if(!prefix) return [];
+  var out = [];
+  Object.keys(CAMERA_DB).forEach(function(k){
+    if(k.indexOf(prefix) !== 0) return;
+    if(CAMERA_DB[k].type !== style) return;
+    out.push({ key:k, spec:CAMERA_DB[k] });
+  });
+  return out;
+}
+function brandLabelFor(brand){
+  return brand === 'een' ? 'Eagle Eye' :
+         brand === 'hwa' ? 'Hanwha' :
+         brand === 'other' ? 'Other' : '—';
+}
+
+function renderLeftPaneDrillDown(mode){
+  if(mode === 'ac'){ _renderAcDrillDown(); return; }
+  if(mode !== 'cameras') return;
+
+  // Tier 1: paint .brand-tile active state from currentBrand.
+  document.querySelectorAll('#brand-grid .brand-tile').forEach(function(t){
+    t.classList.toggle('active', t.dataset.brand === currentBrand);
+  });
+
+  var bc1 = document.getElementById('lp-bc1');
+  var t2  = document.getElementById('lp-tier2-cameras');
+  var bc2 = document.getElementById('lp-bc2');
+  var t3  = document.getElementById('lp-tier3-cameras');
+  if(!t2 || !t3) return;
+
+  if(bc1) bc1.innerHTML = currentBrand ? ('Selected: <b>' + escapeHtml(brandLabelFor(currentBrand)) + '</b>') : '';
+
+  // "Other" hides Tier 2/3 and the inter-tier breadcrumb. Per brief #8.
+  if(currentBrand === 'other'){
+    t2.innerHTML = '';
+    t3.innerHTML = '';
+    t2.style.display = 'none';
+    t3.style.display = 'none';
+    if(bc2){ bc2.innerHTML = ''; bc2.style.display = 'none'; }
+    return;
+  }
+  t2.style.display = '';
+  t3.style.display = '';
+  if(bc2) bc2.style.display = '';
+
+  var styles = stylesForBrand(currentBrand);
+  var t2Html = '';
+  styles.forEach(function(s){
+    var sm = STYLE_META[s];
+    var activeCls = (s === currentType) ? ' active-' + s : '';
+    t2Html += '<div class="tier2-tile' + activeCls + '" data-style="' + s + '" onclick="lpPickCamerasStyle(\'' + s + '\')" title="' + escapeHtml(sm.label) + '">' +
+              '<div class="ts-icon" style="color:' + sm.color + '">' + sm.svg + '</div>' +
+              sm.label +
+              '</div>';
+  });
+  t2.innerHTML = t2Html;
+
+  var styleLabel = STYLE_META[currentType] ? STYLE_META[currentType].label : currentType;
+  if(bc2) bc2.innerHTML = 'Selected: <b>' + escapeHtml(brandLabelFor(currentBrand)) + ' &rarr; ' + escapeHtml(styleLabel) + '</b>';
+
+  var models = modelsForBrandStyle(currentBrand, currentType);
+  if(models.length === 0){
+    t3.innerHTML = '<div style="padding:20px 12px;text-align:center;color:#9ca3af;font-size:10px;font-style:italic;">No ' + escapeHtml(styleLabel) + ' models for ' + escapeHtml(brandLabelFor(currentBrand)) + '.</div>';
+    return;
+  }
+  var t3Html = '';
+  models.forEach(function(m){
+    var resTxt = m.spec.hPx >= 3840 ? '4K' : m.spec.hPx >= 2592 ? '5MP' : m.spec.hPx >= 2560 ? '4MP' : m.spec.hPx >= 1920 ? '2MP' : (m.spec.hPx + 'px');
+    var activeCls = (m.key === currentModelKey) ? ' active' : '';
+    var radio = (m.key === currentModelKey) ? '●' : '○';
+    t3Html += '<div class="tier3-row' + activeCls + '" data-key="' + m.key + '" onclick="lpPickCamerasModel(\'' + m.key + '\')" title="' + escapeHtml(m.spec.desc || '') + '">' +
+              '<div class="t3-radio">' + radio + '</div>' +
+              '<div class="t3-name">' + escapeHtml(m.spec.model) + '</div>' +
+              '<div class="t3-spec">' + resTxt + ' · ' + m.spec.fov + '°</div>' +
+              '</div>';
+  });
+  t3.innerHTML = t3Html;
+}
+
+// Tier 1 click handler. "Other" short-circuits to generic placement.
+function lpPickCamerasBrand(brand){
+  currentBrand = brand;
+  if(brand === 'other'){
+    currentModelKey = null;
+    setActiveBrandTile('other');
+    renderLeftPaneDrillDown('cameras');
+    return;
+  }
+  // Brand changed — fall to first style in new brand if currentType isn't
+  // available there. Then arm the first model in (brand, style).
+  var styles = stylesForBrand(brand);
+  if(styles.length === 0){
+    // Defensive: CAMERA_DB has no entries for this brand. Render an empty
+    // drill-down so the user sees what's wrong.
+    console.warn('[left-pane] CAMERA_DB has no models for brand=' + brand);
+    setActiveBrandTile(brand);
+    renderLeftPaneDrillDown('cameras');
+    return;
+  }
+  var style = (styles.indexOf(currentType) >= 0) ? currentType : styles[0];
+  setType(style, true);
+  var models = modelsForBrandStyle(brand, style);
+  if(models.length > 0){
+    // Arming only — Tier 1 click must not mutate the selected camera.
+    // See CLAUDE.md "Drill-down arming vs model assignment".
+    armModel(models[0].key);
+  } else {
+    console.warn('[left-pane] brand=' + brand + ' style=' + style + ' has zero models — arming legacy currentModelKey.');
+    setActiveBrandTile(brand);
+    renderLeftPaneDrillDown('cameras');
+  }
+}
+
+// Tier 2 click handler — arm first model in (currentBrand, style).
+function lpPickCamerasStyle(style){
+  setType(style, true);
+  var models = modelsForBrandStyle(currentBrand, style);
+  if(models.length > 0){
+    // Arming only — Tier 2 click must not mutate the selected camera.
+    armModel(models[0].key);
+  } else {
+    renderLeftPaneDrillDown('cameras');
+  }
+}
+
+// Tier 3 click handler — explicit "pick this model" act. When a camera
+// is selected this DOES apply the model to it (pickModel semantics) —
+// the user clicking a Tier 3 row while something is selected is the
+// canonical "change selected camera's model" gesture. Arming-only is
+// the wrong semantics here.
+function lpPickCamerasModel(modelKey){
+  pickModel(modelKey);
+}
+
+// ─── Pass Left-Pane M3: AC drill-down (Tier 1 / 2 / 3 + variant) ─────────────
+// Mirrors the cameras drill-down structure. State vars: currentACBrand,
+// currentACCategory, currentACSubcategory (declared near acDevices).
+// currentReaderModel is the resolved SKU armed for the next canvas click.
+//
+// Arming-vs-apply boundary (per CLAUDE.md pitfall note): tile clicks
+// arm via armAcDevice (state only). They never mutate acSelectedId's
+// device. selectReader does its own full sync from device → drill-down.
+//
+// "Other" Tier 1 short-circuits to generic placement (no Tier 2/3,
+// currentReaderModel cleared but placeReader still works — generic
+// devices have no Brivo SKU and render with drawReader's defaults).
+
+function subcategoriesFor(category){
+  var seen = {}, out = [];
+  BRIVO_CATALOG.forEach(function(row){
+    if(row.category === category && !seen[row.subcategory]){
+      seen[row.subcategory] = true;
+      out.push(row.subcategory);
+    }
+  });
+  return out;
+}
+
+// Pass Left-Pane M3.5: SVG icons for AC Tier 2 / Tier 3 tiles. One
+// source of truth, single-line entries for easy swap. width/height
+// stripped from each <svg> tag — sizing comes from .tier2-tile .ts-icon
+// (22×22) so AC tiles match the camera Tier 2 visual rhythm.
+// currentColor on strokes/fills lets the icon adopt the tile's text
+// color (white on the navy active state, dark grey when inactive).
+// ACS100's white reader-overlay rect is intentional — small corner
+// badge that stays visible across both states.
+var AC_ICONS = {
+  Readers:     '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="6" width="6" height="1.5" fill="currentColor"/><rect x="10" y="10" width="4" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
+  Controllers: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="8" width="14" height="1.2" fill="currentColor"/><rect x="5" y="14" width="14" height="1.2" fill="currentColor"/><circle cx="6.5" cy="11.5" r="0.7" fill="currentColor"/><circle cx="9" cy="11.5" r="0.7" fill="currentColor"/><circle cx="11.5" cy="11.5" r="0.7" fill="currentColor"/></svg>',
+  Mullion:     '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="9" y="2" width="6" height="20" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="8" r="1" fill="currentColor"/><rect x="10.5" y="13" width="3" height="0.8" fill="currentColor"/><rect x="10.5" y="15" width="3" height="0.8" fill="currentColor"/></svg>',
+  Single:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="10" r="1.5" fill="currentColor"/><rect x="8" y="15" width="8" height="1" fill="currentColor"/></svg>',
+  Keypad:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="7" y="6" width="10" height="3" fill="currentColor" opacity="0.3"/><circle cx="9" cy="13" r="0.8" fill="currentColor"/><circle cx="12" cy="13" r="0.8" fill="currentColor"/><circle cx="15" cy="13" r="0.8" fill="currentColor"/><circle cx="9" cy="16" r="0.8" fill="currentColor"/><circle cx="12" cy="16" r="0.8" fill="currentColor"/><circle cx="15" cy="16" r="0.8" fill="currentColor"/></svg>',
+  ACS6100:     '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="7" width="16" height="1.2" fill="currentColor"/><rect x="4" y="10" width="16" height="1.2" fill="currentColor"/><rect x="4" y="13" width="16" height="1.2" fill="currentColor"/><rect x="4" y="16" width="16" height="1.2" fill="currentColor"/></svg>',
+  ACS300:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="6" y="9" width="12" height="1.2" fill="currentColor"/><rect x="6" y="13" width="12" height="1.2" fill="currentColor"/><circle cx="17" cy="7.5" r="0.5" fill="currentColor"/></svg>',
+  SDC:         '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg>',
+  ACS100:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="9" width="10" height="1.2" fill="currentColor"/><rect x="5" y="13" width="10" height="1.2" fill="currentColor"/><rect x="14" y="3" width="6" height="9" rx="0.8" fill="white" stroke="currentColor" stroke-width="1.2"/><circle cx="17" cy="6" r="0.6" fill="currentColor"/><rect x="15.5" y="8" width="3" height="0.6" fill="currentColor"/></svg>'
+};
+function acIconFor(key){ return AC_ICONS[key] || ''; }
+
+// Arms the next AC placement to the SKU resolved from (cat, sub, current
+// variant default for that subcategory). State only — no acDevices
+// mutation, no canvas redraw. Caller fires renderLeftPaneDrillDown('ac').
+function armAcDevice(category, subcategory){
+  currentACBrand       = 'brivo';
+  currentACCategory    = category;
+  currentACSubcategory = subcategory;
+  var variant = (projectInfo.acDefaults && projectInfo.acDefaults[subcategory])
+    ? projectInfo.acDefaults[subcategory]
+    : (variantValuesFor(category, subcategory)[0] || null);
+  var sku = resolveSku(category, subcategory, variant);
+  currentReaderModel = sku;
+  if(sku) lastArmedReader = sku;
+  renderLeftPaneDrillDown('ac');
+}
+
+// "Other" Tier 1 — clear category/subcategory and arm generic placement.
+// currentReaderModel = null signals "no Brivo SKU"; placeReader will
+// still place a device, just with no metadata.
+function armAcOther(){
+  currentACBrand       = 'other';
+  currentACCategory    = null;
+  currentACSubcategory = null;
+  currentReaderModel   = null;
+  renderLeftPaneDrillDown('ac');
+}
+
+// Tier 1 click handler.
+function lpPickAcBrand(brand){
+  if(brand === 'other'){
+    armAcOther();
+    return;
+  }
+  // 'brivo' — restore last-known category/subcategory or default to
+  // Readers/Mullion per brief.
+  var cat = currentACCategory    || 'Readers';
+  var sub = currentACSubcategory || 'Mullion';
+  armAcDevice(cat, sub);
+}
+
+// Tier 2 click handler — pick first subcategory in this category.
+function lpPickAcCategory(category){
+  var subs = subcategoriesFor(category);
+  if(subs.length === 0){
+    console.warn('[left-pane] AC category=' + category + ' has zero subcategories in BRIVO_CATALOG.');
+    return;
+  }
+  armAcDevice(category, subs[0]);
+}
+
+// Tier 3 click handler — arm the picked subcategory.
+function lpPickAcSubcategory(subcategory){
+  armAcDevice(currentACCategory, subcategory);
+}
+
+// Inline variant <select> change handler. Updates project default for
+// THIS subcategory, re-resolves SKU with new default, arms it,
+// markDirty. Per acceptance #14.
+function lpChangeAcVariant(subcategory, variantValue){
+  if(!projectInfo.acDefaults) projectInfo.acDefaults = cloneAcDefaults();
+  projectInfo.acDefaults[subcategory] = variantValue;
+  var sku = resolveSku(currentACCategory, subcategory, variantValue);
+  currentReaderModel = sku;
+  if(sku) lastArmedReader = sku;
+  markDirty();
+  renderLeftPaneDrillDown('ac');
+}
+
+function _renderAcDrillDown(){
+  // Tier 1: paint #ac-brand-grid .brand-tile active state.
+  document.querySelectorAll('#ac-brand-grid .brand-tile').forEach(function(t){
+    t.classList.toggle('active', t.dataset.brand === currentACBrand);
+  });
+
+  // Mode-aware placement hint. The Brivo path tells the user to pick a
+  // device first; the Other path has no picker, so it just describes
+  // the placement action.
+  var hintEl = document.getElementById('ac-hint');
+  if(hintEl){
+    hintEl.textContent = (currentACBrand === 'other')
+      ? 'Click on the floor plan to place a generic device.'
+      : 'Pick a Brivo device — click on the floor plan to place.';
+  }
+
+  var bc1 = document.getElementById('lp-ac-bc1');
+  var t2  = document.getElementById('lp-ac-tier2');
+  var bc2 = document.getElementById('lp-ac-bc2');
+  var t3  = document.getElementById('lp-ac-tier3');
+  var vr  = document.getElementById('lp-ac-variant');
+  if(!t2 || !t3) return;
+
+  var brandLabel = currentACBrand === 'brivo' ? 'Brivo' :
+                   currentACBrand === 'other' ? 'Other' : '—';
+  if(bc1) bc1.innerHTML = currentACBrand ? ('Selected: <b>' + escapeHtml(brandLabel) + '</b>') : '';
+
+  // "Other" Tier 1 hides Tier 2/3/variant entirely. Per acceptance #17.
+  if(currentACBrand === 'other'){
+    t2.innerHTML = '';
+    t3.innerHTML = '';
+    if(bc2){ bc2.innerHTML = ''; bc2.style.display = 'none'; }
+    if(vr){  vr.innerHTML = ''; }
+    t2.style.display = 'none';
+    t3.style.display = 'none';
+    return;
+  }
+  t2.style.display = '';
+  t3.style.display = '';
+  if(bc2) bc2.style.display = '';
+
+  // Tier 2 — Readers, Controllers. Smart Devices NOT rendered per D6
+  // (zero affordance, no greyed-out tile).
+  var categories = ['Readers', 'Controllers'];
+  var t2Html = '';
+  categories.forEach(function(cat){
+    var activeCls = (cat === currentACCategory) ? ' active' : '';
+    t2Html += '<div class="tier2-tile' + activeCls + '" data-ac-category="' + escapeHtml(cat) + '" onclick="lpPickAcCategory(\'' + cat + '\')" title="' + escapeHtml(cat) + '">' +
+              '<div class="ts-icon">' + acIconFor(cat) + '</div>' +
+              escapeHtml(cat) +
+              '</div>';
+  });
+  t2.innerHTML = t2Html;
+
+  if(bc2){
+    var bc2Text = 'Selected: <b>' + escapeHtml(brandLabel);
+    if(currentACCategory) bc2Text += ' &rarr; ' + escapeHtml(currentACCategory);
+    bc2Text += '</b>';
+    bc2.innerHTML = bc2Text;
+  }
+
+  // Tier 3 — leaves derived from BRIVO_CATALOG for current category.
+  var subs = currentACCategory ? subcategoriesFor(currentACCategory) : [];
+  var t3Html = '';
+  subs.forEach(function(sub){
+    var activeCls = (sub === currentACSubcategory) ? ' active' : '';
+    t3Html += '<div class="tier2-tile' + activeCls + '" data-ac-subcategory="' + escapeHtml(sub) + '" onclick="lpPickAcSubcategory(\'' + sub + '\')" title="' + escapeHtml(sub) + '">' +
+              '<div class="ts-icon">' + acIconFor(sub) + '</div>' +
+              escapeHtml(sub) +
+              '</div>';
+  });
+  t3.innerHTML = t3Html;
+
+  // Inline variant <select> — only on the active Tier 3 leaf, only when
+  // that leaf has a variant axis. ACS300 (variant_axis null) renders no
+  // dropdown per brief.
+  if(!vr) return;
+  vr.innerHTML = '';
+  if(!currentACSubcategory) return;
+  var axis   = variantAxisFor(currentACCategory, currentACSubcategory);
+  var values = variantValuesFor(currentACCategory, currentACSubcategory);
+  if(!axis || values.length === 0) return;
+  var currentVariant = (projectInfo.acDefaults && projectInfo.acDefaults[currentACSubcategory])
+    ? projectInfo.acDefaults[currentACSubcategory]
+    : values[0];
+  var optHtml = '';
+  values.forEach(function(v){
+    var sel = (v === currentVariant) ? ' selected' : '';
+    optHtml += '<option value="' + escapeHtml(v) + '"' + sel + '>' + escapeHtml(v) + '</option>';
+  });
+  vr.innerHTML =
+    '<div class="ac-variant-row">' +
+      '<label>' + escapeHtml(axis) + '</label>' +
+      '<select onchange="lpChangeAcVariant(\'' + currentACSubcategory + '\', this.value)">' +
+        optHtml +
+      '</select>' +
+    '</div>';
+}
 
 // ─── PDF Import ───────────────────────────────────────────────────────────────
 document.getElementById('file-input').addEventListener('change',function(e){
@@ -3600,8 +4169,20 @@ function hexAlpha(hex,a){
 function setType(t, fromModel){
   currentType=t;
   ['dome','bullet','turret','fisheye','ptz','lpr'].forEach(function(x){
+    // Legacy: tb-<style> tiles lived inside the old #type-row, deleted in
+    // Pass Left-Pane. The id lookup returns null after that deletion; we
+    // leave the loop for any external callers that re-render #type-row.
     var el = document.getElementById('tb-'+x);
     if(el) el.className='type-btn'+(x===t?' active-'+x:'');
+    // Pass Left-Pane: keep the new Tier 2 tile active class in sync. setType
+    // is called from pickModel / lpPickCamerasStyle / selectCamera — all
+    // three should leave the visible Tier 2 row reflecting currentType
+    // without each having to call renderLeftPaneDrillDown themselves.
+    document.querySelectorAll('.tier2-tile[data-style="'+x+'"]').forEach(function(t2){
+      // Strip any prior active-<style> class then re-add for the chosen one.
+      t2.classList.remove('active-dome','active-bullet','active-turret','active-fisheye','active-ptz','active-lpr');
+      if(x===t) t2.classList.add('active-'+x);
+    });
   });
   if(!fromModel && selectedId){
     var cam=cameras.find(function(c){return c.id===selectedId;});
@@ -3874,10 +4455,20 @@ function setPanelMode(mode){
   // The user re-opens it by clicking a camera or reader after the switch.
   closeRightPanel();
   if(mode === 'access'){
-    // Auto-arm a default reader on AC entry only when nothing is currently
-    // armed. If the user previously armed a tile then switched to camera
-    // mode and back, currentReaderModel persists and we leave it alone.
-    if(!currentReaderModel) pickReader(lastArmedReader);
+    // Pass Left-Pane M3: AC entry. If nothing armed yet, default to
+    // Brivo → Readers → Mullion with the project's stored variant
+    // default (cold start: 'Tri-tech' → B-BSPMF-B). If a tile was
+    // armed earlier in this session, restore that drill-down state
+    // and re-paint. The renderLeftPaneDrillDown call is unconditional
+    // so toggling back into AC always refreshes the tiles (handy
+    // after a v14→v15 migration backfills acDefaults).
+    if(!currentACBrand){
+      armAcDevice('Readers', 'Mullion');
+    } else if(currentACBrand === 'brivo' && currentACCategory && currentACSubcategory){
+      armAcDevice(currentACCategory, currentACSubcategory);
+    } else {
+      renderLeftPaneDrillDown('ac');
+    }
   }
 }
 
@@ -3895,20 +4486,36 @@ function pickReader(sku){
 }
 
 function placeReader(cssX, cssY){
-  if(!currentReaderModel){
-    alert('Pick a reader from the panel first.');
+  // Pass Left-Pane M3: "Other" Tier 1 (currentACBrand='other') arms a
+  // generic device with no SKU — currentReaderModel is null but the
+  // placement is still allowed. The original error path only fires
+  // when nothing has been armed at all (currentACBrand is null too).
+  if(!currentReaderModel && currentACBrand !== 'other'){
+    alert('Pick a Brivo device from the panel first.');
     return;
   }
   if(!acCounters[currentPage]) acCounters[currentPage] = 1;
   var n = acCounters[currentPage]++;
   var label = 'AC-P'+(currentPage+1)+'-'+n;
+  // Pass Left-Pane M3 (v15 metadata): per-device category / subcategory
+  // / variantValue / sku captured at placement from the drill-down
+  // state. cam.model retained (drawReader / readerAt key into
+  // BRIVO_READERS by cam.model — only valid for Reader SKUs; Controller
+  // SKUs fall back to drawReader's singlegang default until queue 4).
+  var variantValue = currentACSubcategory
+    ? ((projectInfo.acDefaults && projectInfo.acDefaults[currentACSubcategory]) || null)
+    : null;
   var dev = {
     id: 'ac-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
     page: currentPage,
     x: cssX/viewScale, y: cssY/viewScale,
     model: currentReaderModel,
     label: label,
-    notes: ''
+    notes: '',
+    category:     currentACCategory    || null,
+    subcategory:  currentACSubcategory || null,
+    variantValue: variantValue,
+    sku:          currentReaderModel   || null
   };
   acDevices.push(dev);
   acSelectedId = dev.id;
@@ -3920,10 +4527,36 @@ function selectReader(id){
   acSelectedId = id;
   selectedId = null;
   var d = acDevices.find(function(x){return x.id === id;});
-  if(d) pickReader(d.model);
+  if(!d){ redraw(); updateList(); updateAcList(); return; }
+
+  // Pass Left-Pane M3: FULL AC drill-down sync from the selected
+  // device. Mirrors selectCamera's full-sync pattern (M2-fix). The
+  // legacy pickReader call was replaced — pickReader only handles
+  // BRIVO_READERS SKUs and would early-return for Controller SKUs
+  // (ACS100 etc.), leaving the drill-down stale. The arming-vs-apply
+  // boundary stays clean: this sync is state + UI, no acDevices
+  // mutation (the user is selecting an existing device, not arming a
+  // model for it).
+  //
+  // Devices written before M3 have no category/subcategory/sku — they
+  // fall through to the 'other' tile (currentACBrand='other'), which
+  // M4 will then surface in the right-panel SKU override dropdown so
+  // the user can promote them in-place.
+  if(d.category && d.subcategory){
+    currentACBrand       = 'brivo';
+    currentACCategory    = d.category;
+    currentACSubcategory = d.subcategory;
+    currentReaderModel   = d.sku || d.model || null;
+    if(currentReaderModel) lastArmedReader = currentReaderModel;
+  } else {
+    currentACBrand       = 'other';
+    currentACCategory    = null;
+    currentACSubcategory = null;
+    currentReaderModel   = d.model || null;
+  }
+  renderLeftPaneDrillDown('ac');
   redraw(); updateList(); updateAcList();
-  // Pass A.8: open the right-side details panel for this reader.
-  if(d) openRightPanelForReader(d);
+  openRightPanelForReader(d);
 }
 
 function deleteReader(id){
@@ -3944,7 +4577,7 @@ function updateAcList(){
   var countEl = document.getElementById('ac-count');
   if(countEl) countEl.textContent = devOnPage.length ? '('+devOnPage.length+')' : '';
   if(devOnPage.length === 0){
-    listEl.innerHTML = '<div style="padding:10px 13px;color:#9ca3af;font-size:9px;font-style:italic">No readers on this page.</div>';
+    listEl.innerHTML = '<div style="padding:10px 13px;color:#9ca3af;font-size:9px;font-style:italic">No AC devices on this page.</div>';
     return;
   }
   listEl.innerHTML = devOnPage.map(function(d){
@@ -4044,7 +4677,11 @@ function getMfrCode(modelKey){
       return firstWord.substring(0, 3).toUpperCase();
     }
   }
-  return 'CUS';
+  // Pass Left-Pane: fallback prefix renamed from CUS → OTH to match the
+  // "Other" Tier 1 tile (formerly "Custom"). Acceptance criterion 21.
+  // Existing saved cameras carry their original label on cam.label; this
+  // only affects auto-labels for NEW placements with no model.
+  return 'OTH';
 }
 
 function getFloorCode(pageIdx){
@@ -4272,21 +4909,49 @@ function selectCamera(id){
   document.getElementById('inp-hazards').value    = cam.hazards || '';
   document.getElementById('inp-floor').value      = cam.floor || '';
   refreshFloorSuggestions();
-  // Update model info display + highlight brand tile
+  // Pass Left-Pane: FULL drill-down sync from the just-selected camera.
+  // Three state vars + one re-render, in this order:
+  //   1. currentModelKey ← cam.model
+  //   2. currentBrand    ← prefix-derived ('een' / 'hwa' / 'other')
+  //   3. currentType     ← cam.type   (via setType, which also syncs Tier 2 tiles)
+  //   4. renderLeftPaneDrillDown('cameras') ← repaints Tier 1 / 2 / 3 + breadcrumbs
+  //
+  // Behavior change (vs. M2's first cut): selecting an existing camera
+  // now wholesale-arms its model for the next placement, including a
+  // visible Tier 1 flip if the camera is from a different brand than was
+  // armed. M2's partial sync (currentBrand-only inside the if-branch with
+  // a truthy guard, separate else-branch for 'other') left the Tier 3
+  // active row stale and the visible Tier 1 active out of sync with the
+  // armed model — caught by manual Test 8. Single linear assignment block
+  // here eliminates the guard so the prefix-classification can't silently
+  // skip.
   currentModelKey = cam.model || null;
-  var info=document.getElementById('model-info');
   if(cam.model && CAMERA_DB[cam.model]){
-    var m=CAMERA_DB[cam.model];
-    info.className='';
-    info.innerHTML='<span class="clear-model" onclick="clearModel()" title="Clear">&times;</span>'+
-                   '<b>'+m.brand+' '+m.model+'</b><br>'+escapeHtml(m.desc);
-    setActiveBrandTile(cam.model.indexOf('een-')===0 ? 'een' : (cam.model.indexOf('hwa-')===0 ? 'hwa' : null));
+    if(cam.model.indexOf('een-') === 0)      currentBrand = 'een';
+    else if(cam.model.indexOf('hwa-') === 0) currentBrand = 'hwa';
+    else                                      currentBrand = 'other';
   } else {
-    info.className='empty';
-    info.textContent='Custom — using manual specs';
-    setActiveBrandTile('custom');
+    currentBrand = 'other';
   }
-  setType(cam.type||'dome', true);
+  setActiveBrandTile(currentBrand);
+  setType(cam.type || 'dome', true);
+
+  // Legacy #model-info element (removed from DOM in M2). Null-guarded
+  // write — preserves the readout for any future re-introduction.
+  var info = document.getElementById('model-info');
+  if(info){
+    if(cam.model && CAMERA_DB[cam.model]){
+      var m = CAMERA_DB[cam.model];
+      info.className = '';
+      info.innerHTML = '<span class="clear-model" onclick="clearModel()" title="Clear">&times;</span>'+
+                       '<b>'+m.brand+' '+m.model+'</b><br>'+escapeHtml(m.desc);
+    } else {
+      info.className = 'empty';
+      info.textContent = 'Custom — using manual specs';
+    }
+  }
+
+  renderLeftPaneDrillDown('cameras');
   syncLabels(); redraw(); updateList(); updateDoriInfo();
   openRightPanelForCamera(cam);
 }
@@ -4912,6 +5577,13 @@ function applyProjectState(data){
   });
   if(!projectInfo.proposalSections){
     projectInfo.proposalSections = { cover:true, bom:true, riser:true, plans:true };
+  }
+  // Pass Left-Pane (v15 backfill): saves predating the AC drill-down lack
+  // projectInfo.acDefaults. Default it so M3/M4 reads don't NPE. M5 wraps
+  // this same condition in a banner-fire flag — see _legacyReachMigrated
+  // pattern below.
+  if(!projectInfo.acDefaults){
+    projectInfo.acDefaults = cloneAcDefaults();
   }
   acDevices    = data.acDevices  || [];
   acCounters   = data.acCounters || {};
@@ -6642,6 +7314,9 @@ function closeHelpModal(){
 }
 function saveProjectInfo(){
   // Pass A.6: proposalSections is preserved (edited via Export modal now).
+  // Pass Left-Pane: acDefaults preserved too — the modal doesn't expose it,
+  // so a wholesale replacement without this line would silently reset the
+  // drill-down defaults to their factory values on every project info save.
   projectInfo = {
     name:    document.getElementById('proj-name').value,
     ref:     document.getElementById('proj-ref').value,
@@ -6652,7 +7327,8 @@ function saveProjectInfo(){
     sales:   document.getElementById('proj-sales').value,
     company: document.getElementById('proj-company').value,
     scope:   document.getElementById('proj-scope').value,
-    proposalSections: projectInfo.proposalSections || { cover:true, bom:true, riser:true, plans:true }
+    proposalSections: projectInfo.proposalSections || { cover:true, bom:true, riser:true, plans:true },
+    acDefaults:       projectInfo.acDefaults       || cloneAcDefaults()
   };
   markDirty();
   closeProjectModal();
@@ -6703,6 +7379,33 @@ window.addEventListener('resize',function(){
   DPR=window.devicePixelRatio||1;
   if(pdfLoaded) fitPage();
 });
+
+// ─── Pass Left-Pane: cameras drill-down cold-start ───────────────────────────
+// Eagle Eye → Dome → een-PD01 (first EE dome in CAMERA_DB declaration
+// order). Defensive fallback to the first available Eagle Eye dome with a
+// console.warn if the canonical default model is missing — D4.
+// Wrapped in an IIFE so the inits run in order (pickModel must see Tier 1
+// state set first, renderLeftPaneDrillDown reads all three current* vars).
+(function _initLeftPaneCameras(){
+  currentBrand = 'een';
+  setType('dome', true);
+  var canonical = 'een-PD01';
+  // Boot-time arming — no selection exists yet, so armModel and pickModel
+  // would have identical effect. Using armModel keeps the arming-vs-apply
+  // boundary consistent for future readers of this code.
+  if(CAMERA_DB[canonical]){
+    armModel(canonical);
+  } else {
+    console.warn('[left-pane] default model ' + canonical + ' missing from CAMERA_DB; falling back to first Eagle Eye dome.');
+    var fallback = modelsForBrandStyle('een', 'dome')[0];
+    if(fallback){
+      armModel(fallback.key);
+    } else {
+      console.warn('[left-pane] no Eagle Eye dome present in CAMERA_DB; drill-down will render empty.');
+      renderLeftPaneDrillDown('cameras');
+    }
+  }
+})();
 </script>
 <script>
 // ── Missing-library detector ─────────────────────────────────────────────────

@@ -167,6 +167,19 @@ When placing or selecting a camera or reader programmatically, always call `sele
 
 Bare assignment leaves the right panel desynced from the model. The UI shows stale data; user has to re-click the device for it to refresh. Bug from Pass C step 7.
 
+### Drill-down arming vs model assignment
+
+The Pass Left-Pane drill-down tile clicks ARM the next placement. They must not retroactively mutate the currently-selected camera. Use `armModel(key)` for arming-only paths (`lpPickCamerasBrand`, `lpPickCamerasStyle`, init IIFE). Use `pickModel(key)` only when the user explicitly chooses a model for an already-selected camera (modal click, future right-panel model swap).
+
+Bug from Pass Left-Pane M2: `lpPickCamerasBrand` called `pickModel` and silently flipped a placed camera's model when the user clicked a different brand tile. The placed camera's label stayed `EAG-*` (labels are generated at placement time, not regenerated) while its `cam.model` flipped to a HWA SKU — invisible until the user re-clicked the placed camera and saw the wrong specs in the right panel.
+
+Mental model:
+- `armModel(key)` — arming-only. State + UI repaint. No `cam.*` mutation.
+- `applyModelToSelected(key)` — mutation-only. Updates `selectedId`'s camera fields. No state/UI change.
+- `pickModel(key)` — composite wrapper. Both of the above + closes the legacy modal.
+
+When in doubt: tile-click handlers and init paths use `armModel`. Explicit "I am picking this model for the camera I have selected" gestures use `pickModel`.
+
 ### addCamera label increment timing
 
 In `addCamera`, the post-placement increment of `inp-label.value` (for the next placement) must happen AFTER `selectCamera(id)` runs, not before. `selectCamera` populates the right panel's label input from `cam.label`. If the increment fires first, the input shows the next-up label while the just-placed camera holds the previous one — they don't match. Bug from Pass A.7 aux5.
