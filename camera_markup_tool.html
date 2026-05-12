@@ -316,9 +316,18 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .calib-units-row { display:flex; gap:14px; margin-bottom:10px; font-size:11px; color:#374151; }
 .calib-units-row label { display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
 .calib-units-row input[type=radio] { margin:0; }
-#calib-typed-input { width:100%; padding:8px 10px; border:1.5px solid var(--border); border-radius:6px; font:700 14px var(--font-mono); margin-bottom:6px; box-sizing:border-box; }
-#calib-typed-input:focus { outline:none; border-color:var(--primary); }
 .calib-error { color:#b91c1c; font-size:11px; min-height:14px; margin-bottom:8px; line-height:1.4; }
+
+/* 4-field scale calibration UI (replaces free-text parser, this pass). */
+.calib-scale-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:8px; font:700 14px var(--font-mono); }
+.calib-scale-row-narrow { flex-direction:column; align-items:stretch; gap:8px; }
+.calib-scale-row-narrow .calib-scale-side { display:flex; align-items:center; gap:6px; }
+.calib-field { width:64px; padding:6px 8px; border:1.5px solid var(--border); border-radius:5px; font:inherit; box-sizing:border-box; text-align:right; }
+.calib-field:focus { outline:none; border-color:var(--primary); }
+.calib-field.invalid { border-color:#b91c1c; background:#fef2f2; }
+.calib-glyph { color:var(--text-muted); font-weight:700; user-select:none; }
+.calib-side-label { color:var(--text-muted); font:600 11px var(--font-ui); min-width:42px; }
+.calib-prefix-label { color:var(--text); font-weight:700; user-select:none; }
 
 /* Pass B: Floating auto-prompt for fresh-import calibration */
 #scale-prompt {
@@ -1142,12 +1151,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <button class="calib-tab" data-tab="measure" onclick="setCalibTab('measure')">Measure Two Points</button>
     </div>
     <div class="calib-tab-pane" data-pane="type">
-      <p>Find the printed scale on the drawing (usually in the title block) and type it below.</p>
+      <p>Find the printed scale on the drawing (usually in the title block) and enter it below.</p>
       <div class="calib-units-row">
-        <label><input type="radio" name="calib-units" value="imperial" checked onchange="updateTypedPlaceholder()"> Imperial</label>
-        <label><input type="radio" name="calib-units" value="metric" onchange="updateTypedPlaceholder()"> Metric</label>
+        <label><input type="radio" name="calib-units" value="imperial" checked onchange="onCalibDialogModeToggle('imperial')"> Imperial</label>
+        <label><input type="radio" name="calib-units" value="metric"            onchange="onCalibDialogModeToggle('metric')"> Metric</label>
       </div>
-      <input type="text" id="calib-typed-input" placeholder='e.g. 1/8&quot; = 1&apos;-0&quot; or 1:96' oninput="clearTypedError()" onkeydown="if(event.key==='Enter'){event.preventDefault();applyTypedScaleFromDialog();}" autocomplete="off" spellcheck="false">
+      <div id="calib-typed-inputs" oninput="clearScaleInputErrors('calib-typed-inputs', document.getElementById('calib-typed-error'))" onkeydown="if(event.key==='Enter'){event.preventDefault();applyTypedScaleFromDialog();}"></div>
       <div id="calib-typed-error" class="calib-error"></div>
       <div class="modal-actions">
         <button class="btn btn-dark"  onclick="closeCalibDialog()">Cancel</button>
@@ -1190,10 +1199,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
   <p class="sp-body">Find the printed scale on the drawing (usually in the title block).</p>
   <div class="calib-units-row">
-    <label><input type="radio" name="scale-prompt-units" value="imperial" checked onchange="updateScalePromptPlaceholder()"> Imperial</label>
-    <label><input type="radio" name="scale-prompt-units" value="metric" onchange="updateScalePromptPlaceholder()"> Metric</label>
+    <label><input type="radio" name="scale-prompt-units" value="imperial" checked onchange="onScalePromptModeToggle('imperial')"> Imperial</label>
+    <label><input type="radio" name="scale-prompt-units" value="metric"            onchange="onScalePromptModeToggle('metric')"> Metric</label>
   </div>
-  <input type="text" id="scale-prompt-input" placeholder='e.g. 1/8&quot; = 1&apos;-0&quot; or 1:96' oninput="clearScalePromptError()" onkeydown="if(event.key==='Enter'){event.preventDefault();applyScalePrompt();}" autocomplete="off" spellcheck="false">
+  <div id="scale-prompt-inputs" oninput="clearScaleInputErrors('scale-prompt-inputs', document.getElementById('scale-prompt-error'))" onkeydown="if(event.key==='Enter'){event.preventDefault();applyScalePrompt();}"></div>
   <div id="scale-prompt-error"></div>
   <div class="sp-actions">
     <button class="btn btn-dark"  onclick="skipCalibrationPrompt()">Skip Page</button>
@@ -2391,12 +2400,16 @@ function startTwoPointCalibration(){
 function openCalibDialog(initialTab){
   setCalibTab(initialTab || 'type');
   document.getElementById('calib-typed-error').textContent = '';
-  var input = document.getElementById('calib-typed-input');
-  input.value = '';
-  updateTypedPlaceholder();
+  // 4-field UI: render inputs and prefill from the current page's saved
+  // calibration (or defaults if none). Pick the mode from the saved unit;
+  // defaults to Imperial. Mode-toggle cache is reset per open.
+  openScaleInputsForPage('calib-typed-inputs', currentPage, false);
   document.getElementById('calib-dialog').classList.add('show');
   setTimeout(function(){
-    if((initialTab || 'type') === 'type'){ input.focus(); }
+    if((initialTab || 'type') === 'type'){
+      var first = document.querySelector('#calib-typed-inputs .calib-field');
+      if(first) first.focus();
+    }
   }, 50);
 }
 function closeCalibDialog(){
@@ -2413,37 +2426,37 @@ function setCalibTab(tab){
   }
   if(tab === 'type'){
     setTimeout(function(){
-      var inp = document.getElementById('calib-typed-input');
-      if(inp && document.getElementById('calib-dialog').classList.contains('show')) inp.focus();
+      if(!document.getElementById('calib-dialog').classList.contains('show')) return;
+      var first = document.querySelector('#calib-typed-inputs .calib-field');
+      if(first) first.focus();
     }, 50);
   }
-}
-function updateTypedPlaceholder(){
-  var units = getCalibDialogUnits();
-  var inp = document.getElementById('calib-typed-input');
-  inp.placeholder = (units === 'metric')
-    ? 'e.g. 1:100'
-    : 'e.g. 1/8" = 1\'-0" or 1:96';
 }
 function getCalibDialogUnits(){
   var radios = document.querySelectorAll('input[name="calib-units"]');
   for(var i=0;i<radios.length;i++){ if(radios[i].checked) return radios[i].value; }
   return 'imperial';
 }
-function clearTypedError(){
-  document.getElementById('calib-typed-error').textContent = '';
+// Mode-toggle handler: caches current values per the new helper, re-renders
+// in the new mode, restores cached values for that mode if any (or defaults).
+function onCalibDialogModeToggle(newMode){
+  clearScaleInputErrors('calib-typed-inputs', document.getElementById('calib-typed-error'));
+  onScaleModeToggle('calib-typed-inputs', newMode);
 }
 function applyTypedScaleFromDialog(){
-  var raw   = document.getElementById('calib-typed-input').value;
-  var units = getCalibDialogUnits();
-  var result = parseTypedScale(raw, units);
-  if(result.error){
-    document.getElementById('calib-typed-error').textContent = result.error;
-    document.getElementById('calib-typed-input').focus();
-    return;
+  var container = document.getElementById('calib-typed-inputs');
+  var errorEl   = document.getElementById('calib-typed-error');
+  var mode      = getCalibDialogUnits();
+  clearScaleInputErrors(container, errorEl);
+  try {
+    var result = (mode === 'metric')
+      ? readMetricInputs(container)
+      : readImperialInputs(container);
+    applyTypedScale(currentPage, result.ratio, mode);
+    closeCalibDialog();
+  } catch(err){
+    showScaleInputError(container, errorEl, err);
   }
-  applyTypedScale(currentPage, result.ratio, units);
-  closeCalibDialog();
 }
 function startTwoPointFromDialog(){
   closeCalibDialog();
@@ -2482,33 +2495,42 @@ function showCalibrationPromptForCurrent(){
   }
   document.getElementById('scale-prompt-title').textContent =
     'Set Scale for Page ' + (pageIdx + 1) + ' of ' + pages.length;
-  document.getElementById('scale-prompt-input').value = '';
   document.getElementById('scale-prompt-error').textContent = '';
-  // Default to imperial each new page (user can flip per-page).
-  var imp = document.querySelector('input[name="scale-prompt-units"][value="imperial"]');
-  if(imp) imp.checked = true;
-  updateScalePromptPlaceholder();
+  // 4-field UI: narrow (2-row) layout in the overlay. Prefill from saved
+  // calibration if present; otherwise defaults to Imperial 1/8" = 1'-0".
+  openScaleInputsForPage('scale-prompt-inputs', pageIdx, true);
   document.getElementById('scale-prompt').classList.add('show');
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
   setTimeout(function(){
-    var el = document.getElementById('scale-prompt-input');
-    if(el && isCalibrationPromptOpen()) el.focus();
+    if(!isCalibrationPromptOpen()) return;
+    var first = document.querySelector('#scale-prompt-inputs .calib-field');
+    if(first) first.focus();
   }, 220);
+}
+
+// Mode-toggle handler for the auto-prompt overlay. Same helper as the modal
+// uses, just against a different container id.
+function onScalePromptModeToggle(newMode){
+  clearScaleInputErrors('scale-prompt-inputs', document.getElementById('scale-prompt-error'));
+  onScaleModeToggle('scale-prompt-inputs', newMode);
 }
 
 function applyScalePrompt(){
   if(!isCalibrationPromptOpen()) return;
-  var raw   = document.getElementById('scale-prompt-input').value;
-  var units = getScalePromptUnits();
-  var result = parseTypedScale(raw, units);
-  if(result.error){
-    document.getElementById('scale-prompt-error').textContent = result.error;
-    document.getElementById('scale-prompt-input').focus();
-    return;
+  var container = document.getElementById('scale-prompt-inputs');
+  var errorEl   = document.getElementById('scale-prompt-error');
+  var mode      = getScalePromptUnits();
+  clearScaleInputErrors(container, errorEl);
+  try {
+    var result = (mode === 'metric')
+      ? readMetricInputs(container)
+      : readImperialInputs(container);
+    var pageIdx = autoPromptQueue[autoPromptCurrentIdx];
+    applyTypedScale(pageIdx, result.ratio, mode);
+    advanceCalibrationPrompt();
+  } catch(err){
+    showScaleInputError(container, errorEl, err);
   }
-  var pageIdx = autoPromptQueue[autoPromptCurrentIdx];
-  applyTypedScale(pageIdx, result.ratio, units);
-  advanceCalibrationPrompt();
 }
 
 function skipCalibrationPrompt(){
@@ -2520,21 +2542,26 @@ function skipCalibrationPrompt(){
 
 // Apply the typed scale to the current page AND every remaining queued page,
 // except those the user has already explicitly skipped. Closes the overlay
-// when done. Parse errors leave the queue untouched.
+// when done. Validation errors leave the queue untouched.
 function applyScalePromptToAll(){
   if(!isCalibrationPromptOpen()) return;
-  var raw   = document.getElementById('scale-prompt-input').value;
-  var units = getScalePromptUnits();
-  var result = parseTypedScale(raw, units);
-  if(result.error){
-    document.getElementById('scale-prompt-error').textContent = result.error;
-    document.getElementById('scale-prompt-input').focus();
+  var container = document.getElementById('scale-prompt-inputs');
+  var errorEl   = document.getElementById('scale-prompt-error');
+  var mode      = getScalePromptUnits();
+  clearScaleInputErrors(container, errorEl);
+  var result;
+  try {
+    result = (mode === 'metric')
+      ? readMetricInputs(container)
+      : readImperialInputs(container);
+  } catch(err){
+    showScaleInputError(container, errorEl, err);
     return;
   }
   for(var i = autoPromptCurrentIdx; i < autoPromptQueue.length; i++){
     var pageIdx = autoPromptQueue[i];
     if(skippedPages.has(pageIdx)) continue;
-    applyTypedScale(pageIdx, result.ratio, units);
+    applyTypedScale(pageIdx, result.ratio, mode);
   }
   closeCalibrationPrompt();
 }
@@ -2556,21 +2583,10 @@ function closeCalibrationPrompt(){
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
 }
 
-function updateScalePromptPlaceholder(){
-  var u = getScalePromptUnits();
-  var inp = document.getElementById('scale-prompt-input');
-  if(inp) inp.placeholder = (u === 'metric') ? 'e.g. 1:100' : 'e.g. 1/8" = 1\'-0" or 1:96';
-}
-
 function getScalePromptUnits(){
   var rs = document.querySelectorAll('input[name="scale-prompt-units"]');
   for(var i=0;i<rs.length;i++){ if(rs[i].checked) return rs[i].value; }
   return 'imperial';
-}
-
-function clearScalePromptError(){
-  var el = document.getElementById('scale-prompt-error');
-  if(el) el.textContent = '';
 }
 
 // Pass B: discoverability banner over the canvas when the current page is
@@ -2649,96 +2665,334 @@ function saveCalib(){
 }
 function cancelCalib(){ cancelCalibrationFlow(); }
 
-// ─── Pass B: Typed-scale calibration ─────────────────────────────────────────
-// Standalone parser. Returns { ratio, error }. Verifiable from the console
-// with testParseTypedScale() (defined below). No DOM access here.
+// ─── 4-Field Scale Input UI ──────────────────────────────────────────────────
+// Replaces the free-text parser path. Two call sites — #calib-dialog's Type
+// Scale pane and #scale-prompt overlay — share renderScaleInputs() for HTML
+// and readImperialInputs() / readMetricInputs() for parsing. The read
+// helpers return an intermediate {ratio, unit} that applyTypedScale()
+// converts into the on-disk shape stored at calibrations[pageIdx], which
+// is {pixelsPerMeter, unit} — unchanged by this pass. New UI is just a
+// different way to feed applyTypedScale().
 //
-// Imperial accepts:
-//   - "1:NNN" ratio
-//   - "<paper-inches> = <real>"  where paper can be "1/8" or "0.125"
-//                                and real can be "1'-0\"" / "1'" / plain ft
-// Metric accepts only "1:NNN".
-function parseTypedScale(input, units){
-  var s = (input == null ? '' : String(input)).trim();
-  var GENERIC_ERR = "Couldn't read that scale. Try formats like 1/8\" = 1'-0\" or 1:100.";
-  var ZERO_ERR    = "Scale can't have zero values.";
-  var RANGE_ERR   = "Scale ratio looks off. Common scales are 1:24 to 1:1000.";
-  if(!s) return { ratio: null, error: GENERIC_ERR };
+// Per-call-site value cache for mode toggles. Keyed by container id, then
+// by mode. Lets the user switch Imperial↔Metric without losing typed values.
+//   _scaleInputCache['calib-typed-inputs'] = { imperial: {paperFt,paperIn,realFt,realIn}, metric: {ratio} }
+var _scaleInputCache = {};
 
-  // Pre-check obvious zero: "/0" or ":0" at a token boundary (allows "/0.5", ":0.5").
-  if(/[\/\:]\s*0(?![\.\d])/.test(s)){
-    return { ratio: null, error: ZERO_ERR };
-  }
-
-  // Form 1: ratio "1:N" (works for both metric and imperial).
-  var rm = s.match(/^1\s*:\s*(\d+(?:\.\d+)?)\s*$/);
-  if(rm){
-    var r = parseFloat(rm[1]);
-    if(!isFinite(r) || r === 0) return { ratio: null, error: ZERO_ERR };
-    if(r < 1 || r > 5000)       return { ratio: null, error: RANGE_ERR };
-    return { ratio: r, error: null };
-  }
-
-  if(units === 'metric'){
-    // Metric only accepts ratio form.
-    return { ratio: null, error: GENERIC_ERR };
-  }
-
-  // Imperial architectural notation: <paper> = <real>
-  var parts = s.split('=');
-  if(parts.length !== 2) return { ratio: null, error: GENERIC_ERR };
-
-  var paperIn = _parsePaperSide(parts[0]);
-  var realIn  = _parseRealSide(parts[1]);
-  if(paperIn === null || realIn === null){
-    return { ratio: null, error: GENERIC_ERR };
-  }
-  if(paperIn === 0 || realIn === 0){
-    return { ratio: null, error: ZERO_ERR };
-  }
-  var ratio = realIn / paperIn;
-  if(!isFinite(ratio) || ratio < 1 || ratio > 5000){
-    return { ratio: null, error: RANGE_ERR };
-  }
-  return { ratio: ratio, error: null };
-}
-
-// Paper side: inches. Strip optional trailing inch mark. Accept fraction or decimal.
-function _parsePaperSide(str){
-  var t = (str || '').trim().replace(/\s*"\s*$/, '').replace(/^\s+|\s+$/g, '');
-  if(!t) return null;
+// Fraction-tolerant parser for the inches input. Accepts "1/8", "0.125",
+// "3 / 16", etc. Returns NaN on empty/invalid so callers can detect.
+function parseInchesValue(str){
+  if(str == null) return NaN;
+  var t = String(str).trim();
+  if(!t) return NaN;
   var fm = t.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
   if(fm){
-    var num = parseFloat(fm[1]);
-    var den = parseFloat(fm[2]);
-    if(den === 0) return 0;        // surface as zero error upstream
-    return num / den;
+    var n = parseFloat(fm[1]), d = parseFloat(fm[2]);
+    // Reject zero denominator (or near-zero from decimals like "0.0") before
+    // dividing — "1/0" used to slip through and produce Infinity.
+    if(!isFinite(n) || !isFinite(d) || Math.abs(d) < 1e-9) return NaN;
+    return n / d;
   }
-  var n = parseFloat(t);
-  if(isNaN(n)) return null;
-  // Reject decimals with trailing junk: parseFloat is permissive, so re-check.
-  if(!/^\d+(?:\.\d+)?$/.test(t)) return null;
-  return n;
+  var v = parseFloat(t);
+  // parseFloat is permissive — reject anything that isn't strictly a number.
+  if(!/^-?\d+(?:\.\d+)?$/.test(t)) return NaN;
+  return v;
 }
 
-// Real side: returns total inches.
-//   "1'-0\"" / "1'-6\"" / "1'-0" / "1'" → ft × 12 + inches
-//   plain integer / decimal           → treat as feet (default in arch notation)
-function _parseRealSide(str){
-  var t = (str || '').trim();
-  if(!t) return null;
-  var m = t.match(/^(\d+(?:\.\d+)?)\s*'\s*(?:-\s*)?(?:(\d+(?:\.\d+)?)\s*"?)?\s*$/);
-  if(m){
-    var ft = parseFloat(m[1]);
-    var inches = m[2] != null ? parseFloat(m[2]) : 0;
-    if(isNaN(ft) || isNaN(inches)) return null;
-    return ft * 12 + inches;
+// Build the input HTML into `container`. mode: 'imperial' | 'metric'.
+// narrow: 2-row stacked layout for the auto-prompt overlay. Does not set
+// values — caller follows up with setScaleInputValues / prefillFromPage.
+function renderScaleInputs(container, mode, narrow){
+  if(typeof container === 'string') container = document.getElementById(container);
+  if(!container) return;
+  container.innerHTML = '';
+  container.dataset.mode = mode;
+  container.dataset.narrow = narrow ? '1' : '';
+  container.classList.add('calib-scale-row');
+  container.classList.toggle('calib-scale-row-narrow', !!narrow);
+
+  function makeField(fieldId, placeholder){
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.className = 'calib-field';
+    input.placeholder = placeholder || '';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.dataset.field = fieldId;
+    return input;
   }
-  // Plain feet number.
-  if(!/^\d+(?:\.\d+)?$/.test(t)) return null;
-  var n = parseFloat(t);
-  if(isNaN(n)) return null;
-  return n * 12;
+  function makeGlyph(ch){
+    var s = document.createElement('span');
+    s.className = 'calib-glyph';
+    s.textContent = ch;
+    return s;
+  }
+  function makeSideLabel(text){
+    var s = document.createElement('span');
+    s.className = 'calib-side-label';
+    s.textContent = text;
+    return s;
+  }
+
+  if(mode === 'metric'){
+    var prefix = document.createElement('span');
+    prefix.className = 'calib-prefix-label';
+    prefix.textContent = '1 :';
+    container.appendChild(prefix);
+    container.appendChild(makeField('ratio', '100'));
+  } else {
+    // Imperial — 4 fields. Single row in modal, 2 stacked rows in overlay.
+    if(narrow){
+      var paperSide = document.createElement('span');
+      paperSide.className = 'calib-scale-side';
+      paperSide.appendChild(makeSideLabel('Paper'));
+      paperSide.appendChild(makeField('paperFt', '0'));
+      paperSide.appendChild(makeGlyph("'"));
+      paperSide.appendChild(makeField('paperIn', '1/8'));
+      paperSide.appendChild(makeGlyph('"'));
+      container.appendChild(paperSide);
+
+      var realSide = document.createElement('span');
+      realSide.className = 'calib-scale-side';
+      realSide.appendChild(makeSideLabel('Real'));
+      realSide.appendChild(makeField('realFt', '1'));
+      realSide.appendChild(makeGlyph("'"));
+      realSide.appendChild(makeField('realIn', '0'));
+      realSide.appendChild(makeGlyph('"'));
+      container.appendChild(realSide);
+    } else {
+      container.appendChild(makeField('paperFt', '0'));
+      container.appendChild(makeGlyph("'"));
+      container.appendChild(makeField('paperIn', '1/8'));
+      container.appendChild(makeGlyph('"'));
+      container.appendChild(makeGlyph('='));
+      container.appendChild(makeField('realFt', '1'));
+      container.appendChild(makeGlyph("'"));
+      container.appendChild(makeField('realIn', '0'));
+      container.appendChild(makeGlyph('"'));
+    }
+  }
+}
+
+// Set values into the rendered inputs. values shape depends on mode:
+//   imperial: { paperFt, paperIn, realFt, realIn }
+//   metric:   { ratio }
+// Field values that aren't numbers (e.g., '1/8' for paperIn) are written
+// as strings; numeric values are stringified.
+function setScaleInputValues(container, mode, values){
+  if(typeof container === 'string') container = document.getElementById(container);
+  if(!container || !values) return;
+  var fields = (mode === 'metric') ? ['ratio'] : ['paperFt','paperIn','realFt','realIn'];
+  fields.forEach(function(fid){
+    var el = container.querySelector('[data-field="'+fid+'"]');
+    if(!el) return;
+    var v = values[fid];
+    el.value = (v === undefined || v === null) ? '' : String(v);
+  });
+}
+
+// Snapshot current input values to a plain object (used by mode-toggle cache).
+function readScaleInputRaw(container, mode){
+  if(typeof container === 'string') container = document.getElementById(container);
+  var out = {};
+  if(!container) return out;
+  var fields = (mode === 'metric') ? ['ratio'] : ['paperFt','paperIn','realFt','realIn'];
+  fields.forEach(function(fid){
+    var el = container.querySelector('[data-field="'+fid+'"]');
+    out[fid] = el ? el.value : '';
+  });
+  return out;
+}
+
+// Read + validate imperial inputs. Throws on invalid with .fieldId so the
+// caller can highlight + focus. Returns intermediate { ratio, unit:
+// 'imperial' } that applyTypedScale() converts to on-disk
+// { pixelsPerMeter, unit } at calibrations[pageIdx].
+function readImperialInputs(container){
+  if(typeof container === 'string') container = document.getElementById(container);
+  function getField(fid){ return container.querySelector('[data-field="'+fid+'"]'); }
+  function require(fid){
+    var el = getField(fid);
+    var raw = el ? el.value : '';
+    if(raw == null || String(raw).trim() === ''){
+      var err = new Error('Enter a value (use 0 if not applicable).');
+      err.fieldId = fid; throw err;
+    }
+    // Inches fields accept fractions ("1/8") and decimals; feet fields are
+    // strict numeric — no fractions, no trailing garbage. parseFloat is
+    // permissive ("1/0" → 1, "1abc" → 1), so we gate the feet path on a
+    // strict regex first.
+    var v;
+    if(fid === 'paperIn' || fid === 'realIn'){
+      v = parseInchesValue(raw);
+    } else {
+      v = /^-?\d+(\.\d+)?$/.test(String(raw).trim()) ? parseFloat(raw) : NaN;
+    }
+    if(!isFinite(v)){
+      var e2 = new Error((fid === 'paperIn' || fid === 'realIn')
+        ? 'Enter a decimal (0.125) or fraction (1/8).'
+        : 'Enter a whole number.');
+      e2.fieldId = fid; throw e2;
+    }
+    if(v < 0){
+      var e3 = new Error('Negative values not allowed.');
+      e3.fieldId = fid; throw e3;
+    }
+    return v;
+  }
+  var paperFt = require('paperFt');
+  var paperIn = require('paperIn');
+  var realFt  = require('realFt');
+  var realIn  = require('realIn');
+  var paperTotal = paperFt * 12 + paperIn;
+  var realTotal  = realFt  * 12 + realIn;
+  if(paperTotal <= 0){
+    var e4 = new Error('Paper distance is zero — enter a non-zero scale.');
+    e4.fieldId = 'paperIn'; throw e4;
+  }
+  if(realTotal <= 0){
+    var e5 = new Error('Real distance is zero — enter a non-zero scale.');
+    e5.fieldId = 'realIn'; throw e5;
+  }
+  return { ratio: realTotal / paperTotal, unit: 'imperial' };
+}
+
+// Read + validate metric input. Throws on invalid. Returns intermediate
+// { ratio, unit: 'metric' } that applyTypedScale() converts to on-disk
+// { pixelsPerMeter, unit } at calibrations[pageIdx].
+function readMetricInputs(container){
+  if(typeof container === 'string') container = document.getElementById(container);
+  var el = container.querySelector('[data-field="ratio"]');
+  var raw = el ? el.value : '';
+  if(raw == null || String(raw).trim() === ''){
+    var err = new Error('Enter a ratio value.');
+    err.fieldId = 'ratio'; throw err;
+  }
+  // Strict numeric — parseFloat would slurp "1abc" or "1/2" as 1. Same
+  // class of bug as the feet fields. Decimals allowed (e.g., metric 1:62.5
+  // for non-standard scales); fractions and trailing garbage rejected.
+  var t = String(raw).trim();
+  var v = /^-?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : NaN;
+  if(!isFinite(v)){
+    var e2 = new Error('Enter a number (e.g., 100).');
+    e2.fieldId = 'ratio'; throw e2;
+  }
+  if(v <= 0){
+    var e3 = new Error('Ratio must be positive.');
+    e3.fieldId = 'ratio'; throw e3;
+  }
+  return { ratio: v, unit: 'metric' };
+}
+
+// Recover the ratio that produced the saved pixelsPerMeter — inverse of
+// applyTypedScale's pxPerM math. Returns NaN if cal is missing or invalid.
+function getRatioFromCalibration(cal){
+  if(!cal || !cal.pixelsPerMeter) return NaN;
+  return 72 / (0.0254 * cal.pixelsPerMeter);
+}
+
+// Compute prefill input values from a saved calibration. Inverse of
+// applyTypedScale: takes an on-disk { pixelsPerMeter, unit } record and
+// synthesizes input-field values that, when fed back through the read
+// helpers + applyTypedScale, reproduce the same pixelsPerMeter. Q-B (a)
+// form: paperFt=0, paperIn=1, realFt=floor(R/12), realIn=R%12. User can
+// edit if they prefer an architectural form (1/8" = 1'-0" etc.).
+function prefillValuesFromCal(cal){
+  var R = getRatioFromCalibration(cal);
+  if(!isFinite(R) || R <= 0) return null;
+  if(cal.unit === 'ft'){
+    var realFt = Math.floor(R / 12);
+    var realIn = R - realFt * 12;
+    // Trim trailing decimal noise from the inverse math (e.g. 96.0000001).
+    if(Math.abs(realIn - Math.round(realIn)) < 1e-6) realIn = Math.round(realIn);
+    // Floating-point case where R was a tiny hair under a whole multiple of
+    // 12 — floor() drops to (N-1), realIn rounds back up to 12. Carry it.
+    if(realIn === 12){ realIn = 0; realFt += 1; }
+    return { mode: 'imperial', values: { paperFt: 0, paperIn: 1, realFt: realFt, realIn: realIn } };
+  } else {
+    var r = Math.abs(R - Math.round(R)) < 1e-6 ? Math.round(R) : R;
+    return { mode: 'metric', values: { ratio: r } };
+  }
+}
+
+// Default initial values when no saved calibration exists.
+var SCALE_DEFAULTS = {
+  imperial: { paperFt: 0, paperIn: '1/8', realFt: 1, realIn: 0 },
+  metric:   { ratio: 100 }
+};
+
+// Open-time orchestrator: pick mode from saved cal (or Imperial default),
+// render inputs, write prefill or defaults, prime the cache so a subsequent
+// mode toggle has the un-rendered side's defaults available.
+function openScaleInputsForPage(container, pageIdx, narrow){
+  if(typeof container === 'string') container = document.getElementById(container);
+  if(!container) return;
+  var containerId = container.id;
+  _scaleInputCache[containerId] = { imperial: null, metric: null };
+
+  var cal = calibrations[pageIdx];
+  var pre = cal ? prefillValuesFromCal(cal) : null;
+  var mode = pre ? pre.mode : 'imperial';
+  renderScaleInputs(container, mode, narrow);
+  setScaleInputValues(container, mode, pre ? pre.values : SCALE_DEFAULTS[mode]);
+  _scaleInputCache[containerId][mode] = (pre ? pre.values : SCALE_DEFAULTS[mode]);
+
+  // Sync mode radios in the parent UI to match the chosen mode.
+  syncScaleModeRadios(container, mode);
+  return mode;
+}
+
+// Handle a mode-toggle radio change — cache current values, re-render in
+// new mode, restore that mode's cached values if any, else fall back to
+// defaults. Lets the user compare Imperial↔Metric without retyping.
+function onScaleModeToggle(container, newMode){
+  if(typeof container === 'string') container = document.getElementById(container);
+  if(!container) return;
+  var containerId = container.id;
+  var currentMode = container.dataset.mode;
+  var narrow      = container.dataset.narrow === '1';
+  _scaleInputCache[containerId] = _scaleInputCache[containerId] || {};
+  // Save what's currently typed (raw, not validated) into the cache.
+  _scaleInputCache[containerId][currentMode] = readScaleInputRaw(container, currentMode);
+  renderScaleInputs(container, newMode, narrow);
+  var cached = _scaleInputCache[containerId][newMode];
+  setScaleInputValues(container, newMode, cached || SCALE_DEFAULTS[newMode]);
+  if(!cached) _scaleInputCache[containerId][newMode] = SCALE_DEFAULTS[newMode];
+}
+
+// Reflect the rendered mode into the parent UI's radio buttons. The two
+// call sites use different radio names ('calib-units' / 'scale-prompt-units')
+// — discover them from the closest container.
+function syncScaleModeRadios(container, mode){
+  if(typeof container === 'string') container = document.getElementById(container);
+  if(!container) return;
+  // Find sibling radios in the enclosing modal/overlay (.calib-units-row).
+  var modal = container.closest('.modal-box') || container.closest('#scale-prompt') || container.parentElement;
+  if(!modal) return;
+  var radios = modal.querySelectorAll('input[type="radio"][name$="units"]');
+  for(var i = 0; i < radios.length; i++){
+    radios[i].checked = (radios[i].value === mode);
+  }
+}
+
+// Visual error: highlight the offending field and show the message in the
+// supplied error element. Clears on next input via clearScaleInputErrors.
+function showScaleInputError(container, errorEl, err){
+  if(typeof container === 'string') container = document.getElementById(container);
+  if(errorEl){ errorEl.textContent = err.message || 'Invalid scale.'; errorEl.style.display = ''; }
+  if(err.fieldId && container){
+    var f = container.querySelector('[data-field="'+err.fieldId+'"]');
+    if(f){ f.classList.add('invalid'); f.focus(); f.select && f.select(); }
+  }
+}
+
+function clearScaleInputErrors(container, errorEl){
+  if(typeof container === 'string') container = document.getElementById(container);
+  if(errorEl){ errorEl.textContent = ''; }
+  if(container){
+    container.querySelectorAll('.calib-field.invalid').forEach(function(el){ el.classList.remove('invalid'); });
+  }
 }
 
 // Apply a parsed scale ratio to the current PDF/image render.
@@ -2773,59 +3027,89 @@ function applyTypedScale(pageIdx, ratio, units){
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
 }
 
-// Console smoke-test for parseTypedScale. Pasteable: testParseTypedScale().
-function testParseTypedScale(){
-  var cases = [
-    // [input, units, expectedRatio (null = error expected)]
-    ['1/16" = 1\'-0"', 'imperial', 192],
-    ['1/16 = 1',       'imperial', 192],
-    ['1:192',          'imperial', 192],
-    ['1/8" = 1\'-0"',  'imperial', 96],
-    ['1/8" = 1\'',     'imperial', 96],
-    ['1/8 = 1',        'imperial', 96],
-    ['1/8"=1\'',       'imperial', 96],
-    ['1:96',           'imperial', 96],
-    [' 1/8 = 1 ',      'imperial', 96],
-    ['3/16" = 1\'-0"', 'imperial', 64],
-    ['3/16 = 1',       'imperial', 64],
-    ['1/4" = 1\'-0"',  'imperial', 48],
-    ['1/4 = 1',        'imperial', 48],
-    ['1:48',           'imperial', 48],
-    ['3/8" = 1\'-0"',  'imperial', 32],
-    ['3/8 = 1',        'imperial', 32],
-    ['1/2" = 1\'-0"',  'imperial', 24],
-    ['1/2 = 1',        'imperial', 24],
-    ['1:24',           'imperial', 24],
-    ['3/4" = 1\'-0"',  'imperial', 16],
-    ['3/4 = 1',        'imperial', 16],
-    ['1" = 1\'-0"',    'imperial', 12],
-    ['1 = 1',          'imperial', 12],
-    ['1:12',           'imperial', 12],
-    ['1:100',          'metric',   100],
-    ['1:50',           'metric',   50],
-    ['1 : 200',        'metric',   200],
-    ['1:1000',         'metric',   1000],
-    ['',               'imperial', null],
-    ['abc',            'imperial', null],
-    ['1/0',            'imperial', null],
-    ['1:0',            'imperial', null],
-    ['1:5000000',      'imperial', null],
-    ['1/8" = 0\'',     'imperial', null],
-    ['1cm = 1m',       'metric',   null]
-  ];
+// Console smoke-test for readImperialInputs / readMetricInputs. Pasteable:
+// testReadScaleInputs(). Builds a hidden container, drives the rendered
+// inputs via setScaleInputValues, and asserts ratio values + thrown fieldIds
+// on the invalid cases. Removes the container before returning.
+function testReadScaleInputs(){
   var pass = 0, fail = 0;
-  cases.forEach(function(c){
-    var r = parseTypedScale(c[0], c[1]);
-    var ok;
-    if(c[2] === null){
-      ok = !!r.error && r.ratio == null;
-    } else {
-      ok = !r.error && Math.abs((r.ratio || 0) - c[2]) < 0.001;
+  var container = document.createElement('div');
+  container.style.display = 'none';
+  document.body.appendChild(container);
+
+  function run(label, fn){
+    try { fn(); pass++; console.log('  PASS ' + label); }
+    catch(e){ fail++; console.warn('  FAIL ' + label + ' — ' + (e && e.message)); }
+  }
+  function expectRatio(actual, expected){
+    if(!isFinite(actual) || Math.abs(actual - expected) >= 0.001){
+      throw new Error('ratio got ' + actual + ', expected ' + expected);
     }
-    if(ok){ pass++; }
-    else { fail++; console.warn('FAIL', JSON.stringify(c[0]), c[1], '→', r, 'expected', c[2]); }
+  }
+  function expectThrow(fn, expectedFieldId){
+    var threw = false, fieldId = null;
+    try { fn(); } catch(e){ threw = true; fieldId = e && e.fieldId; }
+    if(!threw) throw new Error('expected throw, none thrown');
+    if(expectedFieldId && fieldId !== expectedFieldId){
+      throw new Error('threw with fieldId=' + fieldId + ', expected ' + expectedFieldId);
+    }
+  }
+
+  run('Imperial fraction 1/8" = 1\'-0" → 96', function(){
+    renderScaleInputs(container, 'imperial', false);
+    setScaleInputValues(container, 'imperial', {paperFt:0, paperIn:'1/8', realFt:1, realIn:0});
+    var r = readImperialInputs(container);
+    expectRatio(r.ratio, 96);
+    if(r.unit !== 'imperial') throw new Error('unit ' + r.unit);
   });
-  console.log(pass + ' pass / ' + fail + ' fail (of ' + cases.length + ')');
+
+  run('Imperial decimal 0.125" = 1\'-0" → 96 (matches fraction case)', function(){
+    renderScaleInputs(container, 'imperial', false);
+    setScaleInputValues(container, 'imperial', {paperFt:0, paperIn:'0.125', realFt:1, realIn:0});
+    var r = readImperialInputs(container);
+    expectRatio(r.ratio, 96);
+  });
+
+  run('Metric 1:50 → 50', function(){
+    renderScaleInputs(container, 'metric', false);
+    setScaleInputValues(container, 'metric', {ratio:50});
+    var r = readMetricInputs(container);
+    expectRatio(r.ratio, 50);
+    if(r.unit !== 'metric') throw new Error('unit ' + r.unit);
+  });
+
+  run('0\' 0" = 1\' 0" throws (paperTotal=0)', function(){
+    renderScaleInputs(container, 'imperial', false);
+    setScaleInputValues(container, 'imperial', {paperFt:0, paperIn:0, realFt:1, realIn:0});
+    expectThrow(function(){ readImperialInputs(container); }, 'paperIn');
+  });
+
+  run('1/0 in paperFt throws', function(){
+    renderScaleInputs(container, 'imperial', false);
+    setScaleInputValues(container, 'imperial', {paperFt:'1/0', paperIn:0, realFt:1, realIn:0});
+    expectThrow(function(){ readImperialInputs(container); }, 'paperFt');
+  });
+
+  run('1abc in paperFt throws', function(){
+    renderScaleInputs(container, 'imperial', false);
+    setScaleInputValues(container, 'imperial', {paperFt:'1abc', paperIn:0, realFt:1, realIn:0});
+    expectThrow(function(){ readImperialInputs(container); }, 'paperFt');
+  });
+
+  run('1/0 in paperIn throws', function(){
+    renderScaleInputs(container, 'imperial', false);
+    setScaleInputValues(container, 'imperial', {paperFt:0, paperIn:'1/0', realFt:1, realIn:0});
+    expectThrow(function(){ readImperialInputs(container); }, 'paperIn');
+  });
+
+  run('1abc in metric ratio throws', function(){
+    renderScaleInputs(container, 'metric', false);
+    setScaleInputValues(container, 'metric', {ratio:'1abc'});
+    expectThrow(function(){ readMetricInputs(container); }, 'ratio');
+  });
+
+  document.body.removeChild(container);
+  console.log(pass + ' pass / ' + fail + ' fail (of ' + (pass+fail) + ')');
   return { pass: pass, fail: fail };
 }
 
