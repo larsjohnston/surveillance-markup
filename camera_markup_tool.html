@@ -1129,14 +1129,37 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           <label class="rp-label">Manufacturer &amp; Model</label>
           <div class="rp-readout" id="rp-reader-model-readout">
             <div class="rp-model-name">Brivo Smart Reader</div>
+          </div>
+        </div>
+
+        <!-- Pass Left-Pane M4-followup-4: Description in its own labeled
+             row, split out of the Mfg & Model readout so the two fields
+             don't visually merge. Shown only when the device is a Reader
+             with a non-empty BRIVO_READERS spec.desc. Camera-side
+             rp-readout pattern is unchanged — this split is AC-only. -->
+        <div class="rp-field" id="rp-reader-desc-field" style="display:none">
+          <label class="rp-label">Description</label>
+          <div class="rp-readout" id="rp-reader-desc-readout">
             <div class="rp-model-desc"></div>
           </div>
         </div>
 
-        <div class="rp-field">
+        <div class="rp-field" id="rp-reader-form-field">
           <label class="rp-label">Form Factor</label>
           <div class="rp-readout" id="rp-reader-form-readout">
             <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+
+        <!-- Pass Left-Pane M4: per-device variant override. Dynamically
+             populated by updateRightPanelDisplayForReader from the
+             device's category / subcategory. Hidden for devices with no
+             variant axis (ACS300, "Other" generic devices, v14 legacy
+             readers — those get backfilled in M5). -->
+        <div class="rp-field" id="rp-reader-variant-field" style="display:none">
+          <label class="rp-label" id="rp-reader-variant-label">Variant</label>
+          <div class="rp-slot" data-rp-slot="variant-reader">
+            <select id="inp-variant-reader" onchange="updateReaderVariant(this.value)"></select>
           </div>
         </div>
 
@@ -1656,8 +1679,8 @@ var BRIVO_CATALOG = [
 // (no variant axis). Single source of truth for new-project init and
 // v14 → v15 backfill.
 var DEFAULT_AC_DEFAULTS = {
-  Mullion:  'Tri-tech',
-  Single:   'Tri-tech',
+  Mullion:  'Dual-tech',
+  Single:   'Dual-tech',
   Keypad:   'Dual-tech',
   ACS6100:  'Regular',
   SDC:      'in Enclosure',
@@ -4518,9 +4541,14 @@ function placeReader(cssX, cssY){
     sku:          currentReaderModel   || null
   };
   acDevices.push(dev);
-  acSelectedId = dev.id;
   markDirty();
-  redraw(); updateAcList();
+  // Pass Left-Pane M4-fix: mirror addCamera's selectCamera(id) tail.
+  // selectReader sets acSelectedId via its own side-effect chain (no
+  // more bare acSelectedId assignment — CLAUDE.md "Selection state"
+  // pitfall), full-syncs the drill-down to the placed device, redraws,
+  // updates the AC list, and slides the right panel open. Replaces the
+  // previous bare-assign + redraw + updateAcList trio.
+  selectReader(dev.id);
 }
 
 function selectReader(id){
@@ -4842,25 +4870,58 @@ function updateRightPanelDisplayForReader(dev){
   if(!dev) return;
   var spec = BRIVO_READERS[dev.model] || null;
 
-  // Mfg & Model readout
+  // Mfg & Model readout. Pass Left-Pane M4-followup-3: category-driven
+  // name. Previously every device fell back to "Brivo Smart Reader"
+  // when BRIVO_READERS missed (i.e., every controller and every Other
+  // device). Now: Readers → "Brivo Smart Reader <sku>", Controllers →
+  // "Brivo Controller <sku>", null/missing category → "Unspecified".
+  // v14 legacy devices land in the Unspecified branch until M5 backfills
+  // them with category='Readers'.
   var mNameEl = document.querySelector('#rp-reader-model-readout .rp-model-name');
-  var mDescEl = document.querySelector('#rp-reader-model-readout .rp-model-desc');
-  if(mNameEl) mNameEl.textContent = spec ? ('Brivo Smart Reader ' + spec.model) : 'Brivo Smart Reader';
-  if(mDescEl){
-    mDescEl.textContent = spec && spec.desc ? spec.desc : '';
-    mDescEl.style.display = spec && spec.desc ? '' : 'none';
+  if(mNameEl){
+    var skuTxt = dev.sku ? (' ' + dev.sku) : '';
+    if(dev.category === 'Readers'){
+      mNameEl.textContent = 'Brivo Smart Reader' + skuTxt;
+    } else if(dev.category === 'Controllers'){
+      mNameEl.textContent = 'Brivo Controller' + skuTxt;
+    } else {
+      mNameEl.textContent = 'Unspecified';
+    }
   }
+  // Description in its own row (Pass Left-Pane M4-followup-4). Visible
+  // only for Readers with a non-empty BRIVO_READERS spec.desc — same
+  // condition as before, just in a separate labeled .rp-field block now.
+  var dField = document.getElementById('rp-reader-desc-field');
+  var dEl    = document.querySelector('#rp-reader-desc-readout .rp-model-desc');
+  var showDesc = (dev.category === 'Readers') && spec && spec.desc;
+  if(dField) dField.style.display = showDesc ? '' : 'none';
+  if(dEl)    dEl.textContent      = showDesc ? spec.desc : '';
 
-  // Form Factor readout
+  // Form Factor readout. Pass Left-Pane M4-followup-2: shown only for
+  // Readers (Mullion / Single / Keypad). Hidden for all Controllers
+  // (ACS300 / ACS6100 / SDC have no form factor; ACS100's form factor IS
+  // its variant axis, surfaced by the "Form factor" override dropdown
+  // below — no point duplicating the label). Hidden for "Other" generic
+  // devices and v14 legacy devices missing category until M5 backfill.
+  var fField = document.getElementById('rp-reader-form-field');
   var fEl = document.querySelector('#rp-reader-form-readout .rp-model-name');
-  if(fEl){
+  var isReader = dev.category === 'Readers';
+  if(fField){
+    fField.style.display = isReader ? '' : 'none';
+  }
+  if(fEl && isReader){
     if(spec){
       var mount = spec.mount === 'mullion' ? 'Mullion' : 'Single-Gang';
       var keypad = spec.keypad ? ' Keypad' : '';
       var tech = spec.tech === 'tri' ? 'Tri-tech' : 'Dual-tech';
       fEl.textContent = mount + keypad + ' · ' + tech;
     } else {
-      fEl.textContent = '—';
+      // Reader category but BRIVO_READERS lookup missed (shouldn't happen
+      // for v15 reader devices; can occur for v14 legacy devices until
+      // M5 backfill maps them to a known SKU). Fall back to metadata.
+      fEl.textContent = (dev.subcategory && dev.variantValue)
+        ? (dev.subcategory + ' · ' + dev.variantValue)
+        : '—';
     }
   }
 
@@ -4869,6 +4930,59 @@ function updateRightPanelDisplayForReader(dev){
   var notesInput = document.getElementById('inp-notes-reader');
   if(labelInput) labelInput.value = dev.label || '';
   if(notesInput) notesInput.value = dev.notes || '';
+
+  // Pass Left-Pane M4: per-device variant override dropdown. Shown only
+  // when the device has both a category/subcategory and that
+  // subcategory has a variant axis. Prefilled with the device's own
+  // variantValue (not the project default per acDefaults) — that's the
+  // override semantics. Hidden for ACS300 (no axis), legacy v14
+  // readers (no metadata until M5 backfill), and "Other" generic
+  // devices (no category at all).
+  var vField  = document.getElementById('rp-reader-variant-field');
+  var vLabel  = document.getElementById('rp-reader-variant-label');
+  var vSelect = document.getElementById('inp-variant-reader');
+  if(!vField || !vLabel || !vSelect) return;
+  var axis   = (dev.category && dev.subcategory) ? variantAxisFor(dev.category, dev.subcategory) : null;
+  var values = axis ? variantValuesFor(dev.category, dev.subcategory) : [];
+  if(!axis || values.length === 0){
+    vField.style.display = 'none';
+    vSelect.innerHTML = '';
+    return;
+  }
+  vField.style.display = '';
+  vLabel.textContent = axis;
+  var optHtml = '';
+  values.forEach(function(v){
+    var sel = (v === dev.variantValue) ? ' selected' : '';
+    optHtml += '<option value="' + escapeHtml(v) + '"' + sel + '>' + escapeHtml(v) + '</option>';
+  });
+  vSelect.innerHTML = optHtml;
+}
+
+// Pass Left-Pane M4: per-device variant change. Updates dev.variantValue,
+// re-resolves dev.sku via resolveSku, mirrors to dev.model (canvas-render
+// lookup still keys off cam.model). No-op when no selection, no metadata,
+// or the value isn't a valid variant for the device's subcategory.
+function updateReaderVariant(value){
+  if(!acSelectedId) return;
+  var dev = acDevices.find(function(x){ return x.id === acSelectedId; });
+  if(!dev) return;
+  if(!dev.category || !dev.subcategory) return;
+  var newSku = resolveSku(dev.category, dev.subcategory, value);
+  if(!newSku) return;
+  dev.variantValue = value;
+  dev.sku   = newSku;
+  dev.model = newSku;
+  markDirty();
+  // Refresh the readouts (Manufacturer & Model, Form Factor) and the
+  // variant dropdown itself from the now-updated device. The dropdown
+  // gets rebuilt — its selected option re-paints identically, no flicker
+  // visible. label/notes inputs are also rewritten from dev (which has
+  // the user's already-committed values via updateSelectedReader's
+  // oninput handler — no in-progress text is lost).
+  updateRightPanelDisplayForReader(dev);
+  redraw();
+  updateAcList();
 }
 
 function openRightPanelForReader(dev){
