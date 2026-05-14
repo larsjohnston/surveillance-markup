@@ -144,6 +144,14 @@ Always include all sections. If a section doesn't apply, write "N/A" — don't o
 
 This section captures lessons from past PRs. Each entry exists because Claude Code (or a reviewer) made a mistake here before. Read this section at the start of every session.
 
+### Reader-to-controller cable lines are deferred
+
+The riser shows readers and controllers as placement icons inside their floor bands (Pass N). It does NOT draw lines between them, and there is no C-NN style cable ID for reader runs. Don't add this speculatively — neither during the pass that ships AC riser presence, nor during later drive-by polish ("hey, it'd be easy to draw a line from each reader to the controller in its band").
+
+The data link to support that drawing — *which controller a given reader is wired to* — doesn't exist in the model. `acDevices[]` entries have no `controllerId` field. Faking the link from spatial proximity ("nearest controller in the same band") produces wrong wiring diagrams that look authoritative. A reader on Floor 5 might wire down to a controller on Floor 1; spatial-nearest would draw it to whatever's closest on Floor 5.
+
+A future pass (planned as Pass N.5) will add the controller-assignment data model and the cable runs together. Until then: AC riser is a *placement* diagram, not a wiring diagram.
+
 ### Calibration math — pixelsPerMeter convention
 
 `calibrations[pageIdx].pixelsPerMeter` is in **PDF-points-per-meter**, not offcanvas-pixels-per-meter. The two-point calibration in `saveCalib` produces this value correctly using `pixelDist / meters` where `pixelDist` is already in PDF points (cssX / viewScale).
