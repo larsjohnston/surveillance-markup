@@ -1368,6 +1368,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   <div id="bom-summary">
     <div class="bom-stat"><span class="lbl">Camera Count</span><span class="val" id="bom-cam-count">0</span></div>
     <div class="bom-stat"><span class="lbl">Subtotal</span><span class="val" id="bom-subtotal">$0.00</span></div>
+    <!-- Pass N M5: AC counts mirror the cover summary's AC READERS /
+         AC CONTROLLERS lines. Hidden when zero; recalcBom toggles
+         display and value via coverModel.readerCount / controllerCount. -->
+    <div class="bom-stat" id="bom-ac-readers-stat" style="display:none"><span class="lbl">AC Readers</span><span class="val" id="bom-ac-readers">0</span></div>
+    <div class="bom-stat" id="bom-ac-controllers-stat" style="display:none"><span class="lbl">AC Controllers</span><span class="val" id="bom-ac-controllers">0</span></div>
     <div class="bom-stat"><span class="lbl">Margin (<span id="bom-margin-pct-disp">0</span>%)</span><span class="val" id="bom-margin-amt">$0.00</span></div>
     <div class="bom-stat"><span class="lbl">Tax (<span id="bom-tax-pct-disp">0</span>%)</span><span class="val" id="bom-tax-amt">$0.00</span></div>
     <div class="bom-stat total" style="grid-column:1 / -1; border-top:1px solid #e5e7eb; padding-top:6px; margin-top:2px;"><span class="lbl">Grand Total</span><span class="val" id="bom-grand-total">$0.00</span></div>
@@ -6012,18 +6017,31 @@ function drawProposalCover(doc, W, H){
     doc.text(lines, 50, y); y += lines.length * 12 + 10;
   }
 
-  // Summary box
+  // Summary box. Pass N M5: pre-compute AC counts so box height and the
+  // Y-cursor below can slot in the two optional rows ("AC READERS",
+  // "AC CONTROLLERS") between SCALE CALIBRATED and GRAND TOTAL. Each
+  // optional row is hidden when its count is 0 per D5. The box grows by
+  // 20 pt per added line; an AC-only project (both lines) ends up at
+  // H = 170, matching the M5 brief.
+  var coverModel  = computeRiserModel();
+  var showReaders = coverModel.readerCount > 0;
+  var showCtrls   = coverModel.controllerCount > 0;
+  var acLineCount = (showReaders ? 1 : 0) + (showCtrls ? 1 : 0);
+  var boxH = 130 + acLineCount * 20;
   y = H - 220;
-  doc.setFillColor(245, 244, 240); doc.rect(50, y, W-100, 130, 'F');
-  doc.setDrawColor(208, 206, 200); doc.rect(50, y, W-100, 130);
+  doc.setFillColor(245, 244, 240); doc.rect(50, y, W-100, boxH, 'F');
+  doc.setDrawColor(208, 206, 200); doc.rect(50, y, W-100, boxH);
 
   doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(11);
   doc.text('PROPOSAL SUMMARY', 65, y + 22);
 
-  doc.setFontSize(9); doc.setTextColor(120, 120, 140);
-  doc.text('CAMERAS', 65, y+45);
-  doc.text('FLOORS', 65, y+65);
-  doc.text('SCALE CALIBRATED', 65, y+85);
+  // Pass N M5: Y-cursor replaces the fixed +45/+65/+85/+108 offsets so
+  // optional AC lines can slot in without recalculating absolute Y for
+  // each row. ROW_GAP matches the original 20 pt spacing; GRAND_GAP (23)
+  // mirrors the original SCALE_CALIBRATED → GRAND_TOTAL spacing.
+  var ROW_GAP   = 20;
+  var GRAND_GAP = 23;
+  var summaryY  = y + 45;
 
   // Pass A.5: CAMERAS reflects multiplied total across typical floors;
   // FLOORS replaces PAGES — sum of pageMultiplier(i). When no typicals
@@ -6031,17 +6049,35 @@ function drawProposalCover(doc, W, H){
   var floorTotal = 0;
   for(var fp = 0; fp < pages.length; fp++) floorTotal += pageMultiplier(fp);
 
-  doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(12);
-  doc.text(String(multipliedTotal(cameras)), 250, y+45);
-  doc.text(String(floorTotal), 250, y+65);
-  var calCount = Object.keys(calibrations).length;
-  doc.text(calCount + ' / ' + pages.length, 250, y+85);
+  // Helper: draw a label/value pair at the current cursor and advance it.
+  // Label is grey 9 pt; value is charcoal bold 12 pt. Keeps cursor advance
+  // and font state changes tied together so individual sites read cleanly.
+  function drawSummaryRow(label, value){
+    doc.setFont('courier','normal'); doc.setFontSize(9);  doc.setTextColor(120, 120, 140);
+    doc.text(label, 65, summaryY);
+    doc.setFont('courier','bold');   doc.setFontSize(12); doc.setTextColor(31, 41, 55);
+    doc.text(String(value), 250, summaryY);
+    summaryY += ROW_GAP;
+  }
 
-  // Grand total — only shown when BOM section is included in the proposal
+  drawSummaryRow('CAMERAS',          multipliedTotal(cameras));
+  drawSummaryRow('FLOORS',           floorTotal);
+  var calCount = Object.keys(calibrations).length;
+  drawSummaryRow('SCALE CALIBRATED', calCount + ' / ' + pages.length);
+  // Pass N M5 (D5): optional AC lines. Each hidden when its count is 0.
+  // ACS100 counted under CONTROLLERS via acCategoryOf (catalog category
+  // wins over canvas shape; same rule as the BOM section in M3).
+  if(showReaders) drawSummaryRow('AC READERS',     coverModel.readerCount);
+  if(showCtrls)   drawSummaryRow('AC CONTROLLERS', coverModel.controllerCount);
+
+  // Grand total — only shown when BOM section is included in the proposal.
+  // Y-cursor finishes at SCALE CALIBRATED's bottom + ROW_GAP × extra AC
+  // rows, then we add GRAND_GAP for the divider rhythm.
   var sec = projectInfo.proposalSections || {};
   if(sec.bom !== false){
+    summaryY = summaryY - ROW_GAP + GRAND_GAP;  // back off the last ROW_GAP, apply the GRAND_GAP
     doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(120, 120, 140);
-    doc.text('GRAND TOTAL', 65, y+108);
+    doc.text('GRAND TOTAL', 65, summaryY);
     var auto = computeAutoRows();
     var subtotal = 0;
     ['cameras','recording','network','cabling','accessControl','labor','other'].forEach(function(k){
@@ -6055,7 +6091,7 @@ function drawProposalCover(doc, W, H){
     var taxAmt = afterMargin * taxPct / 100;
     var grand = afterMargin + taxAmt;
     doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(16);
-    doc.text('$' + formatMoney(grand), 250, y+108);
+    doc.text('$' + formatMoney(grand), 250, summaryY);
   }
 
   // Footer
@@ -7415,6 +7451,22 @@ function recalcBom(){
   document.getElementById('bom-margin-amt').textContent = '$' + formatMoney(marginAmt);
   document.getElementById('bom-tax-amt').textContent = '$' + formatMoney(taxAmt);
   document.getElementById('bom-grand-total').textContent = '$' + formatMoney(grand);
+
+  // Pass N M5: AC counts mirror the cover summary AC lines. Same source
+  // (computeRiserModel → readerCount / controllerCount, both multiplied
+  // across typical floors). Each stat row is hidden when its count is 0;
+  // the surrounding grid layout collapses cleanly.
+  var bomModel = computeRiserModel();
+  var rEl = document.getElementById('bom-ac-readers-stat');
+  var cEl = document.getElementById('bom-ac-controllers-stat');
+  if(rEl){
+    rEl.style.display = bomModel.readerCount > 0 ? '' : 'none';
+    document.getElementById('bom-ac-readers').textContent = String(bomModel.readerCount);
+  }
+  if(cEl){
+    cEl.style.display = bomModel.controllerCount > 0 ? '' : 'none';
+    document.getElementById('bom-ac-controllers').textContent = String(bomModel.controllerCount);
+  }
 
   // Persist current auto-row unit prices keyed for next render
   // (we reload auto each time so users override is held in a side dict)
