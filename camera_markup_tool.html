@@ -633,44 +633,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #lp-cmvr-row { margin:6px 0 9px; }
 #lp-cmvr-row .type-btn-cmvr { width:100%; padding:8px 6px 6px; }
 
-/* ── Style filter chips (in modal) ───────────────────────── */
-#style-filter-row { display:flex; gap:5px; margin-bottom:14px; flex-wrap:wrap; }
-.style-chip {
-  padding:6px 12px; border:1.5px solid var(--border); border-radius:999px; background:#fff;
-  font:600 11px var(--font-ui); letter-spacing:.01em;
-  cursor:pointer; color:var(--text-muted); transition:background-color .15s, border-color .15s, color .15s;
-}
-.style-chip:hover:not(.active) { border-color:#9ca3af; background:var(--surface-soft); }
-.style-chip.active { border-color:var(--primary); background:var(--primary-faint); color:var(--primary); }
-
-/* ── Model browser modal: list ──────────────────────────── */
-#brand-model-list { max-height:60vh; overflow-y:auto; padding-right:4px; }
-.style-group { margin-bottom:14px; }
-.style-group-hdr {
-  display:flex; align-items:center; gap:8px; padding:6px 8px; margin-bottom:5px;
-  border-radius:4px; font:700 10px var(--font-ui); text-transform:uppercase; letter-spacing:.06em;
-}
-.style-group-hdr svg { width:18px; height:18px; }
-.style-group-hdr .style-count { margin-left:auto; font-size:9px; opacity:0.7; }
-.style-group-hdr.style-dome    { background:#fff1f1; color:var(--dome); }
-.style-group-hdr.style-bullet  { background:#eff6ff; color:var(--bullet); }
-.style-group-hdr.style-turret  { background:#ecfeff; color:var(--turret); }
-.style-group-hdr.style-fisheye { background:#f0fdf4; color:var(--fisheye); }
-.style-group-hdr.style-ptz     { background:#f5f3ff; color:var(--ptz); }
-.style-group-hdr.style-lpr     { background:#fffbeb; color:var(--lpr); }
-
-.model-row {
-  display:grid; grid-template-columns:32px 100px 1fr auto; gap:10px; align-items:center;
-  padding:7px 8px; border-radius:3px; cursor:pointer; transition:background .1s;
-  font:11px var(--font-ui); border-bottom:1px solid #f3f4f6;
-}
-.model-row:hover { background:#f9fafb; }
-.model-row.selected { background:#eff6ff; outline:2px solid var(--blue); }
-.model-row .ts-icon { width:24px; height:24px; }
-.model-row .m-name { font-weight:700; color:#111; }
-.model-row .m-desc { color:#6b7280; font-size:10px; }
-.model-row .m-spec { font:700 9px var(--font-ui); color:#9ca3af; text-align:right; white-space:nowrap; }
-
 .ctrl { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
 .ctrl label { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:#9ca3af; min-width:50px; }
 .ctrl input[type=range] { flex:1; accent-color:var(--primary); }
@@ -1352,33 +1314,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 </div>
 
 <!-- Camera Model Browser Modal -->
-<div id="brand-modal" class="big-modal">
-  <div class="modal-box big-modal-box" style="min-width:680px;">
-    <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
-      <div id="brand-modal-logo" class="brand-logo brand-een" style="width:52px;height:52px;font-size:18px;"></div>
-      <div style="flex:1;">
-        <h3 id="brand-modal-title" style="margin:0">Browse Cameras</h3>
-        <p id="brand-modal-sub" style="margin:2px 0 0; font-size:10px; color:#9ca3af;">Tap a camera style to expand</p>
-      </div>
-      <button class="btn btn-dark" onclick="closeBrandModal()">&times; Close</button>
-    </div>
-
-    <!-- Style filter chips -->
-    <div id="style-filter-row">
-      <button class="style-chip active" data-style="all" onclick="setStyleFilter('all')">All</button>
-      <button class="style-chip" data-style="dome"    onclick="setStyleFilter('dome')">Dome</button>
-      <button class="style-chip" data-style="bullet"  onclick="setStyleFilter('bullet')">Bullet</button>
-      <button class="style-chip" data-style="turret"  onclick="setStyleFilter('turret')">Turret</button>
-      <button class="style-chip" data-style="fisheye" onclick="setStyleFilter('fisheye')">Fisheye</button>
-      <button class="style-chip" data-style="ptz"     onclick="setStyleFilter('ptz')">PTZ</button>
-      <button class="style-chip" data-style="lpr"     onclick="setStyleFilter('lpr')">LPR</button>
-    </div>
-
-    <!-- Grouped model list -->
-    <div id="brand-model-list"></div>
-  </div>
-</div>
-
 <!-- Pass D: bottom-right toast — 10-min reminder OR one-shot "auto-save
      unavailable" notice. showToast() populates the text node and adds .show. -->
 <div id="reminder-toast">
@@ -1767,10 +1702,9 @@ var currentReaderModel = null;
 var currentACBrand       = null;       // 'brivo' | 'other' | null (no init)
 var currentACCategory    = null;       // 'Readers' | 'Controllers'
 var currentACSubcategory = null;       // matches BRIVO_CATALOG.subcategory
-// Tracks the last form-factor the user armed in AC mode. Used to restore
-// their pick when re-entering AC mode after the current SKU has been cleared.
-// Default chosen as the "neutral" Mullion dual-tech.
-var lastArmedReader = 'B-BSMF-B';
+// (Pass Left-Pane M6: lastArmedReader removed — variable was write-only,
+// never read. The "restore last-armed form-factor" intent was superseded
+// by the per-subcategory acDefaults map in projectInfo.)
 var panelMode = 'cameras';    // 'cameras' | 'access'
 
 // ─── BOM State ────────────────────────────────────────────────────────────────
@@ -1808,111 +1742,17 @@ var STYLE_META = {
   lpr:     { label:'LPR',     color:'#d97706', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="9" rx="1.5"/><path d="M7 12h2M11 12h2M15 12h2"/></svg>' }
 };
 
+// Pass Left-Pane M6: legacy brand-modal that read BRAND_META is gone. The
+// een/hwa entries are kept per the M6 plan (`brand-een` / `brand-hwa` CSS
+// classes still style the left-pane Tier 1 tiles); the 'custom' entry was
+// modal-only and had zero readers after M6, deleted.
 var BRAND_META = {
-  een:    { name:'Eagle Eye Networks', short:'EE',     prefix:'een-', cssClass:'brand-een' },
-  hwa:    { name:'Hanwha Vision (Wisenet)', short:'HW', prefix:'hwa-', cssClass:'brand-hwa' },
-  custom: { name:'Custom Camera', short:'+',      prefix:null,    cssClass:'brand-custom' }
+  een: { name:'Eagle Eye Networks', short:'EE', prefix:'een-', cssClass:'brand-een' },
+  hwa: { name:'Hanwha Vision (Wisenet)', short:'HW', prefix:'hwa-', cssClass:'brand-hwa' }
 };
 
 var currentBrand = null;        // active Tier 1 — 'een' | 'hwa' | 'other' (set by init IIFE)
-var currentStyleFilter = 'all'; // legacy modal filter chip (modal removed in M6)
 var currentModelKey = null;     // currently picked model for next placement
-
-function openBrand(brandKey){
-  // Pass Left-Pane: legacy modal entry point. New UI calls
-  // lpPickCamerasBrand instead; this function survives only until M6
-  // deletes #brand-modal entirely. Null-guarded so it tolerates removal
-  // of the old #model-info element.
-  if(brandKey === 'custom' || brandKey === 'other'){
-    currentModelKey = null;
-    var miEl = document.getElementById('model-info');
-    if(miEl){
-      miEl.innerHTML = '<b>Custom Camera</b> — using manual specs above';
-      miEl.className = '';
-    }
-    setActiveBrandTile('other');
-    if(selectedId){
-      var cam = cameras.find(function(c){return c.id===selectedId;});
-      if(cam){ cam.model = null; redraw(); updateList(); }
-    }
-    return;
-  }
-  currentBrand = brandKey;
-  currentStyleFilter = 'all';
-  var meta = BRAND_META[brandKey];
-  // Set up modal header
-  var logoEl = document.getElementById('brand-modal-logo');
-  logoEl.className = 'brand-logo ' + meta.cssClass;
-  logoEl.style.width = '52px'; logoEl.style.height = '52px'; logoEl.style.fontSize = '18px';
-  logoEl.textContent = meta.short;
-  document.getElementById('brand-modal-title').textContent = meta.name;
-  document.getElementById('brand-modal-sub').textContent = 'Filter by camera style or pick a model below';
-  // Reset chips
-  document.querySelectorAll('.style-chip').forEach(function(c){
-    c.classList.toggle('active', c.dataset.style === 'all');
-  });
-  renderBrandModelList();
-  document.getElementById('brand-modal').classList.add('show');
-}
-
-function closeBrandModal(){
-  document.getElementById('brand-modal').classList.remove('show');
-}
-
-function setStyleFilter(s){
-  currentStyleFilter = s;
-  document.querySelectorAll('.style-chip').forEach(function(c){
-    c.classList.toggle('active', c.dataset.style === s);
-  });
-  renderBrandModelList();
-}
-
-function renderBrandModelList(){
-  var meta = BRAND_META[currentBrand]; if(!meta) return;
-  var list = document.getElementById('brand-model-list');
-  // Group models by style for the active brand
-  var groups = {};
-  Object.keys(CAMERA_DB).forEach(function(key){
-    if(meta.prefix && key.indexOf(meta.prefix) !== 0) return;
-    var spec = CAMERA_DB[key];
-    var style = spec.type;
-    if(currentStyleFilter !== 'all' && style !== currentStyleFilter) return;
-    if(!groups[style]) groups[style] = [];
-    groups[style].push({key:key, spec:spec});
-  });
-
-  // Determine selected camera model (so we can highlight it)
-  var selectedCam = selectedId ? cameras.find(function(c){return c.id===selectedId;}) : null;
-  var selModel = selectedCam ? selectedCam.model : null;
-
-  // Order: dome, bullet, turret, fisheye, ptz, lpr
-  var order = ['dome','bullet','turret','fisheye','ptz','lpr'];
-  var html = '';
-  var totalCount = 0;
-  order.forEach(function(style){
-    if(!groups[style] || !groups[style].length) return;
-    var sm = STYLE_META[style];
-    var models = groups[style];
-    totalCount += models.length;
-    html += '<div class="style-group">';
-    html += '<div class="style-group-hdr style-'+style+'">'+sm.svg+sm.label+'<span class="style-count">'+models.length+' model'+(models.length>1?'s':'')+'</span></div>';
-    models.forEach(function(m){
-      var resTxt = m.spec.hPx >= 3840 ? '4K' : m.spec.hPx >= 2592 ? '5MP' : m.spec.hPx >= 2560 ? '4MP' : m.spec.hPx >= 1920 ? '2MP' : (m.spec.hPx+'px');
-      var sel = (m.key === selModel) ? ' selected' : '';
-      html += '<div class="model-row'+sel+'" data-key="'+m.key+'" onclick="pickModel(\''+m.key+'\')">'+
-              '<div class="ts-icon" style="color:'+sm.color+'">'+sm.svg+'</div>'+
-              '<div class="m-name">'+m.spec.model+'</div>'+
-              '<div class="m-desc">'+escapeHtml(m.spec.desc)+'</div>'+
-              '<div class="m-spec">'+resTxt+' &middot; '+m.spec.fov+'\u00b0</div>'+
-              '</div>';
-    });
-    html += '</div>';
-  });
-  if(totalCount === 0){
-    html = '<div style="padding:30px 12px;text-align:center;color:#9ca3af;font-size:11px;">No '+currentStyleFilter+' models in this brand.</div>';
-  }
-  list.innerHTML = html;
-}
 
 // Pass Left-Pane M2-fix2: pickModel was a single function doing both
 // "arm next placement" (state only) AND "apply this model to the
@@ -1961,6 +1801,11 @@ function applyModelToSelected(key){
   if(!spec) return;
   var cam = cameras.find(function(c){return c.id===selectedId;});
   if(!cam) return;
+  // Pass Left-Pane M7-fix: capture OLD mfr code BEFORE mutating cam.model.
+  // Used below to detect an auto-generated label (<OLD_MFR>-<FLOOR>-<NUM>)
+  // so the prefix can be swapped to the new mfr without disturbing the
+  // trailing floor + counter portion.
+  var oldMfr = getMfrCode(cam.model);
   cam.type = spec.type;
   cam.resolution = parseInt(document.getElementById('inp-resolution').value);
   cam.fov = parseInt(document.getElementById('inp-fov').value);
@@ -1970,19 +1815,44 @@ function applyModelToSelected(key){
   cam.reachM = cameraSpecReachM(key);
   configureReachSlider(cam);
   if(!cam.notes) cam.notes = spec.desc;
+  // Pass Left-Pane M7-fix (label prefix swap):
+  // Pattern: <OLD_MFR>-<FLOOR_CODE>-<NUM> where MFR is 3 uppercase chars,
+  // FLOOR_CODE is uppercase-alphanumeric (per getFloorCode), NUM is digits.
+  // When the existing cam.label matches this auto-pattern AND the user
+  // hasn't typed into the label input since selection, swap the prefix to
+  // the new mfr's 3-char code. Preserves -<FLOOR>-<NUM> exactly so the
+  // camera keeps its placement-time number (intentional deviation from the
+  // brief's suggested generateAutoLabel call — that would use the page's
+  // CURRENT counter, which has moved on since the camera was placed).
+  // User-typed labels with the same shape (e.g., "AAA-01-2" entered
+  // manually in sequence mode) are an accepted false-positive: the source
+  // flag goes to 'selection' on selection so we can't distinguish them
+  // from auto-generated labels at this point.
+  var autoLabelRe = new RegExp('^' + oldMfr + '-[A-Z0-9]+-\\d+$');
+  if(_inpLabelSource !== 'typed' && cam.label && autoLabelRe.test(cam.label)){
+    var newMfr = getMfrCode(key);
+    cam.label = newMfr + cam.label.substring(oldMfr.length);
+    var labelInp = document.getElementById('inp-label');
+    if(labelInp) labelInp.value = cam.label;
+  }
   markDirty();
+  // Pass Left-Pane M7-fix (right-panel display refresh):
+  // Without this, Mfg/Model/Description/Specs readouts continue to show
+  // the OLD model's values until the user re-clicks the camera (which
+  // triggers selectCamera → openRightPanelForCamera → updateRightPanelDisplay).
+  // Mirror that call here so the panel stays in sync with cam.model.
+  updateRightPanelDisplay(cam);
   redraw(); updateList(); updateDoriInfo();
 }
 
-// pickModel(key) — legacy/composite entry point. Arms + applies to
-// selection + closes the brand modal. Kept for the legacy modal click
-// (renderBrandModelList → onclick="pickModel(...)") and the Tier 3
-// click via lpPickCamerasModel. Tile-arming paths must NOT call this;
-// use armModel directly.
+// pickModel(key) — composite entry point. Arms + applies to selection.
+// Called from the Tier 3 click via lpPickCamerasModel when the user
+// explicitly picks a model for the selected camera. Tile-arming paths
+// must NOT call this; use armModel directly. (Pass Left-Pane M6: the
+// legacy brand-modal click site is gone; closeBrandModal() call dropped.)
 function pickModel(key){
   armModel(key);
   applyModelToSelected(key);
-  closeBrandModal();
 }
 
 function clearModel(){
@@ -2022,14 +1892,9 @@ function nearestRes(target){
   return best;
 }
 
-// Click outside modal closes it
-document.getElementById('brand-modal').addEventListener('click', function(e){
-  if(e.target.id === 'brand-modal') closeBrandModal();
-});
-
 // ─── Pass Left-Pane: Camera drill-down (Tier 1 / 2 / 3) ──────────────────────
-// Replaces the brand-modal flow as the primary entry point. The modal is
-// still in the DOM (deleted in M6) but no UI element opens it anymore.
+// Pass Left-Pane M6: brand-modal removed from DOM. This drill-down is now
+// the sole entry point for picking a camera brand / style / model.
 //
 // State (reused from the legacy modal flow):
 //   currentBrand     — 'een' | 'hwa' | 'other' (formerly 'custom')
@@ -2243,7 +2108,6 @@ function armAcDevice(category, subcategory){
     : (variantValuesFor(category, subcategory)[0] || null);
   var sku = resolveSku(category, subcategory, variant);
   currentReaderModel = sku;
-  if(sku) lastArmedReader = sku;
   renderLeftPaneDrillDown('ac');
 }
 
@@ -2294,7 +2158,6 @@ function lpChangeAcVariant(subcategory, variantValue){
   projectInfo.acDefaults[subcategory] = variantValue;
   var sku = resolveSku(currentACCategory, subcategory, variantValue);
   currentReaderModel = sku;
-  if(sku) lastArmedReader = sku;
   markDirty();
   renderLeftPaneDrillDown('ac');
 }
@@ -2888,7 +2751,7 @@ function rewindToNoPdf(){
     var el = document.getElementById(id); if(el) el.classList.remove('active');
   });
   // Close any open modals / overlays
-  ['project-modal','export-modal','brand-modal','help-modal','calib-modal'].forEach(function(id){
+  ['project-modal','export-modal','help-modal','calib-modal'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.classList.remove('show');
   });
   document.getElementById('bom-drawer').classList.remove('open');
@@ -4495,19 +4358,6 @@ function setPanelMode(mode){
   }
 }
 
-function pickReader(sku){
-  if(!BRIVO_READERS[sku]) return;
-  currentReaderModel = sku;
-  lastArmedReader = sku;
-  document.querySelectorAll('.ac-model').forEach(function(el){
-    el.classList.toggle('active', el.dataset.model === sku);
-  });
-  if(acSelectedId){
-    var d = acDevices.find(function(x){return x.id === acSelectedId;});
-    if(d){ d.model = sku; redraw(); updateAcList(); }
-  }
-}
-
 function placeReader(cssX, cssY){
   // Pass Left-Pane M3: "Other" Tier 1 (currentACBrand='other') arms a
   // generic device with no SKU — currentReaderModel is null but the
@@ -4575,7 +4425,6 @@ function selectReader(id){
     currentACCategory    = d.category;
     currentACSubcategory = d.subcategory;
     currentReaderModel   = d.sku || d.model || null;
-    if(currentReaderModel) lastArmedReader = currentReaderModel;
   } else {
     currentACBrand       = 'other';
     currentACCategory    = null;
