@@ -167,7 +167,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .bom-cfg label { color:#78350f; text-transform:uppercase; letter-spacing:.04em; min-width:90px; font-weight:700; }
 .bom-cfg input { flex:1; padding:3px 6px; border:1px solid #e5e7eb; border-radius:2px; font:700 11px var(--font-mono); }
 
-#bom-body { flex:1; overflow-y:auto; }
+/* M4-fix3 #2: scrolling moved from #bom-body to a wrapping container so the
+   summary / config / storage tiles scroll with the section list instead of
+   sitting as a fixed top band. */
+#bom-scroll-wrap { flex:1; overflow-y:auto; }
+#bom-body { /* no flex / overflow — wrapper handles scrolling */ }
 
 .bom-section {
   padding: 8px 0; border-bottom:1px solid var(--border);
@@ -228,8 +232,23 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .tier-recommended { background:#dcfce7; color:#166534; }
 .tier-premium     { background:#fef3c7; color:#92400e; }
 
-/* Storage Calculator */
+/* Storage Calculator — M4-fix3 #1: now a <details> disclosure tile.
+   Collapsed by default; click the <summary> to expand. */
 #bom-storage { padding: 10px 16px; background:#eff6ff; border-bottom:1px solid #bfdbfe; }
+#bom-storage > summary {
+  font:700 9px var(--font-ui); color:#1e3a8a; letter-spacing:.12em;
+  text-transform:uppercase; cursor:pointer; user-select:none;
+  list-style:none;  /* hide default disclosure triangle; we render our own */
+  display:flex; align-items:center; gap:6px;
+}
+#bom-storage > summary::-webkit-details-marker { display:none; }
+#bom-storage > summary::before {
+  content:'\25B8';  /* ▸ collapsed chevron */
+  display:inline-block; font-size:11px; color:#1e3a8a;
+  transition:transform .15s ease-out;
+}
+#bom-storage[open] > summary::before { transform:rotate(90deg); }
+#bom-storage[open] > summary { margin-bottom:7px; }
 .storage-hdr { font:700 9px var(--font-ui); color:#1e3a8a; letter-spacing:.12em; text-transform:uppercase; margin-bottom:7px; }
 .storage-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin-bottom:8px; }
 .storage-grid .bom-cfg label { color:#1e3a8a; }
@@ -1345,6 +1364,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <button id="bom-close" onclick="toggleBom()" title="Close">&times;</button>
   </header>
 
+  <div id="bom-scroll-wrap">
   <div id="bom-summary">
     <div class="bom-stat"><span class="lbl">Camera Count</span><span class="val" id="bom-cam-count">0</span></div>
     <div class="bom-stat"><span class="lbl">Subtotal</span><span class="val" id="bom-subtotal">$0.00</span></div>
@@ -1382,9 +1402,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </div>
   </div>
 
-  <!-- Storage Calculator -->
-  <div id="bom-storage">
-    <div class="storage-hdr">&#128190; Storage Calculator</div>
+  <!-- Storage Calculator — M4-fix3 #1: collapsible disclosure (closed by default). -->
+  <details id="bom-storage">
+    <summary>&#128190; Storage Calculator</summary>
     <div class="storage-grid">
       <div class="bom-cfg">
         <label>Retention</label>
@@ -1413,11 +1433,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       </div>
     </div>
     <div id="storage-result">Storage estimate appears once cameras are placed.</div>
-  </div>
+  </details>
 
   <div id="bom-body">
     <!-- populated dynamically -->
   </div>
+  </div><!-- /#bom-scroll-wrap -->
 </aside>
 
 <script>
@@ -1667,6 +1688,26 @@ function resolveSku(category, subcategory, variantValue){
   return null;
 }
 
+// Pass N M1: classify an acDevice as 'Readers' | 'Controllers' | null.
+// Prefers dev.category (v15 shape — written at placement and during the v15
+// migration). Falls back to a BRIVO_CATALOG lookup by SKU/model for legacy
+// entries that escaped the migration. ACS100 is BRIVO_CATALOG-category
+// 'Controllers' even though it renders like a reader on canvas — this
+// helper returns 'Controllers' for it per D5 (catalog category is the
+// source of truth for SKU classification; canvas-rendering quirk is
+// cosmetic). Returns null for "Other" devices and any SKU not in the
+// catalog; callers that need a count should treat null as "uncategorized."
+function acCategoryOf(dev){
+  if(!dev) return null;
+  if(dev.category === 'Readers' || dev.category === 'Controllers') return dev.category;
+  var key = dev.sku || dev.model;
+  if(!key) return null;
+  for(var i = 0; i < BRIVO_CATALOG.length; i++){
+    if(BRIVO_CATALOG[i].sku === key) return BRIVO_CATALOG[i].category;
+  }
+  return null;
+}
+
 // Pass Left-Pane: startup assertion. BRIVO_READERS feeds canvas rendering
 // (mount/keypad shape); BRIVO_CATALOG feeds drill-down + variant resolution.
 // When the two drift (someone adds a new reader SKU to one but not the
@@ -1714,6 +1755,10 @@ var bomCustomLines = {
   recording: [],
   network: [],
   cabling: [],
+  // Pass N M3: ACCESS CONTROL section sits between Cabling and Labor (D1).
+  // Holds reader, controller, credential, and future smart-apartment custom
+  // lines (Pass N+1 reuses this key — see PASS_N1_BRIEF.md D0).
+  accessControl: [],
   labor: [],
   other: []
 };
@@ -2322,12 +2367,15 @@ async function loadImage(file){
   var off=document.createElement('canvas');
   off.width=img.naturalWidth; off.height=img.naturalHeight;
   off.getContext('2d').drawImage(img,0,0);
-  // Treat logical size = native size
-  var imgLabel = file.name.length>30 ? file.name.slice(0,28)+'…' : file.name;
-  // Floor name defaults to filename without extension; fall back to Floor 1.
-  var baseName = file.name.replace(/\.[^.]+$/, '').trim();
-  var imgFloorName = baseName ? (baseName.length > 30 ? baseName.slice(0,28)+'…' : baseName) : 'Floor 1';
-  pages.push({offCanvas:off, logW:img.naturalWidth, logH:img.naturalHeight, label:imgLabel, name:imgFloorName, typical:null});
+  // Treat logical size = native size.
+  // Pass N M4-fix2: image imports previously defaulted pg.name / pg.label to
+  // the filename (e.g., "SPIDERS 1 COLOUR LOGO" for SPIDERS 1 COLOUR LOGO.png).
+  // That filename then leaked into the proposal PDF as the floor band label
+  // and the equipment-schedule section header (rendered in red), exposing
+  // internal file naming to the customer. PDF imports already defaulted to
+  // "Floor 1"-style names — this brings image imports in line. User can
+  // still rename the tab via double-click for floors like "Lobby" / "Parkade".
+  pages.push({offCanvas:off, logW:img.naturalWidth, logH:img.naturalHeight, label:'Floor 1', name:'Floor 1', typical:null});
   rebuildTabsDom();
 
   hideProgress(); pdfLoaded=true;
@@ -5601,6 +5649,11 @@ function applyProjectState(data){
   }
   if(data.bom){
     if(data.bom.customLines) bomCustomLines = data.bom.customLines;
+    // Pass N M3: backfill the ACCESS CONTROL key when loading a save
+    // predating Pass N (the wholesale assignment above drops keys the
+    // saved object didn't have). Other sections were present in earlier
+    // versions so no backfill needed for them.
+    if(!Array.isArray(bomCustomLines.accessControl)) bomCustomLines.accessControl = [];
     if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
     if(data.bom.config){
       if(data.bom.config.laborRate !== undefined) document.getElementById('bom-labor-rate').value = data.bom.config.laborRate;
@@ -5804,15 +5857,21 @@ async function runExportPDF(){
     drawProposalCover(doc, pageW, pageH);
   }
 
-  // BOM Page
-  if(opts.bom && cameras.length > 0){
+  // BOM Page. Pass N: gate expanded \u2014 AC-only projects (no cameras but with
+  // placed readers/controllers) have a populated ACCESS CONTROL section and
+  // should still produce a BOM page. Empty-everywhere projects still skip
+  // BOM cleanly (drawProposalBOM hides empty sections individually).
+  if(opts.bom && (cameras.length > 0 || acDevices.length > 0)){
     showProgress('Composing BOM\u2026',15);
     startSection('letter','portrait');
     drawProposalBOM(doc, pageW, pageH);
   }
 
-  // Riser Diagram (one or more pages \u2014 overflows continue the schedule)
-  if(opts.riser && cameras.length > 0){
+  // Riser Diagram (one or more pages \u2014 overflows continue the schedule).
+  // Pass N: gate matches BOM \u2014 AC-only projects produce per-band AC rails +
+  // equipment schedule AC rows (M4). drawRiserDiagram already handles the
+  // truly-empty case with its "No cameras placed." placeholder.
+  if(opts.riser && (cameras.length > 0 || acDevices.length > 0)){
     showProgress('Composing riser diagram\u2026',25);
     startSection('letter','portrait');
     drawProposalRiser(doc, pageW, pageH, startSection);
@@ -5850,7 +5909,7 @@ async function runExportPDF(){
   }
   if(!firstUsed){
     hideProgress();
-    alert('Nothing to export with the current selection. Place a camera first, or include Floor Plan Pages.');
+    alert('Nothing to export with the current selection. Place a camera or AC device first, or include Floor Plan Pages.');
     return;
   }
   showProgress('Saving\u2026',95);
@@ -5985,7 +6044,7 @@ function drawProposalCover(doc, W, H){
     doc.text('GRAND TOTAL', 65, y+108);
     var auto = computeAutoRows();
     var subtotal = 0;
-    ['cameras','recording','network','cabling','labor','other'].forEach(function(k){
+    ['cameras','recording','network','cabling','accessControl','labor','other'].forEach(function(k){
       auto[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
       bomCustomLines[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
     });
@@ -6015,6 +6074,7 @@ function drawProposalBOM(doc, W, H){
     { title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
     { title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
     { title:'Cabling',               items: auto.cabling.concat(bomCustomLines.cabling) },
+    { title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
     { title:'Labor',                 items: auto.labor.concat(bomCustomLines.labor) },
     { title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
   ];
@@ -6046,7 +6106,7 @@ function drawProposalBOM(doc, W, H){
       }
       var line = (r.qty||0) * (r.unit||0);
       subtotal += line;
-      var descLines = doc.splitTextToSize(r.desc||'', W-220);
+      var descLines = doc.splitTextToSize(bomDisplayDesc(r), W-220);
       doc.text(descLines[0]||'', 45, y);
       doc.text(String(r.qty||0), W-180, y, {align:'right'});
       doc.text((r.unit||0).toFixed(2), W-110, y, {align:'right'});
@@ -6150,6 +6210,21 @@ function computeRiserModel(){
   var switchCount = Math.max(1, Math.ceil(camCount / ports));
   var nvrChannels = camCount <= 4 ? 4 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 32 ? 32 : camCount <= 64 ? 64 : 128;
 
+  // Pass N M1: project-wide AC counts (multiplied across typical floors).
+  // readerCount / controllerCount drive the cover summary (M5) and BOM
+  // ACCESS CONTROL section (M3). acCategoryOf treats ACS100 as Controller
+  // per D5 (catalog category wins over canvas-render shape). "Other" /
+  // uncategorized AC devices don't increment either count — they still
+  // render on the riser via the per-zone acDevices array below.
+  var readerCount = 0, controllerCount = 0;
+  acDevices.forEach(function(d){
+    var cat = acCategoryOf(d);
+    var mult = pageMultiplier(d.page);
+    if(cat === 'Readers')          readerCount     += mult;
+    else if(cat === 'Controllers') controllerCount += mult;
+  });
+  var acCount = readerCount + controllerCount;
+
   // Pass A.7: zone per PAGE (not per cam.floor). Every page gets a band, even
   // empty ones. Render order is top-to-bottom by elevation (highest first),
   // sourced from getRiserOrder() which honors manual tabOrder when set and
@@ -6160,6 +6235,15 @@ function computeRiserModel(){
     var pg   = pages[pageIdx];
     var name = (pg && (pg.name || pg.label)) || ('Floor ' + (pageIdx + 1));
     var cams = cameras.filter(function(c){ return c.page === pageIdx; });
+    // Pass N M1: per-zone AC slice. Sort readers→controllers per the M2
+    // rail rendering order (step 8 — confirmed). Stable sort keeps
+    // placement order within each category bucket.
+    var ac = acDevices.filter(function(d){ return d.page === pageIdx; });
+    ac.sort(function(a, b){
+      var ca = acCategoryOf(a) === 'Controllers' ? 1 : 0;
+      var cb = acCategoryOf(b) === 'Controllers' ? 1 : 0;
+      return ca - cb;
+    });
     var mult = pageMultiplier(pageIdx);
     var range = pageFloorRange(pageIdx);
     var displayName = name;
@@ -6169,6 +6253,7 @@ function computeRiserModel(){
       name:       name,
       displayName:displayName,
       cams:       cams,
+      acDevices:  ac,
       hasHeadend: !!headends[pageIdx]
     };
   });
@@ -6187,7 +6272,18 @@ function computeRiserModel(){
     });
   });
 
-  return { camCount: camCount, ports: ports, switchCount: switchCount, nvrChannels: nvrChannels, zones: zones };
+  return {
+    camCount: camCount,
+    ports: ports,
+    switchCount: switchCount,
+    nvrChannels: nvrChannels,
+    zones: zones,
+    // Pass N M1: AC counts for downstream consumers (cover summary M5,
+    // BOM credentials row M3). Each is multiplied across typical floors.
+    readerCount:     readerCount,
+    controllerCount: controllerCount,
+    acCount:         acCount
+  };
 }
 
 // ─── Pass A.7: smart-parse comparator for riser floor order ──────────────────
@@ -6329,12 +6425,18 @@ var RISER_MIN_BAND_PT   = 50;   // non-empty band minimum
 var RISER_MAX_BAND_PT   = 120;  // cap so a small project doesn't sprawl
 var RISER_LABEL_W       = 64;   // left column reserved for the floor name
 var RISER_HEAD_W        = 130;  // horizontal span the head-end cluster occupies
+// Pass N M2 — AC rail dimensions (D2 same-band-two-rails).
+var RISER_AC_RAIL_MIN_PT     = 50;    // AC-only band minimum (single rail)
+var RISER_MIXED_MAX_BAND_PT  = 150;   // cap for bands with BOTH cams + AC
+var AC_RAIL_GROW_FACTOR      = 1.25;  // mixed-band height multiplier per D2
 function drawRiserDiagram(doc, x0, y0, w, h, model){
   var n = model.zones.length;
-  // True empty state: no pages AND no cameras AND no head-ends.
-  if(n === 0 || (model.camCount === 0 && !model.zones.some(function(z){ return z.hasHeadend; }))){
+  // True empty state: no pages AND no cameras AND no AC devices AND no
+  // head-ends. Pass N: AC devices now keep the diagram non-empty too.
+  var hasAnyAc = (model.acCount || 0) > 0;
+  if(n === 0 || (model.camCount === 0 && !hasAnyAc && !model.zones.some(function(z){ return z.hasHeadend; }))){
     doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120,120,140);
-    doc.text('No cameras placed.', x0 + w/2, y0 + 60, {align:'center'});
+    doc.text('No devices placed.', x0 + w/2, y0 + 60, {align:'center'});
     return;
   }
 
@@ -6349,11 +6451,15 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
   var bandsY0 = y0 + headendStripH;
   var bandsH  = h  - headendStripH;
 
-  // Band heights — three-tier rule:
-  //   - Empty bands (zero cams)                → RISER_EMPTY_BAND_PT (30 pt)
-  //   - Non-empty: MIN + proportional share    → clamped to [MIN, MAX]
-  //   - Pass A.7.5: bands with 4+ cams add STAGGER_BASE_PT to MIN so the
-  //     staggered camera-label row fits without clipping.
+  // Band heights — four-tier rule (Pass N M2 extends the original three-tier):
+  //   - Empty (no cams + no AC)                → RISER_EMPTY_BAND_PT (30 pt)
+  //   - AC-only (no cams + AC)                 → RISER_AC_RAIL_MIN_PT (50 pt)
+  //   - Cams-only: MIN + stagger + propor share → clamped to RISER_MAX_BAND_PT
+  //     (Pass A.7.5: bands with 4+ cams add STAGGER_BASE_PT to MIN so the
+  //     staggered camera-label row fits without clipping.)
+  //   - Mixed (cams + AC): cams-base × AC_RAIL_GROW_FACTOR (1.25), grows
+  //     with cam count, capped at RISER_MIXED_MAX_BAND_PT (150 pt) to fit
+  //     the second rail + labels per D2.
   //   - If bandsH < sum of bases               → shrink equally (overflow
   //                                              still preferable to clipping)
   // Total may be < bandsH, in which case the diagram anchors at the top
@@ -6361,8 +6467,12 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
   var STAGGER_BASE_PT = 9;
   var totalCams  = model.zones.reduce(function(s, z){ return s + z.cams.length; }, 0);
   var baseHeights = model.zones.map(function(z){
-    if(z.cams.length === 0) return RISER_EMPTY_BAND_PT;
-    return RISER_MIN_BAND_PT + (z.cams.length >= 4 ? STAGGER_BASE_PT : 0);
+    var hasCams = z.cams.length > 0;
+    var hasAc   = z.acDevices.length > 0;
+    if(!hasCams && !hasAc) return RISER_EMPTY_BAND_PT;
+    if(!hasCams &&  hasAc) return RISER_AC_RAIL_MIN_PT;
+    var camsBase = RISER_MIN_BAND_PT + (z.cams.length >= 4 ? STAGGER_BASE_PT : 0);
+    return hasAc ? Math.round(camsBase * AC_RAIL_GROW_FACTOR) : camsBase;
   });
   var baseTotal = baseHeights.reduce(function(a, b){ return a + b; }, 0);
   var bandHeights;
@@ -6376,8 +6486,10 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
     var extra = bandsH - baseTotal;
     bandHeights = model.zones.map(function(z, zi){
       if(z.cams.length === 0) return baseHeights[zi];
-      var grew = baseHeights[zi] + extra * z.cams.length / totalCams;
-      return Math.min(RISER_MAX_BAND_PT, grew);
+      var hasAc = z.acDevices.length > 0;
+      var grew  = baseHeights[zi] + extra * z.cams.length / totalCams;
+      var cap   = hasAc ? RISER_MIXED_MAX_BAND_PT : RISER_MAX_BAND_PT;
+      return Math.min(cap, grew);
     });
   }
   var totalBandH = bandHeights.reduce(function(a, b){ return a + b; }, 0);
@@ -6432,22 +6544,43 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
 
 // Render one band's content — optional head-end cluster on the left interior,
 // then a horizontal camera rail from the trunk to the right edge with cameras
-// stubbing down from the rail. Dangling-cable hint shown for bands whose
-// cameras couldn't resolve a serving head-end.
+// stubbing down from the rail. Pass N M2: when both cams and AC live in the
+// same band, the camera rail occupies the upper sub-region and an AC rail
+// occupies the lower sub-region with a hairline separator between them.
+// Cams-only and AC-only bands keep a single rail centered at midY.
 function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
   var midY = y0 + h / 2;
 
+  // Pass N M2: sub-region geometry. mixedSplit places the separator at 55%
+  // of the band height — cameras get the upper 55%, AC the lower 45%. Tuned
+  // so a 4-cam band (with its stagger) doesn't crowd the AC rail. The split
+  // is irrelevant for cams-only / AC-only bands; we fall through to the
+  // single-rail center.
+  var hasCams = zone.cams.length > 0;
+  var hasAc   = zone.acDevices.length > 0;
+  var isMixed = hasCams && hasAc;
+  var mixedSplit = 0.55;
+  var separatorY     = isMixed ? (y0 + h * mixedSplit) : null;
+  var camRegionH     = isMixed ? (h * mixedSplit)        : h;
+  var camRegionBot   = isMixed ? separatorY              : (y0 + h);
+  var camRailY       = isMixed ? (y0 + camRegionH / 2)   : midY;
+  var acRegionTop    = isMixed ? separatorY              : y0;
+  var acRailY        = isMixed ? (acRegionTop + (h - camRegionH) / 2) : midY;
+
   if(zone.hasHeadend){
     // Compact head-end cluster: NVR, one switch (with "× N" badge if multi-
-    // switch), UPS. Centered vertically in the band, anchored to the left
-    // interior with the right edge of UPS aligned just inside trunkX.
+    // switch), UPS. Anchored to the camera rail's vertical center (camRailY)
+    // so it sits in the upper sub-region of mixed bands — keeps the cluster
+    // and the camera rail on the same visual lane, leaving the AC region
+    // visually separate. In cams-only / AC-only bands camRailY === midY so
+    // the cluster stays centered as it did before Pass N.
     var nvrW = 36, swW = 44, upsW = 30, gap = 6, hH = 20;
     var multiSw = model.switchCount > 1;
     var multW = multiSw ? 16 : 0;
     var clusterW = nvrW + gap + swW + multW + gap + upsW;
     var clusterX = trunkX - clusterW - 4;
     if(clusterX < x0 + RISER_LABEL_W + 4) clusterX = x0 + RISER_LABEL_W + 4;
-    var clusterY = midY - hH/2;
+    var clusterY = camRailY - hH/2;
 
     drawRiserNvrBox(doc, clusterX, clusterY, nvrW, hH, model.nvrChannels);
     var hx = clusterX + nvrW + gap;
@@ -6462,19 +6595,32 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
 
     // Connector from cluster's right edge to the trunk
     doc.setDrawColor(31, 41, 55); doc.setLineWidth(0.6);
-    doc.line(hx + upsW, midY, trunkX, midY);
+    doc.line(hx + upsW, camRailY, trunkX, camRailY);
   }
 
-  // Camera rail — from the trunk to the right edge. Skip drawing the rail
-  // line when the band has no cameras (empty band — cleaner). The trunk
-  // still passes through the band vertically, drawn by the parent.
+  // Pass N M2: hairline separator between camera region and AC region in
+  // mixed bands. Subtle (0.3 pt, #e5e7eb) — visual cue that the band has
+  // two subsystems without dividing the band into two bands.
+  if(isMixed){
+    doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3);
+    doc.line(x0 + RISER_LABEL_W, separatorY, x0 + w - 6, separatorY);
+  }
+
+  // Camera rail — from the trunk to the right edge. Skip the rail line when
+  // the band has no cameras (cleaner empty/AC-only band). The trunk still
+  // passes through the band vertically (drawn by parent). For mixed bands,
+  // the rail and icons are constrained to the upper sub-region via camRailY
+  // / camRegionBot.
   var cams = zone.cams;
   var n = cams.length;
-  if(n === 0) return;
+  if(n === 0){
+    // No cameras → skip the camera rail block. Continue to AC rail below.
+    if(!hasAc) return;
+  } else {
 
   var railLeft  = trunkX + 4;
   var railRight = x0 + w - 6;
-  var railY     = midY;
+  var railY     = camRailY;
   doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.5);
   doc.line(railLeft, railY, railRight, railY);
 
@@ -6493,8 +6639,10 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
   var iconSize = Math.min(13, Math.max(8, spacing * 0.55));
   // Icons sit below the rail. Bottom margin reserves space for the label —
   // 8 pt single-row, 18 pt when staggered so the lower row clears.
+  // Pass N M2: clamp to camRegionBot rather than y0+h so mixed-band icons
+  // don't bleed into the AC sub-region below the separator.
   var bottomMargin = staggerEnabled ? 18 : 8;
-  var iconY = Math.min(railY + 18, y0 + h - iconSize/2 - bottomMargin);
+  var iconY = Math.min(railY + 18, camRegionBot - iconSize/2 - bottomMargin);
 
   cams.forEach(function(cam, i){
     var cx = railLeft + 4 + spacing * (i + 1);
@@ -6527,9 +6675,78 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
     doc.text(lab, cx, labelBaseline, {align:'center'});
   });
 
+  }  // end cams-rail else block (Pass N M2)
+
+  // Pass N M2: AC rail. Renders below the camera rail in mixed bands
+  // (acRailY shifted), or centered in the band for AC-only zones. Readers
+  // first, controllers second (sort applied in computeRiserModel M1). No
+  // cable lines — reader→controller wiring is deferred per D3 / CLAUDE.md
+  // "Reader-to-controller cable lines are deferred" pitfall.
+  if(hasAc){
+    var acDevs   = zone.acDevices;
+    var acN      = acDevs.length;
+    var acRailL  = trunkX + 4;
+    var acRailR  = x0 + w - 6;
+    doc.setDrawColor(29, 78, 216); doc.setLineWidth(0.5);   // Brivo blue
+    doc.line(acRailL, acRailY, acRailR, acRailY);
+
+    var acAvail   = acRailR - acRailL - 8;
+    var acSpacing = acAvail / (acN + 1);
+    var acIconSize = Math.min(11, Math.max(7, acSpacing * 0.55));
+    var acBandBot = isMixed ? (y0 + h) : (y0 + h);
+    var acIconY   = Math.min(acRailY + 14, acBandBot - acIconSize/2 - 8);
+
+    acDevs.forEach(function(dev, i){
+      var cx = acRailL + 4 + acSpacing * (i + 1);
+      doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
+      doc.line(cx, acRailY, cx, acIconY - acIconSize/2 - 1);
+      drawRiserAcIcon(doc, dev, cx, acIconY, acIconSize);
+      var labelBaseline = acIconY + acIconSize/2 + 6;
+      doc.setFont('courier','bold'); doc.setFontSize(5.5);
+      doc.setTextColor(40, 40, 60);
+      var lab = dev.label || '';
+      if(lab.length > 11) lab = lab.slice(0, 10) + '…';
+      doc.text(lab, cx, labelBaseline, {align:'center'});
+    });
+  }
+
   // (Pass A.7.5: the per-zone "(no head-end)" red italic hint that used to
   // render here is gone. Single page-level placeholder is rendered by
   // drawRiserDiagram when no zone has a head-end placed.)
+}
+
+// Pass N M2: AC device icon at riser scale. Readers render as Brivo-blue
+// rounded rectangles (matches the floor-plan reader shape, scaled down).
+// Controllers render as charcoal squares with a thin "C" inside — distinct
+// from readers at small sizes. ACS100 follows its catalog category
+// (Controller) per D5 even though its canvas shape is reader-like.
+function drawRiserAcIcon(doc, dev, cx, cy, size){
+  var cat = acCategoryOf(dev);
+  var s = size;
+  if(cat === 'Controllers'){
+    // Charcoal square + tiny white "C"
+    doc.setFillColor(31, 41, 55);
+    doc.setDrawColor(31, 41, 55);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(cx - s/2, cy - s/2, s, s, 0.6, 0.6, 'FD');
+    doc.setFont('courier','bold');
+    doc.setFontSize(Math.max(4, Math.round(s * 0.6)));
+    doc.setTextColor(255, 255, 255);
+    doc.text('C', cx, cy + s * 0.18, {align:'center'});
+  } else {
+    // Brivo blue reader rectangle (taller than wide — matches mullion-ish
+    // proportion of drawReader at riser scale). Uncategorized "Other" AC
+    // devices also fall here so they're still visible on the diagram.
+    var rw = s * 0.65;
+    var rh = s * 0.95;
+    doc.setFillColor(29, 78, 216);
+    doc.setDrawColor(29, 78, 216);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(cx - rw/2, cy - rh/2, rw, rh, 0.5, 0.5, 'FD');
+    // Thin white stripe near the top (card-reader contact area)
+    doc.setFillColor(255, 255, 255);
+    doc.rect(cx - rw * 0.35, cy - rh * 0.30, rw * 0.7, rh * 0.08, 'F');
+  }
 }
 
 function drawRiserNvrBox(doc, x, y, w, h, channels){
@@ -6631,26 +6848,23 @@ function hexToRgbArr(hex){
 }
 
 function buildRiserScheduleRows(model){
-  // Pass A.7 (followup): head-end equipment is rolled into its floor's
-  // section rather than appearing as a separate top-level "HEAD-END
-  // EQUIPMENT" section. For each zone with hasHeadend, NVR/SW/UPS rows
-  // precede the camera rows under the same section header. Empty bands
-  // still get a section header (consistent with the diagram's "every
-  // floor visible" rule from M2). Multi-head-end edge case: the same
+  // Pass A.7 (followup) + Pass N M4: per-zone row ordering is
+  //   section header → cameras → AC devices → head-end equipment
+  // per the M4 brief / D6. AC rows (readers, controllers) sit between
+  // cameras and the head-end gear because they're floor-level endpoints
+  // like cameras, not infrastructure. Multi-head-end edge case: the same
   // NVR/SW/UPS rows render under EACH head-end-having band — matches the
-  // M2 diagram simplification (no per-head-end sizing).
+  // diagram simplification (no per-head-end sizing).
+  //
+  // (Note: this Pass N edit also reorders existing camera + head-end rows
+  // — previously head-end came before cameras. The visible delta on a
+  // cameras-only project with head-end placed is the head-end equipment
+  // moves to AFTER its zone's camera list. Same set of rows, new order.)
   var rows = [];
   var anyHeadendZone = model.zones.some(function(z){ return z.hasHeadend; });
 
   model.zones.forEach(function(zone){
     rows.push({type:'section', text:(zone.displayName || zone.name || 'Unassigned').toUpperCase(), accent:'red'});
-    if(zone.hasHeadend){
-      rows.push({type:'equip', id:'NVR-1', model: model.nvrChannels + '-Ch NVR'});
-      for(var i = 0; i < model.switchCount; i++){
-        rows.push({type:'equip', id:'SW-'+(i+1), model: model.ports + '-pt PoE+'});
-      }
-      rows.push({type:'equip', id:'UPS-1', model:'Rack UPS'});
-    }
     zone.cams.forEach(function(cam){
       rows.push({
         type:'cam',
@@ -6658,6 +6872,23 @@ function buildRiserScheduleRows(model){
         model: camRiserDisplayModel(cam)
       });
     });
+    // Pass N M4: AC devices for this zone, in the pre-sorted readers→
+    // controllers order from computeRiserModel (M1). Uncategorized ("Other"
+    // Tier 1) devices still appear here so the schedule matches the rail.
+    zone.acDevices.forEach(function(dev){
+      rows.push({
+        type:'ac',
+        id: dev.label || '',
+        model: acRiserDisplayModel(dev)
+      });
+    });
+    if(zone.hasHeadend){
+      rows.push({type:'equip', id:'NVR-1', model: model.nvrChannels + '-Ch NVR'});
+      for(var i = 0; i < model.switchCount; i++){
+        rows.push({type:'equip', id:'SW-'+(i+1), model: model.ports + '-pt PoE+'});
+      }
+      rows.push({type:'equip', id:'UPS-1', model:'Rack UPS'});
+    }
   });
 
   // Orphan-equipment edge case: cameras placed but no head-end anywhere.
@@ -6677,6 +6908,31 @@ function camRiserDisplayModel(cam){
     return (m.brand.split(' ')[0]) + ' ' + m.model;
   }
   return 'Custom ' + (cam.type || 'dome');
+}
+
+// Pass N M4: AC schedule display string. Prefers dev.subcategory /
+// dev.variantValue (v15 per-device fields), falls back to BRIVO_CATALOG
+// lookup by SKU for legacy devices. Format `Brivo <subcategory> [variant]`
+// matches the brevity of camRiserDisplayModel — drawRiserSchedule's MODEL
+// column is ~20 chars at 9pt courier, so longer combinations (e.g.,
+// "Brivo Mullion Tri-tech" = 22) may truncate with ellipsis in the
+// schedule renderer.
+function acRiserDisplayModel(dev){
+  if(!dev) return 'Custom AC device';
+  var sub = dev.subcategory || null;
+  var vv  = dev.variantValue || null;
+  if(!sub){
+    var key = dev.sku || dev.model;
+    for(var i = 0; i < BRIVO_CATALOG.length; i++){
+      if(BRIVO_CATALOG[i].sku === key){
+        sub = BRIVO_CATALOG[i].subcategory;
+        if(!vv) vv = BRIVO_CATALOG[i].variant_value;
+        break;
+      }
+    }
+  }
+  if(!sub) return 'Custom AC device';
+  return 'Brivo ' + sub + (vv ? ' ' + vv : '');
 }
 
 function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
@@ -6747,6 +7003,17 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
       doc.text((row.model || '').slice(0, 18), x0 + cols[1].x + pad, y + rowH - 3);
       y += rowH;
     } else if(row.type === 'cam'){
+      doc.setFont('courier','normal'); doc.setFontSize(9);
+      doc.setTextColor(40, 40, 60);
+      doc.text((row.id    || '').slice(0, 8),  x0 + cols[0].x + pad, y + rowH - 3);
+      doc.text((row.model || '').slice(0, 18), x0 + cols[1].x + pad, y + rowH - 3);
+      y += rowH;
+    } else if(row.type === 'ac'){
+      // Pass N M4: AC schedule row. Same column geometry as 'cam' /
+      // 'equip'; identical formatting so the table reads as a single
+      // inventory list. AC vs cam distinction is textual (ID prefix
+      // "AC-" and MODEL "Brivo ..." vs "Eagle Eye DD08") — no color
+      // tint per the schedule's monochrome inventory aesthetic.
       doc.setFont('courier','normal'); doc.setFontSize(9);
       doc.setTextColor(40, 40, 60);
       doc.text((row.id    || '').slice(0, 8),  x0 + cols[0].x + pad, y + rowH - 3);
@@ -6840,6 +7107,13 @@ function setTierFilter(t){
 
 // Default install hours per camera type (hours)
 var DEFAULT_HOURS_BY_TYPE = { dome:1.5, bullet:1.5, turret:1.5, fisheye:2.0, ptz:3.0, lpr:2.0 };
+
+// Pass N M3 (D4a): placeholder credential count per reader. Default 1.0 is
+// deliberately low so the integrator notices and tunes via the standard
+// auto-row qty override in the BOM drawer (key: auto-ac-credentials)
+// rather than shipping a quote with phantom volumes. The "real" multiplier
+// for a commercial site is typically 3-10 credentials per reader.
+var CREDENTIAL_MULTIPLIER = 1.0;
 
 // Compute auto-derived rows from current cameras
 function computeAutoRows(){
@@ -6951,11 +7225,66 @@ function computeAutoRows(){
     });
   }
 
+  // Pass N M3: ACCESS CONTROL auto-rows. Three groups:
+  //   1. Readers, grouped by SKU (qty multiplied across typical floors)
+  //   2. Controllers, grouped by SKU (ACS100 counts as controller per D5)
+  //   3. Credentials — single derived row sized to reader count, default
+  //      multiplier 1.0 per D4a (CREDENTIAL_MULTIPLIER above)
+  // No tier filter for AC (cameras have tiers; AC doesn't). Devices with
+  // null acCategoryOf — i.e., "Other"-tier-1 placements with no Brivo SKU —
+  // are skipped here (they need a custom BOM line; auto-rolling them with
+  // empty SKU strings would produce noise rows).
+  var acRows = [];
+  var acGroups = {};
+  var readerCountForCredentials = 0;
+  acDevices.forEach(function(d){
+    var cat = acCategoryOf(d);
+    if(cat !== 'Readers' && cat !== 'Controllers') return;
+    var sku = d.sku || d.model;
+    if(!sku) return;
+    var mult = pageMultiplier(d.page);
+    if(cat === 'Readers') readerCountForCredentials += mult;
+    if(!acGroups[sku]){
+      var catalogEntry = null;
+      for(var ci = 0; ci < BRIVO_CATALOG.length; ci++){
+        if(BRIVO_CATALOG[ci].sku === sku){ catalogEntry = BRIVO_CATALOG[ci]; break; }
+      }
+      var desc = catalogEntry ? (catalogEntry.name + ' — ' + sku) : (sku + ' (custom AC device)');
+      acGroups[sku] = { desc: desc, qty: 0, sku: sku, cat: cat };
+    }
+    acGroups[sku].qty += mult;
+  });
+  // Sort group keys for stable output: readers first (alphabetical by SKU),
+  // controllers second (alphabetical by SKU). Same precedence as the M2
+  // riser-rail sort.
+  var acGroupKeys = Object.keys(acGroups).sort(function(a, b){
+    var ca = acGroups[a].cat === 'Controllers' ? 1 : 0;
+    var cb = acGroups[b].cat === 'Controllers' ? 1 : 0;
+    if(ca !== cb) return ca - cb;
+    return a < b ? -1 : (a > b ? 1 : 0);
+  });
+  acGroupKeys.forEach(function(sku){
+    var g = acGroups[sku];
+    acRows.push({
+      auto: true, src: 'accessControl', key: 'auto-ac-' + sku,
+      desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
+    });
+  });
+  // Credentials row — single line, only when readers exist.
+  if(readerCountForCredentials > 0){
+    acRows.push({
+      auto: true, src: 'accessControl', key: 'auto-ac-credentials',
+      desc: 'Smart Credentials — sized for ' + readerCountForCredentials + ' reader' + (readerCountForCredentials === 1 ? '' : 's'),
+      qty: readerCountForCredentials * CREDENTIAL_MULTIPLIER, unit: 0, sectionAuto: true
+    });
+  }
+
   return {
     cameras: camRows,
     recording: recordingRows,
     network: networkRows,
     cabling: computeAutoCableRows(),
+    accessControl: acRows,
     labor: laborRows,
     other: []
   };
@@ -7015,54 +7344,56 @@ function recalcBom(){
   recalcStorage();
 
   var sections = [
-    { key:'cameras',   title:'Cameras &amp; Imaging',     auto: auto.cameras,   custom: bomCustomLines.cameras },
-    { key:'recording', title:'Recording &amp; Storage',   auto: auto.recording, custom: bomCustomLines.recording },
-    { key:'network',   title:'Network &amp; Power',       auto: auto.network,   custom: bomCustomLines.network },
-    { key:'cabling',   title:'Cabling',                   auto: auto.cabling,   custom: bomCustomLines.cabling },
-    { key:'labor',     title:'Labor',                     auto: auto.labor,     custom: bomCustomLines.labor },
-    { key:'other',     title:'Other / Accessories',       auto: auto.other,     custom: bomCustomLines.other }
+    { key:'cameras',       title:'Cameras &amp; Imaging',     auto: auto.cameras,       custom: bomCustomLines.cameras },
+    { key:'recording',     title:'Recording &amp; Storage',   auto: auto.recording,     custom: bomCustomLines.recording },
+    { key:'network',       title:'Network &amp; Power',       auto: auto.network,       custom: bomCustomLines.network },
+    { key:'cabling',       title:'Cabling',                   auto: auto.cabling,       custom: bomCustomLines.cabling },
+    { key:'accessControl', title:'Access Control',            auto: auto.accessControl, custom: bomCustomLines.accessControl },
+    { key:'labor',         title:'Labor',                     auto: auto.labor,         custom: bomCustomLines.labor },
+    { key:'other',         title:'Other / Accessories',       auto: auto.other,         custom: bomCustomLines.other }
   ];
 
   var subtotal = 0;
   var html = '';
 
   sections.forEach(function(sec){
+    // M4-fix3 #3: hide entire section (header + body) when both auto and
+    // custom arrays are empty. Subtotal accumulation is unaffected — empty
+    // arrays contribute 0 lines either way.
+    if(sec.auto.length === 0 && sec.custom.length === 0) return;
     html += '<div class="bom-section">';
-    html += '<div class="bom-sec-hdr">'+sec.title+'<button class="add-btn" onclick="addBomLine(\''+sec.key+'\')">+ Add Line</button></div>';
+    // M4-fix3 #4: + Add Line button removed from all section headers.
+    // addBomLine() function is preserved for console use / future re-entry.
+    html += '<div class="bom-sec-hdr">'+sec.title+'</div>';
+    // Header row
+    html += '<div class="bom-row col-hdr"><div>Description</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit $</div><div style="text-align:right">Line $</div><div></div><div></div></div>';
 
-    if(sec.auto.length === 0 && sec.custom.length === 0){
-      html += '<div class="bom-empty">No items in this section.</div>';
-    } else {
-      // Header row
-      html += '<div class="bom-row col-hdr"><div>Description</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit $</div><div style="text-align:right">Line $</div><div></div><div></div></div>';
+    // Auto rows
+    sec.auto.forEach(function(row){
+      var lineTotal = (row.qty || 0) * (row.unit || 0);
+      subtotal += lineTotal;
+      html += '<div class="bom-row auto-row" data-section="'+sec.key+'" data-key="'+row.key+'">';
+      html += '<div class="bom-desc" title="Auto-generated from your camera placements">'+escapeHtml(row.desc)+'</div>';
+      html += '<input type="number" value="'+row.qty+'" step="0.25" min="0" data-field="qty" onchange="updateAutoRow(this)" '+(row.src==='cameras'?'readonly':'')+'>';
+      html += '<input type="number" value="'+(row.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" onchange="updateAutoRow(this)">';
+      html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
+      html += '<div></div><div></div>';
+      html += '</div>';
+    });
 
-      // Auto rows
-      sec.auto.forEach(function(row){
-        var lineTotal = (row.qty || 0) * (row.unit || 0);
-        subtotal += lineTotal;
-        html += '<div class="bom-row auto-row" data-section="'+sec.key+'" data-key="'+row.key+'">';
-        html += '<div class="bom-desc" title="Auto-generated from your camera placements">'+escapeHtml(row.desc)+'</div>';
-        html += '<input type="number" value="'+row.qty+'" step="0.25" min="0" data-field="qty" onchange="updateAutoRow(this)" '+(row.src==='cameras'?'readonly':'')+'>';
-        html += '<input type="number" value="'+(row.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" onchange="updateAutoRow(this)">';
-        html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
-        html += '<div></div><div></div>';
-        html += '</div>';
-      });
-
-      // Custom rows
-      sec.custom.forEach(function(row, idx){
-        var lineTotal = (row.qty || 0) * (row.unit || 0);
-        subtotal += lineTotal;
-        html += '<div class="bom-row" data-section="'+sec.key+'" data-idx="'+idx+'">';
-        html += '<input type="text" class="bom-desc" value="'+escapeHtml(row.desc||'')+'" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">';
-        html += '<input type="number" value="'+(row.qty||0)+'" step="0.25" min="0" data-field="qty" oninput="updateCustomRow(this)">';
-        html += '<input type="number" value="'+(row.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" oninput="updateCustomRow(this)">';
-        html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
-        html += '<div></div>';
-        html += '<div class="bom-del" onclick="removeBomLine(\''+sec.key+'\','+idx+')" title="Remove">&times;</div>';
-        html += '</div>';
-      });
-    }
+    // Custom rows
+    sec.custom.forEach(function(row, idx){
+      var lineTotal = (row.qty || 0) * (row.unit || 0);
+      subtotal += lineTotal;
+      html += '<div class="bom-row" data-section="'+sec.key+'" data-idx="'+idx+'">';
+      html += '<input type="text" class="bom-desc" value="'+escapeHtml(row.desc||'')+'" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">';
+      html += '<input type="number" value="'+(row.qty||0)+'" step="0.25" min="0" data-field="qty" oninput="updateCustomRow(this)">';
+      html += '<input type="number" value="'+(row.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" oninput="updateCustomRow(this)">';
+      html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
+      html += '<div></div>';
+      html += '<div class="bom-del" onclick="removeBomLine(\''+sec.key+'\','+idx+')" title="Remove">&times;</div>';
+      html += '</div>';
+    });
     html += '</div>';
   });
 
@@ -7246,6 +7577,26 @@ function formatMoney(n){
   return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+// Pass N M4-fix: customer-facing BOM description (PDF + CSV). Strips the
+// " — SKU" suffix from auto-generated AC rows so the customer sees
+// "Brivo Reader Mullion Mount Dual-Technology (black)" rather than the
+// internal "...— B-BSMF-B" code. The in-app BOM drawer (recalcBom) still
+// uses row.desc unchanged — the integrator working in the tool wants the
+// SKU visible.
+//
+// Pattern: ` — ` followed by all-uppercase-alphanum-and-dash to end of
+// string. Only the AC reader/controller rows produced by computeAutoRows
+// match this (verified by audit). Camera/labor/cable/HDD descs use " — "
+// but their tails contain lowercase, punctuation, or units that break the
+// regex. Scoped to auto-rows (row.auto === true) so a user-typed custom
+// line like "Server Rack — XYZ-123" preserves its SKU verbatim — the user
+// wrote it for the customer on purpose.
+function bomDisplayDesc(row){
+  if(!row || typeof row.desc !== 'string') return (row && row.desc) || '';
+  if(!row.auto) return row.desc;
+  return row.desc.replace(/ — [A-Z0-9-]+$/, '');
+}
+
 function escapeHtml(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
@@ -7255,12 +7606,13 @@ function exportBomCSV(){
   var rows = ['Section,Description,Quantity,Unit Price,Line Total'];
 
   var sections = [
-    { key:'cameras',   title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
-    { key:'recording', title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
-    { key:'network',   title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
-    { key:'cabling',   title:'Cabling',               items: auto.cabling.concat(bomCustomLines.cabling) },
-    { key:'labor',     title:'Labor',                 items: auto.labor.concat(bomCustomLines.labor) },
-    { key:'other',     title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
+    { key:'cameras',       title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
+    { key:'recording',     title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
+    { key:'network',       title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
+    { key:'cabling',       title:'Cabling',               items: auto.cabling.concat(bomCustomLines.cabling) },
+    { key:'accessControl', title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
+    { key:'labor',         title:'Labor',                 items: auto.labor.concat(bomCustomLines.labor) },
+    { key:'other',         title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
   ];
 
   var subtotal = 0;
@@ -7268,7 +7620,7 @@ function exportBomCSV(){
     sec.items.forEach(function(r){
       var line = (r.qty||0) * (r.unit||0);
       subtotal += line;
-      var desc = (r.desc||'').replace(/"/g,'""');
+      var desc = bomDisplayDesc(r).replace(/"/g,'""');
       rows.push([sec.title, '"'+desc+'"', r.qty||0, (r.unit||0).toFixed(2), line.toFixed(2)].join(','));
     });
   });
