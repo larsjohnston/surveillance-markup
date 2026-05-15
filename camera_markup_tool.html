@@ -436,6 +436,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #zoom-bar.hidden { display:none; }
 .zbtn { width:28px; height:28px; background:rgba(17,24,39,.9); color:#fff; border:none; border-radius:3px; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .zbtn:hover { background:#111827; }
+/* FOV Toggle: filled triangle when cones visible (default), outline when hidden. */
+#btn-fov.fov-on svg { fill:currentColor; }
+#btn-fov:not(.fov-on) svg { fill:none; opacity:.7; }
 #zoom-label { line-height:28px; color:#fff; font:700 11px monospace; background:rgba(17,24,39,.8); padding:0 8px; border-radius:3px; min-width:44px; text-align:center; }
 
 #ctx-menu { position:fixed; background:#1f2937; border:1px solid #374151; border-radius:4px; overflow:hidden; z-index:100; min-width:140px; box-shadow:0 4px 12px rgba(0,0,0,.4); }
@@ -834,6 +837,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div id="zoom-label">100%</div>
       <button class="zbtn" onclick="zoom(+0.25)">+</button>
       <button class="zbtn" onclick="fitPage()" style="font-size:10px;width:auto;padding:0 8px">Fit</button>
+      <button class="zbtn fov-on" id="btn-fov" onclick="toggleFov()" title="Hide camera FOV"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4 L20 19 L4 19 Z"/></svg></button>
     </div>
   </div>
 
@@ -1571,6 +1575,8 @@ var _inpLabelSource       = 'auto';
 var DPR=window.devicePixelRatio||1, pages=[], cameras=[], currentPage=0;
 var selectedId=null, dragging=null, counters={}, viewScale=1, pdfLoaded=false;
 var currentType='dome', blindMode=false, doriMode=false, heatmapMode=false;
+// FOV Toggle: per-session canvas-only flag for hiding camera cones. NOT persisted in JSON.
+var fovVisible=true;
 var calibrations={}, calibMode=false, calibPoints=[], calibCursor=null;
 var headends = {};            // pageIdx -> {x, y} in logical PDF units
 var headendMode = false;      // currently placing head-end?
@@ -2343,10 +2349,13 @@ async function loadImage(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
+  fovVisible=true;              // FOV Toggle: reset to default on fresh import
   tabOrder=null;                // Pass A.7: fresh import → no manual reorder
   skippedPages = new Set();
   document.getElementById('btn-blind').classList.remove('active');
   document.getElementById('btn-dori').classList.remove('active');
+  var fovBtn=document.getElementById('btn-fov');
+  if(fovBtn){ fovBtn.classList.add('fov-on'); fovBtn.title='Hide camera FOV'; }
   document.getElementById('tabs').innerHTML='';
   showProgress('Loading image\u2026',20);
 
@@ -2402,10 +2411,13 @@ async function loadPDF(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
+  fovVisible=true;              // FOV Toggle: reset to default on fresh import
   tabOrder=null;                // Pass A.7: fresh import → no manual reorder
   skippedPages = new Set();
   document.getElementById('btn-blind').classList.remove('active');
   document.getElementById('btn-dori').classList.remove('active');
+  var fovBtn2=document.getElementById('btn-fov');
+  if(fovBtn2){ fovBtn2.classList.add('fov-on'); fovBtn2.title='Hide camera FOV'; }
   document.getElementById('tabs').innerHTML='';
   showProgress('Loading PDF\u2026',0);
   var buf=await file.arrayBuffer();
@@ -2799,10 +2811,13 @@ function rewindToNoPdf(){
   blindMode = false; doriMode = false; heatmapMode = false;
   cablesMode = false; calibMode = false; calibPoints = []; calibCursor = null;
   headendMode = false; bomOpen = false;
+  fovVisible = true;          // FOV Toggle: reset on project load (no persistence)
   // Clear active toggles on (now-disabled) menu items
   ['btn-blind','btn-dori','btn-heatmap','btn-cables','btn-calib','btn-headend','btn-bom'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.classList.remove('active');
   });
+  var fovBtn3 = document.getElementById('btn-fov');
+  if(fovBtn3){ fovBtn3.classList.add('fov-on'); fovBtn3.title='Hide camera FOV'; }
   // Close any open modals / overlays
   ['project-modal','export-modal','help-modal','calib-modal'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.classList.remove('show');
@@ -3798,6 +3813,16 @@ function toggleHeatmap(){
   document.getElementById('btn-blind').classList.toggle('active',false);
   redraw();
 }
+// FOV Toggle (per-session canvas-only). Hides cone polygon + reach radius + angle
+// arrow for every camera while keeping body icons, labels, and selection visible.
+// Not persisted in JSON; PDF export is unaffected.
+function toggleFov(){
+  fovVisible=!fovVisible;
+  var btn=document.getElementById('btn-fov');
+  btn.classList.toggle('fov-on',fovVisible);
+  btn.title=fovVisible?'Hide camera FOV':'Show camera FOV';
+  redraw();
+}
 
 // ─── Draw ─────────────────────────────────────────────────────────────────────
 function redraw(){
@@ -3857,12 +3882,14 @@ function redraw(){
   }
 
   // Two-pass: cones for every camera first, then bodies on top so icons stay
-  // visible when multiple FOV cones overlap.
+  // visible when multiple FOV cones overlap. FOV toggle skips the cone pass.
   var pageCams = cameras.filter(function(c){return c.page===currentPage;});
   var useDoriHere = doriMode && getPPM(currentPage);
-  pageCams.forEach(function(cam){
-    drawCamCone(ctx, cam, viewScale, cam.id===selectedId, useDoriHere);
-  });
+  if(fovVisible){
+    pageCams.forEach(function(cam){
+      drawCamCone(ctx, cam, viewScale, cam.id===selectedId, useDoriHere);
+    });
+  }
   pageCams.forEach(function(cam){
     drawCamBody(ctx, cam, viewScale, cam.id===selectedId);
   });
