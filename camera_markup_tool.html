@@ -561,24 +561,46 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .rp-sub-label { font:500 11px var(--font-ui); color:var(--text-muted); min-width:72px; flex-shrink:0; }
 .rp-sub-field .rp-slot { flex:1; }
 
-/* Pass A.8: panel mode swap. data-mode="camera" shows .rp-camera-fields and
-   hides .rp-reader-fields; data-mode="reader" does the inverse. */
-#right-panel[data-mode="camera"] .rp-reader-fields { display:none; }
-#right-panel[data-mode="reader"] .rp-camera-fields { display:none; }
+/* Pass A.8 / Pass N+1 M1: right-panel field-block filter. Each rp-mode shows
+   exactly one field-block; the other five are hidden. New blocks (intercom /
+   parcel / mailbox / suite) get their HTML in M4 / M7 — until then this rule
+   just keeps the right panel empty when those modes are selected. */
+#right-panel .rp-camera-fields,
+#right-panel .rp-reader-fields,
+#right-panel .rp-intercom-fields,
+#right-panel .rp-parcel-fields,
+#right-panel .rp-mailbox-fields,
+#right-panel .rp-suite-fields { display:none; }
+#right-panel[data-mode="camera"]   .rp-camera-fields   { display:block; }
+#right-panel[data-mode="reader"]   .rp-reader-fields   { display:block; }
+#right-panel[data-mode="intercom"] .rp-intercom-fields { display:block; }
+#right-panel[data-mode="parcel"]   .rp-parcel-fields   { display:block; }
+#right-panel[data-mode="mailbox"]  .rp-mailbox-fields  { display:block; }
+#right-panel[data-mode="suite"]    .rp-suite-fields    { display:block; }
 .phdr { font:700 10px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; padding:12px 16px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); }
 
 #controls { padding:10px 13px; border-bottom:1px solid var(--border); }
 
 /* ── Brand picker grid (replaces dropdown) ───────────────── */
 #brand-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-bottom:10px; }
+/* Tile-conformity follow-up: .brand-tile shares outer box dimensions with
+   .tier2-tile and .smart-apt-tile (matches min-height:76px / padding 7/4/5
+   / 2px border / justify-content:center / box-sizing:border-box). The
+   distinctive 34×34 .brand-logo stays — only the outer chrome conforms.
+   The 76 value lives in three CSS rules (tier2-tile, smart-apt-tile,
+   brand-tile); change here if visual conformity ever needs a re-tune. */
 .brand-tile {
-  border:1.5px solid var(--border); border-radius:5px; background:#fff;
-  padding:8px 6px 7px; cursor:pointer; transition:all .15s;
-  display:flex; flex-direction:column; align-items:center; gap:5px;
+  border:2px solid var(--border); border-radius:5px; background:#fff;
+  padding:7px 4px 5px; cursor:pointer; transition:all .15s;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  min-height:76px; box-sizing:border-box; min-width:0;
 }
 .brand-tile:hover { border-color:#9ca3af; background:#f9fafb; transform:translateY(-1px); }
 .brand-tile.active { border-color:var(--primary); background:#fff5f5; box-shadow:0 0 0 2px rgba(29,78,216,.12); }
-.brand-name { font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.05em; color:#374151; }
+.brand-name {
+  font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.05em; color:#374151;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.15;
+}
 .brand-tile.active .brand-name { color:var(--primary); }
 .brand-logo {
   width:34px; height:34px; border-radius:5px; display:flex; align-items:center; justify-content:center;
@@ -593,15 +615,31 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .lp-breadcrumb { font:500 9px var(--font-ui); color:var(--text-faint); letter-spacing:.03em; padding:0 2px; margin-bottom:6px; min-height:11px; line-height:1.3; }
 .lp-breadcrumb b { color:var(--text-muted); font-weight:700; }
 
+/* Tile-conformity: .tier2-tile, .smart-apt-tile, and .brand-tile share
+   the same outer box dimensions (matches the other tile classes for
+   visual conformity). Single source of truth: min-height:76px lives in
+   three CSS rules; change all three together. min-height = natural
+   3-text-line smart-apt height (padding 12 + icon 22 + 3 gaps × 3 + 3
+   text lines × ~10 + border 4). */
 .tier2-tile {
   padding:7px 4px 5px; border:2px solid var(--border); border-radius:4px; background:#fff;
-  font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
+  font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
   cursor:pointer; text-align:center; color:#6b7280;
-  display:flex; flex-direction:column; align-items:center; gap:3px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  min-height:76px; box-sizing:border-box; min-width:0;
   transition:all .12s;
 }
 .tier2-tile:hover { background:#f9fafb; }
-.tier2-tile .ts-icon { width:22px; height:22px; }
+.tier2-tile .ts-icon { width:22px; height:22px; flex-shrink:0; }
+/* Tile-conformity: ellipsis-clamp for tile inline labels so longer text
+   (e.g. "Brivo Reader Mullion") fits without breaking the tile chrome. */
+.tier2-tile .t2-label,
+.tier2-tile .t2-sub {
+  display:block; max-width:100%;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  line-height:1.15;
+}
+.tier2-tile .t2-sub { font:700 7px var(--font-ui); color:#9ca3af; letter-spacing:.04em; }
 .tier2-tile.active-dome    { border-color:var(--dome);    background:#fff1f1; color:var(--dome); }
 .tier2-tile.active-bullet  { border-color:var(--bullet);  background:#eff6ff; color:var(--bullet); }
 .tier2-tile.active-turret  { border-color:var(--turret);  background:#ecfeff; color:var(--turret); }
@@ -626,6 +664,63 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .ac-variant-row select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 2px var(--primary-faint); }
 
 .lp-tier3-list { max-height:200px; overflow-y:auto; margin-bottom:8px; border:1px solid var(--border); border-radius:3px; background:#fff; }
+/* Catalog-Tier1: smart-apartment two-tier drill-down. Tier 1 (brand row)
+   and Tier 2 (SKU grid) use the SAME tile chrome — .smart-apt-tile sized
+   to match the camera Tier-2 dimensions exactly (padding 7/4/5, icon
+   22×22, single-line brand label). The Tier-1 row is its own 3-column
+   grid; Tier-2 is also 3-column. Both share .sa-tile-grid for legacy
+   compatibility — that ID lives on the outer #lp-*-tiles container which
+   stacks the tier1+breadcrumb+tier2 children. */
+.sa-tile-grid { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+.sa-tier1-row { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+.sa-tier2-row { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; min-height:0; }
+.sa-tier-breadcrumb {
+  font:700 9px var(--font-ui); color:var(--text-muted); letter-spacing:.06em;
+  text-transform:uppercase; padding:4px 2px 2px; line-height:1.2;
+}
+.sa-hint {
+  grid-column:1 / -1;
+  padding:8px 10px; border:1px dashed var(--border); border-radius:4px;
+  font:500 10px var(--font-ui); color:var(--text-muted); line-height:1.4;
+  background:#f9fafb;
+}
+.smart-apt-tile {
+  /* Tile-conformity: matches the other tile classes for visual conformity.
+     Identical outer box to .tier2-tile and .brand-tile (padding 7/4/5,
+     22×22 icon, min-height 76, justify-content:center, box-sizing:border-box). */
+  padding:7px 4px 5px; border:2px solid var(--border); border-radius:4px; background:#fff;
+  cursor:pointer; text-align:center; color:#6b7280;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  min-height:76px; box-sizing:border-box; min-width:0;
+  transition:all .12s;
+}
+.smart-apt-tile:hover { background:#f9fafb; }
+.smart-apt-tile .sa-icon { width:22px; height:22px; display:block; flex-shrink:0; }
+.smart-apt-tile .sa-brand { font:700 9px var(--font-ui); color:#111; letter-spacing:.02em; line-height:1.15;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.smart-apt-tile .sa-model { font:600 8px var(--font-mono); color:#6b7280; line-height:1.15;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.smart-apt-tile .sa-cap   { font:700 7px var(--font-ui); color:#9ca3af; text-transform:uppercase; letter-spacing:.04em; line-height:1.15;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.smart-apt-tile.active-intercom { border-color:#0d9488; background:#ccfbf1; color:#0d9488; }
+.smart-apt-tile.active-intercom .sa-brand,
+.smart-apt-tile.active-intercom .sa-cap { color:#0d9488; }
+.smart-apt-tile.active-parcel   { border-color:#ea580c; background:#ffedd5; color:#ea580c; }
+.smart-apt-tile.active-parcel .sa-brand,
+.smart-apt-tile.active-parcel .sa-cap { color:#ea580c; }
+.smart-apt-tile.active-mailbox  { border-color:#e11d48; background:#ffe4e6; color:#e11d48; }
+.smart-apt-tile.active-mailbox .sa-brand,
+.smart-apt-tile.active-mailbox .sa-cap { color:#e11d48; }
+/* Catalog-Tier1: right-panel mailbox cols×rows row. Two compact number
+   inputs flanking a × glyph plus a unit hint string. */
+.rp-mailbox-size-row { display:flex; align-items:center; gap:6px; }
+.rp-mailbox-size-row input[type="number"] {
+  width:54px; padding:4px 6px; border:1px solid var(--border); border-radius:3px;
+  font:600 12px var(--font-mono); text-align:center; background:#fff;
+}
+.rp-mailbox-size-row input[type="number"]:focus { outline:none; border-color:#e11d48; box-shadow:0 0 0 2px rgba(225,29,72,.15); }
+.rp-mailbox-x { font:700 14px var(--font-mono); color:#6b7280; line-height:1; }
+.rp-mailbox-size-hint { font:500 9px var(--font-ui); color:#9ca3af; text-transform:uppercase; letter-spacing:.05em; margin-left:auto; }
 .tier3-row {
   display:grid; grid-template-columns:14px 1fr auto; gap:8px; align-items:center;
   padding:6px 8px; cursor:pointer; border-bottom:1px solid #f3f4f6;
@@ -703,10 +798,24 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .pmt-btn { flex:1; padding:9px 6px; background:transparent; border:none; color:#9ca3af; font:700 9px var(--font-ui); letter-spacing:.07em; text-transform:uppercase; cursor:pointer; transition:all .12s; border-bottom:2px solid transparent; margin-bottom:-2px; }
 .pmt-btn:hover { color:#e5e7eb; background:#111827; }
 .pmt-btn.active { color:#fff; background:#111827; border-bottom-color:var(--primary); }
-.pmt-btn[data-mode="access"].active { border-bottom-color:#1d4ed8; }
+.pmt-btn[data-mode="access"].active   { border-bottom-color:#1d4ed8; }
+/* Pass N+1 M1 (D6): per-mode accent colors for the 4 new device families. */
+.pmt-btn[data-mode="intercom"].active { border-bottom-color:#0d9488; }
+.pmt-btn[data-mode="parcel"].active   { border-bottom-color:#ea580c; }
+.pmt-btn[data-mode="mailbox"].active  { border-bottom-color:#e11d48; }
+.pmt-btn[data-mode="suite"].active    { border-bottom-color:#15803d; }
 .panel-body { display:flex; flex-direction:column; flex:1; overflow:hidden; }
-#panel[data-mode="cameras"] .panel-body[data-mode-section="access"] { display:none; }
-#panel[data-mode="access"]  .panel-body[data-mode-section="cameras"] { display:none; }
+/* Pass N+1 M1: 6-mode panel-body filter. Each mode shows only its matching
+   data-mode-section block; all others hide. Modes intercom / parcel / mailbox
+   get their drill-down HTML in M3, suites in M5 — until then their panel-body
+   doesn't exist and the panel renders empty when those modes are active. */
+#panel .panel-body { display:none; }
+#panel[data-mode="cameras"]  .panel-body[data-mode-section="cameras"]  { display:flex; }
+#panel[data-mode="access"]   .panel-body[data-mode-section="access"]   { display:flex; }
+#panel[data-mode="intercom"] .panel-body[data-mode-section="intercom"] { display:flex; }
+#panel[data-mode="parcel"]   .panel-body[data-mode-section="parcel"]   { display:flex; }
+#panel[data-mode="mailbox"]  .panel-body[data-mode-section="mailbox"]  { display:flex; }
+#panel[data-mode="suite"]    .panel-body[data-mode-section="suite"]    { display:flex; }
 
 /* ── Access Control: drill-down container ──────────────────────────────── */
 #ac-controls { padding:12px 16px; border-bottom:1px solid var(--border); }
@@ -717,6 +826,16 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .ac-item:hover { background:#f9fafb; }
 .ac-item.sel { background:#eff6ff; border-left-color:#1d4ed8; }
 .dot-reader { background:#1d4ed8; border-radius:2px; }
+/* Pass N+1 M3: smart-apartment list reuse. Same .ac-item row layout as AC;
+   per-family dot color + per-family selection accent. The selection ring
+   on the canvas itself is yellow #fbbf24 (matches reader convention). */
+#intercom-list, #parcel-list, #mailbox-list { flex:1; overflow-y:auto; }
+.dot-intercom { background:#0d9488; border-radius:2px; }
+.dot-parcel   { background:#ea580c; border-radius:2px; }
+.dot-mailbox  { background:#e11d48; border-radius:2px; }
+#intercom-list .ac-item.sel { background:#ccfbf1; border-left-color:#0d9488; }
+#parcel-list   .ac-item.sel { background:#ffedd5; border-left-color:#ea580c; }
+#mailbox-list  .ac-item.sel { background:#ffe4e6; border-left-color:#e11d48; }
 
 </style>
 </head>
@@ -797,6 +916,40 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </button>
     <button class="strip-btn" data-mode-btn="access" title="Access Control" onclick="setPanelMode('access')">
       <img src="./Icons/access_reader.png" alt="" class="strip-icon">
+    </button>
+    <!-- Pass N+1 M1 (D0): four new top-level modes for the smart-apartment
+         device families. Inline SVG (no new PNG dependencies) using
+         stroke="currentColor" so the strip-btn active/hover color cascade
+         drives them. Drill-down content lives in M3 (intercom/parcel/mailbox)
+         and M5/M7 (suites) — until then, clicking these buttons switches the
+         panel data-mode and the rail shows the active accent. -->
+    <button class="strip-btn" data-mode-btn="intercom" title="Intercoms" onclick="setPanelMode('intercom')">
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="3" width="12" height="18" rx="2"/>
+        <rect x="8.5" y="6" width="7" height="5" rx="0.5"/>
+        <circle cx="12" cy="16.5" r="1.1"/>
+      </svg>
+    </button>
+    <button class="strip-btn" data-mode-btn="parcel" title="Parcel Lockers" onclick="setPanelMode('parcel')">
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="8" width="18" height="13" rx="1"/>
+        <rect x="2" y="6" width="20" height="4" rx="0.5"/>
+        <line x1="12" y1="6" x2="12" y2="21"/>
+        <path d="M12 6 C 9 3, 6 4, 7 7 C 5 7, 5 4, 8 4 C 11 4, 12 6, 12 6"/>
+        <path d="M12 6 C 15 3, 18 4, 17 7 C 19 7, 19 4, 16 4 C 13 4, 12 6, 12 6"/>
+      </svg>
+    </button>
+    <button class="strip-btn" data-mode-btn="mailbox" title="Mailbox Banks" onclick="setPanelMode('mailbox')">
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="6" width="18" height="13" rx="1"/>
+        <path d="M3 7 L12 14 L21 7"/>
+      </svg>
+    </button>
+    <button class="strip-btn" data-mode-btn="suite" title="Suites" onclick="setPanelMode('suite')">
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="3" width="12" height="18" rx="0.5"/>
+        <circle cx="14.5" cy="12" r="0.8" fill="currentColor"/>
+      </svg>
     </button>
     <div class="strip-spacer"></div>
     <button class="strip-btn" id="strip-btn-help" title="Help" onclick="openHelpModal()">
@@ -1010,6 +1163,41 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div id="ac-list"></div>
     </div>
 
+    <!-- Pass N+1 M3: three smart-apartment panel-bodies. Each follows the
+         AC pattern: title → drill-down tile list → hint → device list. The
+         placeholder catalogs (INTERCOM_DB / PARCEL_DB / MAILBOX_DB) drive
+         the tile list via _render*DrillDown. Setting data-mode-section
+         matches the 6-mode CSS filter from M1. -->
+    <div class="panel-body" data-mode-section="intercom">
+      <div class="phdr">Intercoms</div>
+      <div id="ac-controls">
+        <div id="lp-intercom-tiles" class="sa-tile-grid"></div>
+        <p class="reader-hint">Pick an intercom — click on the floor plan to place.</p>
+      </div>
+      <div class="phdr">Intercoms on this page &nbsp;<span id="intercom-count" style="color:#9ca3af;font-weight:400"></span></div>
+      <div id="intercom-list"></div>
+    </div>
+
+    <div class="panel-body" data-mode-section="parcel">
+      <div class="phdr">Parcel Lockers</div>
+      <div id="ac-controls">
+        <div id="lp-parcel-tiles" class="sa-tile-grid"></div>
+        <p class="reader-hint">Pick a parcel locker — click on the floor plan to place.</p>
+      </div>
+      <div class="phdr">Parcel Lockers on this page &nbsp;<span id="parcel-count" style="color:#9ca3af;font-weight:400"></span></div>
+      <div id="parcel-list"></div>
+    </div>
+
+    <div class="panel-body" data-mode-section="mailbox">
+      <div class="phdr">Mailbox Banks</div>
+      <div id="ac-controls">
+        <div id="lp-mailbox-tiles" class="sa-tile-grid"></div>
+        <p class="reader-hint">Pick a mailbox bank — click on the floor plan to place.</p>
+      </div>
+      <div class="phdr">Mailbox Banks on this page &nbsp;<span id="mailbox-count" style="color:#9ca3af;font-weight:400"></span></div>
+      <div id="mailbox-list"></div>
+    </div>
+
     <div id="footer">
       <span id="status">Import a PDF to begin</span>
       <span id="scale-ind" class="uncalibrated">Not calibrated</span>
@@ -1152,6 +1340,109 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           <label class="rp-label">Notes</label>
           <div class="rp-slot" data-rp-slot="notes-reader">
             <textarea id="inp-notes-reader" placeholder="e.g. Exterior; weatherproof box required" oninput="updateSelectedReader()"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pass N+1 M4: smart-apartment right-panel field blocks. Each
+           mirrors the AC reader block but without the variant override
+           dropdown (placeholder catalogs have no variant axis). Label and
+           Notes are editable; brand+model and the type-specific metadata
+           row (Panel Type / Bays / Units) are read-only. The CSS
+           data-mode filter from M1 controls which block is visible. -->
+      <div class="rp-intercom-fields">
+        <div class="rp-field">
+          <label class="rp-label">Label</label>
+          <div class="rp-slot" data-rp-slot="label-intercom">
+            <input type="text" id="inp-label-intercom" oninput="updateSelectedIntercom()">
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Manufacturer &amp; Model</label>
+          <div class="rp-readout" id="rp-intercom-model-readout">
+            <div class="rp-model-name">&mdash;</div>
+            <div class="rp-model-desc"></div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Type</label>
+          <div class="rp-readout" id="rp-intercom-paneltype-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Notes</label>
+          <div class="rp-slot" data-rp-slot="notes-intercom">
+            <textarea id="inp-notes-intercom" placeholder="e.g. Mounted by main entry, calls to all units" oninput="updateSelectedIntercom()"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="rp-parcel-fields">
+        <div class="rp-field">
+          <label class="rp-label">Label</label>
+          <div class="rp-slot" data-rp-slot="label-parcel">
+            <input type="text" id="inp-label-parcel" oninput="updateSelectedParcel()">
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Manufacturer &amp; Model</label>
+          <div class="rp-readout" id="rp-parcel-model-readout">
+            <div class="rp-model-name">&mdash;</div>
+            <div class="rp-model-desc"></div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Bays</label>
+          <div class="rp-readout" id="rp-parcel-bays-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Notes</label>
+          <div class="rp-slot" data-rp-slot="notes-parcel">
+            <textarea id="inp-notes-parcel" placeholder="e.g. Floor-standing, mailroom alcove" oninput="updateSelectedParcel()"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="rp-mailbox-fields">
+        <div class="rp-field">
+          <label class="rp-label">Label</label>
+          <div class="rp-slot" data-rp-slot="label-mailbox">
+            <input type="text" id="inp-label-mailbox" oninput="updateSelectedMailbox()">
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Brand</label>
+          <div class="rp-readout" id="rp-mailbox-brand-readout">
+            <div class="rp-model-name">&mdash;</div>
+            <div class="rp-model-desc"></div>
+          </div>
+        </div>
+        <!-- Catalog-Tier1: cols + rows inputs replace the old Units readout.
+             Two columns side-by-side; total-slots readout below shows the
+             computed product. oninput → updateSelectedMailbox redraws the
+             canvas (drawMailboxBank reads cols/rows for the grid). -->
+        <div class="rp-field">
+          <label class="rp-label">Bank Size</label>
+          <div class="rp-slot rp-mailbox-size-row">
+            <input type="number" id="inp-mailbox-cols" min="1" max="20" step="1" value="4" oninput="updateSelectedMailbox()" aria-label="Columns">
+            <span class="rp-mailbox-x">×</span>
+            <input type="number" id="inp-mailbox-rows" min="1" max="20" step="1" value="4" oninput="updateSelectedMailbox()" aria-label="Rows">
+            <span class="rp-mailbox-size-hint">cols × rows</span>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Total Slots</label>
+          <div class="rp-readout" id="rp-mailbox-total-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Notes</label>
+          <div class="rp-slot" data-rp-slot="notes-mailbox">
+            <textarea id="inp-notes-mailbox" placeholder="e.g. Canada Post-approved cluster, lobby pedestal" oninput="updateSelectedMailbox()"></textarea>
           </div>
         </div>
       </div>
@@ -1525,6 +1816,14 @@ var DORI_LEVELS = [
   { key:'det', ppm:25,  label:'Detection',      color:'#16a34a' }
 ];
 var TYPE_COLORS = { dome:'#c8202c', bullet:'#2563eb', ptz:'#7c3aed', lpr:'#d97706', turret:'#0891b2', fisheye:'#16a34a' };
+// Pass N+1 M1 (D6): per-family color constants for the four new device modes.
+// Each chosen to be distinct from existing camera/AC palette at both canvas
+// scale (~17–24 pt) and riser scale (~10–13 pt). Visual collision check moved
+// to M9 once all icons render in the same project.
+var INTERCOM_COLOR = '#0d9488';   // teal — darker than turret '#0891b2'
+var PARCEL_COLOR   = '#ea580c';   // orange — more saturated than LPR '#d97706'
+var MAILBOX_COLOR  = '#e11d48';   // rose — pinker than dome '#c8202c'
+var SUITE_COLOR    = '#15803d';   // forest green — darker than fisheye '#16a34a'
 var CAM_R=11, LENS_R=5, RENDER_SCALE=4;
 var FT_PER_METER = 3.28084;
 // Pass C: visual placeholder for cone size when a page has no calibration.
@@ -1639,6 +1938,69 @@ var BRIVO_CATALOG = [
   { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Keypad',       sku:'B-ACS100-E-BSPK-B', name:'Brivo ACS100 Controller + Keypad Reader' }
 ];
 
+// Pass N+1 M2 (D3): placeholder catalogs for the three smart-apartment
+// device families. Real curated SKU lists (Comelit / Aiphone / Parcel
+// Pending / Luxer / USPS-approved cluster boxes) are explicitly out of
+// scope for this pass — every `desc` string includes the word "placeholder"
+// so the integrator can spot any accidentally-shipped customer-facing leak.
+// Two-tier drill-down catalogs (Tier 1 = brand, Tier 2 = SKU). Each entry
+// carries a `brand` field so the drill-down can derive Tier 1 grouping
+// without a separate manifest. Camera CAMERA_DB uses the same flat-with-
+// brand pattern — see lpPickCamerasBrand / modelsForBrandStyle.
+//
+// Intercom shape: seriesType ('door-station' | 'indoor-station') +
+//                 unitCapacity (suites the door can serve; null for indoor)
+// Parcel shape:   bays (locker count)
+// Mailbox shape:  Canada Post mailbox banks are sized-to-order — NO
+//   catalog SKUs for that brand. The Tier 1 click arms placement
+//   directly with default cols=4 rows=4 and stores cols/rows on the
+//   device itself (see applyProjectState v17 migration). Only the
+//   'Custom' brand keeps a placeholder SKU here so the Tier 2 grid has
+//   something to render for it.
+//
+// The 'Other'/'Custom' brand on each family is the generic-placement
+// path (matches camera "Other" Tier 1). Its single SKU has empty model
+// and lets the user place a device with no curated metadata.
+var INTERCOM_DB = {
+  'DB-D2101V':       { brand:'Doorbird', model:'D2101V',  seriesType:'door-station',   unitCapacity:1,    desc:'IP Video Door Station — Single Unit / Stainless V2A Brushed' },
+  'DB-D2102V':       { brand:'Doorbird', model:'D2102V',  seriesType:'door-station',   unitCapacity:2,    desc:'IP Video Door Station — 2 Units / 2 Call Buttons' },
+  'DB-D2103V':       { brand:'Doorbird', model:'D2103V',  seriesType:'door-station',   unitCapacity:3,    desc:'IP Video Door Station — 3 Units / Architectural Bronze' },
+  'DB-D21DKV':       { brand:'Doorbird', model:'D21DKV',  seriesType:'door-station',   unitCapacity:500,  desc:'IP Video Door Station with Keypad — up to 500 Units' },
+  'DB-D31TDV':       { brand:'Doorbird', model:'D31TDV',  seriesType:'door-station',   unitCapacity:1000, desc:'IP Video Door Station Touchscreen — up to 1000 Units' },
+  'DB-A1101':        { brand:'Doorbird', model:'A1101',   seriesType:'indoor-station', unitCapacity:null, desc:'4-inch Indoor Video Monitor — Per-Unit Answering Station' },
+  'CUSTOM-INTERCOM': { brand:'Custom',   model:'',        seriesType:'door-station',   unitCapacity:null, desc:'Custom Intercom — user-defined' }
+};
+
+var PARCEL_DB = {
+  'LUX-PCL-PLACEHOLDER': { brand:'LuxerOne', model:'Locker Bank', bays:24, desc:'LuxerOne Parcel Locker — placeholder, replace with real SKU' },
+  'CUSTOM-PARCEL':       { brand:'Custom',   model:'',            bays:0,  desc:'Custom Parcel Locker — user-defined' }
+};
+
+// Mailbox catalog holds only the Custom SKU. Canada Post mailbox banks
+// are NOT stored here — they're sized per-device via cols/rows fields
+// applied at placement time.
+var MAILBOX_DB = {
+  'CUSTOM-MBX': { brand:'Custom', model:'', desc:'Custom Mailbox Bank — user-defined' }
+};
+
+// Helpers for Tier-1 brand enumeration. Mailbox has 'Canada Post' even
+// though that brand has no catalog SKUs — the Tier 1 brand list is the
+// source of truth, not the DB keys.
+function smartAptBrandsForType(type){
+  if(type === 'intercom') return ['Doorbird', 'Custom'];
+  if(type === 'parcel')   return ['LuxerOne', 'Custom'];
+  if(type === 'mailbox')  return ['Canada Post', 'Custom'];
+  return [];
+}
+// Returns the first SKU in the catalog whose brand matches; null if none.
+function firstSkuForBrand(db, brand){
+  var keys = Object.keys(db);
+  for(var i = 0; i < keys.length; i++){
+    if(db[keys[i]].brand === brand) return keys[i];
+  }
+  return null;
+}
+
 // Pass Left-Pane: project-wide variant defaults per subcategory. Used by
 // the inline Tier 3 dropdown (M3) and the right-panel override (M4).
 // Per brief: Mullion → Tri-tech, Single → Tri-tech, Keypad → Dual-tech,
@@ -1745,6 +2107,39 @@ function acCategoryOf(dev){
 var acDevices = [];           // [{id, page, x, y, model, label}]
 var acSelectedId = null;
 var acCounters = {};          // pageIdx -> next counter
+// Pass N+1 M1 (D3): smart-apartment devices share a single array, type-tagged.
+// Placement, drag, drawing, and BOM iteration arrive in M2/M3/M8.
+//   {id, page, x, y, type:'intercom'|'parcel'|'mailbox', model, label, notes}
+var smartApartment = [];
+// Per-page next-counter map, keyed by type. Used for label generation
+// (INT-P1-N / PL-P1-N / MB-P1-N) when the placement functions land in M3.
+//   { intercom: {pageIdx:N}, parcel: {pageIdx:N}, mailbox: {pageIdx:N} }
+var smartAptCounters = { intercom: {}, parcel: {}, mailbox: {} };
+// Suites have a distinct shape (unit-type metadata, project-level catalog,
+// hide toggle, per-floor sequential labels) so they sit in their own array.
+//   {id, page, x, y, label, unitType, notes}
+var suites = [];
+var suiteCounters = {};       // pageIdx -> next per-floor suite number (M6)
+var suitesHidden = false;     // per-session view toggle (not persisted) — M7
+// Pass N+1 M1 (D1): four new selection-state variables. Mutual exclusion
+// rules live in selectCamera / selectReader / select* (M3+) and
+// closeRightPanel — each setter clears the other five so only one device is
+// ever selected across the entire app.
+var intercomSelectedId = null;
+var parcelSelectedId   = null;
+var mailboxSelectedId  = null;
+var suiteSelectedId    = null;
+// Pass N+1 M3 / Catalog-Tier1: armed Tier-1 brand + Tier-2 SKU state for
+// the three smart-apartment modes. armX functions and setPanelMode warm-up
+// drive these; placement reads the (brand, model) pair. For mailbox,
+// Canada Post brand has no SKU — `currentMailboxModel` stays null and
+// placeMailbox builds the device from brand + default cols/rows.
+var currentIntercomBrand = null;
+var currentIntercomModel = null;
+var currentParcelBrand   = null;
+var currentParcelModel   = null;
+var currentMailboxBrand  = null;
+var currentMailboxModel  = null;
 var currentReaderModel = null;
 // Pass Left-Pane M3: AC drill-down state. currentReaderModel (above)
 // remains the armed SKU; these three name the drill-down path that
@@ -1757,7 +2152,11 @@ var currentACSubcategory = null;       // matches BRIVO_CATALOG.subcategory
 // (Pass Left-Pane M6: lastArmedReader removed — variable was write-only,
 // never read. The "restore last-armed form-factor" intent was superseded
 // by the per-subcategory acDefaults map in projectInfo.)
-var panelMode = 'cameras';    // 'cameras' | 'access'
+// Pass N+1 M1 (D0): 6 top-level modes. Cameras + Access existed pre-pass;
+// intercom, parcel, mailbox, suite added here. setPanelMode drives the
+// blue-rail active state, panel data-mode CSS swap, and (in later
+// milestones) the canvas placement branch per mode.
+var panelMode = 'cameras';    // 'cameras' | 'access' | 'intercom' | 'parcel' | 'mailbox' | 'suite'
 
 // ─── BOM State ────────────────────────────────────────────────────────────────
 // Custom (manually-added) line items by section. Auto rows are derived live.
@@ -1781,7 +2180,16 @@ var projectInfo = {
   proposalSections: { cover:true, bom:true, riser:true, plans:true },
   // Pass Left-Pane: project-wide variant defaults for the AC drill-down.
   // Persisted in the JSON save (proposed v15 — version bump in M5).
-  acDefaults: cloneAcDefaults()
+  acDefaults: cloneAcDefaults(),
+  // Pass N+1 M1 (D7): project-level unit-type catalog. Suites in Suites mode
+  // pick from this list via the per-suite placement modal (M6). Empty array
+  // until the user populates it via Modal #1 (M5).
+  //   [{id, label, bedrooms, bathrooms}, ...]
+  unitTypes: [],
+  // Pass N+1 M1 (D7): IoT-device selection applied to all suites for BOM
+  // computation (M8). Empty object until the user opens Modal #3 (M8).
+  //   { smartLock:bool, thermostat:bool, waterSensor:bool }
+  iotDevices: {}
 };
 
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -1990,6 +2398,11 @@ function brandLabelFor(brand){
 
 function renderLeftPaneDrillDown(mode){
   if(mode === 'ac'){ _renderAcDrillDown(); return; }
+  // Pass N+1 M3: smart-apartment drill-down dispatch. Each renderer paints
+  // its panel-body's tile list from the placeholder catalog (M2).
+  if(mode === 'intercom'){ _renderIntercomDrillDown(); return; }
+  if(mode === 'parcel'){   _renderParcelDrillDown();   return; }
+  if(mode === 'mailbox'){  _renderMailboxDrillDown();  return; }
   if(mode !== 'cameras') return;
 
   // Tier 1: paint .brand-tile active state from currentBrand.
@@ -2025,7 +2438,7 @@ function renderLeftPaneDrillDown(mode){
     var activeCls = (s === currentType) ? ' active-' + s : '';
     t2Html += '<div class="tier2-tile' + activeCls + '" data-style="' + s + '" onclick="lpPickCamerasStyle(\'' + s + '\')" title="' + escapeHtml(sm.label) + '">' +
               '<div class="ts-icon" style="color:' + sm.color + '">' + sm.svg + '</div>' +
-              sm.label +
+              '<span class="t2-label">' + escapeHtml(sm.label) + '</span>' +
               '</div>';
   });
   t2.innerHTML = t2Html;
@@ -2267,7 +2680,7 @@ function _renderAcDrillDown(){
     var activeCls = (cat === currentACCategory) ? ' active' : '';
     t2Html += '<div class="tier2-tile' + activeCls + '" data-ac-category="' + escapeHtml(cat) + '" onclick="lpPickAcCategory(\'' + cat + '\')" title="' + escapeHtml(cat) + '">' +
               '<div class="ts-icon">' + acIconFor(cat) + '</div>' +
-              escapeHtml(cat) +
+              '<span class="t2-label">' + escapeHtml(cat) + '</span>' +
               '</div>';
   });
   t2.innerHTML = t2Html;
@@ -2286,7 +2699,7 @@ function _renderAcDrillDown(){
     var activeCls = (sub === currentACSubcategory) ? ' active' : '';
     t3Html += '<div class="tier2-tile' + activeCls + '" data-ac-subcategory="' + escapeHtml(sub) + '" onclick="lpPickAcSubcategory(\'' + sub + '\')" title="' + escapeHtml(sub) + '">' +
               '<div class="ts-icon">' + acIconFor(sub) + '</div>' +
-              escapeHtml(sub) +
+              '<span class="t2-label">' + escapeHtml(sub) + '</span>' +
               '</div>';
   });
   t3.innerHTML = t3Html;
@@ -2348,6 +2761,11 @@ function routeFile(f){
 async function loadImage(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
+  // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
+  // selection states on fresh import.
+  smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
+  suites=[]; suiteCounters={}; suitesHidden=false;
+  intercomSelectedId=null; parcelSelectedId=null; mailboxSelectedId=null; suiteSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
   fovVisible=true;              // FOV Toggle: reset to default on fresh import
   tabOrder=null;                // Pass A.7: fresh import → no manual reorder
@@ -2410,6 +2828,11 @@ async function loadImage(file){
 async function loadPDF(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
+  // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
+  // selection states on fresh PDF import.
+  smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
+  suites=[]; suiteCounters={}; suitesHidden=false;
+  intercomSelectedId=null; parcelSelectedId=null; mailboxSelectedId=null; suiteSelectedId=null;
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
   fovVisible=true;              // FOV Toggle: reset to default on fresh import
   tabOrder=null;                // Pass A.7: fresh import → no manual reorder
@@ -2764,6 +3187,17 @@ function deletePage(idx){
   cameras.forEach(function(c){ if(c.page > idx) c.page--; });
   acDevices = acDevices.filter(function(d){return d.page !== idx;});
   acDevices.forEach(function(d){ if(d.page > idx) d.page--; });
+  // Pass N+1 M3: cascade page delete to smart-apartment + suites arrays
+  // and their counter maps. Otherwise devices on the deleted page would
+  // orphan or shift their page index incorrectly.
+  smartApartment = smartApartment.filter(function(d){return d.page !== idx;});
+  smartApartment.forEach(function(d){ if(d.page > idx) d.page--; });
+  suites = suites.filter(function(s){return s.page !== idx;});
+  suites.forEach(function(s){ if(s.page > idx) s.page--; });
+  smartAptCounters.intercom = remapPageKeys(smartAptCounters.intercom, idx);
+  smartAptCounters.parcel   = remapPageKeys(smartAptCounters.parcel,   idx);
+  smartAptCounters.mailbox  = remapPageKeys(smartAptCounters.mailbox,  idx);
+  suiteCounters             = remapPageKeys(suiteCounters,             idx);
   calibrations = remapPageKeys(calibrations, idx);
   headends     = remapPageKeys(headends, idx);
   acCounters   = remapPageKeys(acCounters, idx);
@@ -2784,12 +3218,16 @@ function deletePage(idx){
   if(currentPage === idx) currentPage = Math.max(0, idx - 1);
   else if(currentPage > idx) currentPage--;
 
+  // Pass N+1 M1: tab-delete clears all six selection states.
   selectedId = null; acSelectedId = null;
+  intercomSelectedId = parcelSelectedId = mailboxSelectedId = suiteSelectedId = null;
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
   rebuildTabsDom();
   fitPage(); redraw();
   updateList(); updateAcList();
+  // Pass N+1 M3: smart-apartment list refresh on tab delete.
+  updateIntercomList(); updateParcelList(); updateMailboxList();
   updateScaleIndicator(); updateDoriInfo();
   refreshFloorSuggestions();
 }
@@ -2798,14 +3236,18 @@ function deletePage(idx){
 // closed, chrome disabled, dropzone visible. Drag-drop on canvas-wrap stays
 // wired (those handlers were attached once at script load and aren't removed).
 function rewindToNoPdf(){
-  // Reset state
+  // Reset state. Pass N+1 M1: clears all six selection states + the four
+  // new smart-apartment / suites arrays so a fresh PDF lands cleanly.
   selectedId = null; acSelectedId = null;
+  intercomSelectedId = parcelSelectedId = mailboxSelectedId = suiteSelectedId = null;
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
   sourceDocumentBytes = null; sourceDocumentName = null; sourceDocumentMime = null;
   currentPage = 0;
   pdfLoaded = false;
   pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {};
+  smartApartment = []; smartAptCounters = { intercom: {}, parcel: {}, mailbox: {} };
+  suites = []; suiteCounters = {}; suitesHidden = false;
   tabOrder = null;            // Pass A.7: clear manual order with the rest of state
   _inpLabelSource = 'auto';   // Pass A.7: reset label provenance
   blindMode = false; doriMode = false; heatmapMode = false;
@@ -2843,7 +3285,10 @@ function rewindToNoPdf(){
 
 function switchPage(idx){
   if(calibMode) cancelCalibrationFlow();
+  // Pass N+1 M1: page switch clears all six selection states (no cross-page
+  // selection persisted).
   currentPage=idx; selectedId=null; acSelectedId=null;
+  intercomSelectedId = parcelSelectedId = mailboxSelectedId = suiteSelectedId = null;
   // Just toggle the active class. Don't replace the tab DOM — we need each
   // .tab-label node to survive long enough for a dblclick event to register
   // on it (browser fires dblclick only when both clicks land on the same
@@ -2863,6 +3308,8 @@ function switchPage(idx){
   if(lblInput) lblInput.value = '';
   _inpLabelSource = 'auto';
   fitPage(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList();
+  // Pass N+1 M3: refresh smart-apartment lists on page switch.
+  updateIntercomList(); updateParcelList(); updateMailboxList();
   // Pass B: a manual tab switch closes the auto-calibration prompt — the user
   // has chosen to navigate themselves, so we yield. Internal advances set the
   // flag to bypass this.
@@ -3899,6 +4346,19 @@ function redraw(){
     drawReader(ctx, dev, viewScale, dev.id===acSelectedId);
   });
 
+  // Pass N+1 M3: smart-apartment devices, one pass per family for consistent
+  // z-ordering (intercom → parcel → mailbox). All sit above readers, below
+  // head-end. Selection ring (yellow #fbbf24) draws inside each drawX.
+  smartApartment.filter(function(d){return d.type==='intercom' && d.page===currentPage;}).forEach(function(dev){
+    drawIntercom(ctx, dev, viewScale, dev.id===intercomSelectedId);
+  });
+  smartApartment.filter(function(d){return d.type==='parcel' && d.page===currentPage;}).forEach(function(dev){
+    drawParcelLocker(ctx, dev, viewScale, dev.id===parcelSelectedId);
+  });
+  smartApartment.filter(function(d){return d.type==='mailbox' && d.page===currentPage;}).forEach(function(dev){
+    drawMailboxBank(ctx, dev, viewScale, dev.id===mailboxSelectedId);
+  });
+
   // Draw head-end marker on top
   if(headends[currentPage]){
     drawHeadEnd();
@@ -4202,6 +4662,51 @@ cv.addEventListener('mousedown',function(e){
   // Head-end is drawn on top of everything; hit-test it first so a click on
   // the CMVR/NVR icon starts a drag in either panel mode.
   if(headendAt(p.cx, p.cy)){ dragging = {type:'head-end-move'}; return; }
+
+  // Universal cross-mode hit-test. Runs BEFORE the per-mode placement
+  // branches. When the click lands on a device that belongs to a
+  // different family than the current panelMode, the rail auto-switches
+  // to that family + selects the device + starts the drag in one
+  // gesture — no second click required.
+  //
+  // Z-order priority follows visual top-most. Current draw order in
+  // redraw() is: cameras → AC readers → intercom → parcel → mailbox →
+  // head-end (head-end handled above). So hit-test runs reverse:
+  // mailbox → parcel → intercom → AC → camera.
+  //
+  // The camera tip-handle (rotation grip) is intentionally checked
+  // separately AFTER the universal hit AND only when a camera is the
+  // selected device — it's a sub-element of an already-selected
+  // camera, not a top-level placeable.
+  //
+  // TODO M6: add suiteAt() to this chain once suite hit-testing lands.
+  // Suites are drawn after smart-apartment devices, so they'll insert
+  // at the top of the priority list (above mailbox).
+  var uniHit = null, uniFam = null;
+  var hitMbx = mailboxAt(p.cx, p.cy);
+  if(hitMbx){ uniHit = hitMbx; uniFam = 'mailbox'; }
+  if(!uniHit){ var hitPcl = parcelAt(p.cx, p.cy);   if(hitPcl){ uniHit = hitPcl; uniFam = 'parcel'; } }
+  if(!uniHit){ var hitInt = intercomAt(p.cx, p.cy); if(hitInt){ uniHit = hitInt; uniFam = 'intercom'; } }
+  if(!uniHit){ var hitRdr = readerAt(p.cx, p.cy);   if(hitRdr){ uniHit = hitRdr; uniFam = 'access'; } }
+  if(!uniHit){ var hitCam = camAt(p.cx, p.cy);      if(hitCam){ uniHit = hitCam; uniFam = 'cameras'; } }
+
+  // Foreign-family hit → mode-switch + select + start drag. setPanelMode
+  // routes through closeRightPanel which clears all 6 selection IDs;
+  // selection of the just-hit device runs AFTER so the drag state isn't
+  // nuked. The `dragging` var is independent of the selection-state vars
+  // — it survives the closeRightPanel cascade.
+  if(uniHit && uniFam !== panelMode){
+    setPanelMode(uniFam);
+    if(uniFam === 'cameras'){       selectCamera(uniHit.id);   dragging = { id: uniHit.id, type: 'move' }; }
+    else if(uniFam === 'access'){   selectReader(uniHit.id);   dragging = { id: uniHit.id, type: 'reader-move' }; }
+    else if(uniFam === 'intercom'){ selectIntercom(uniHit.id); dragging = { id: uniHit.id, type: 'intercom-move' }; }
+    else if(uniFam === 'parcel'){   selectParcel(uniHit.id);   dragging = { id: uniHit.id, type: 'parcel-move' }; }
+    else if(uniFam === 'mailbox'){  selectMailbox(uniHit.id);  dragging = { id: uniHit.id, type: 'mailbox-move' }; }
+    return;
+  }
+  // Same-family hit OR no hit — fall through to existing per-mode logic
+  // so deselect-on-empty-click + placement semantics behave as before.
+
   if(panelMode === 'access'){
     var dev = readerAt(p.cx, p.cy);
     if(dev){ selectReader(dev.id); dragging = {id:dev.id, type:'reader-move'}; return; }
@@ -4212,15 +4717,44 @@ cv.addEventListener('mousedown',function(e){
     placeReader(p.cx, p.cy);
     return;
   }
+  // Pass N+1 M3: smart-apartment placement branches. Same select-then-place
+  // shape as AC: hit-test the current mode's family first, then placement.
+  // Deselect-on-empty-click closes the right panel for parity with AC.
+  if(panelMode === 'intercom'){
+    var idev = intercomAt(p.cx, p.cy);
+    if(idev){ selectIntercom(idev.id); dragging = {id:idev.id, type:'intercom-move'}; return; }
+    if(intercomSelectedId){ closeRightPanel(); return; }
+    placeIntercom(p.cx, p.cy);
+    return;
+  }
+  if(panelMode === 'parcel'){
+    var pdev = parcelAt(p.cx, p.cy);
+    if(pdev){ selectParcel(pdev.id); dragging = {id:pdev.id, type:'parcel-move'}; return; }
+    if(parcelSelectedId){ closeRightPanel(); return; }
+    placeParcel(p.cx, p.cy);
+    return;
+  }
+  if(panelMode === 'mailbox'){
+    var mdev = mailboxAt(p.cx, p.cy);
+    if(mdev){ selectMailbox(mdev.id); dragging = {id:mdev.id, type:'mailbox-move'}; return; }
+    if(mailboxSelectedId){ closeRightPanel(); return; }
+    placeMailbox(p.cx, p.cy);
+    return;
+  }
+  // Cameras-mode branch (default). Tip-handle takes precedence over body
+  // since it sits at the cone tip — same as before.
   var tip=tipAt(p.cx,p.cy);
   if(tip){dragging={id:tip.id,type:'tip'}; return;}
   var cam=camAt(p.cx,p.cy);
   if(cam){selectCamera(cam.id); dragging={id:cam.id,type:'move'}; return;}
-  // Pass A.7: empty-canvas click always places. Previously had a two-click
-  // rule (first click deselects, second places) — that conflicted with the
-  // typed-label sequence ("FRONT-01" → "FRONT-02" on next click) because
-  // the intermediate deselect cleared the seed. To deselect without
-  // placing: Esc or the right-panel close button.
+  // Empty-canvas in Cameras mode now unifies with AC/intercom/parcel/mailbox:
+  // if a camera is selected, first empty click deselects (no placement);
+  // second empty click places. Supersedes the Pass A.7 always-place rule.
+  // The typed-label seed in #inp-label survives the deselect — closeRightPanel
+  // clears selection state and hides the right panel but does NOT touch the
+  // input value or `_inpLabelSource`, so the next placement still uses the
+  // typed seed (FRONT-01 → FRONT-02 etc.).
+  if(selectedId){ closeRightPanel(); return; }
   addCamera(p.cx,p.cy);
 });
 
@@ -4253,12 +4787,22 @@ cv.addEventListener('mousemove',function(e){
     return;
   }
   if(!dragging){
+    // Universal cross-mode hover: show `move` cursor when ANY family hits
+    // (same priority order as the mousedown universal hit-test). Tip-grab
+    // for camera rotation handles stays cameras-mode-only since it's a
+    // selection sub-element, not a placement target.
     if(headendAt(p.cx, p.cy)){
       cv.style.cursor = 'move';
-    } else if(panelMode === 'access'){
-      cv.style.cursor = readerAt(p.cx,p.cy) ? 'move' : 'crosshair';
+    } else if(panelMode === 'cameras' && tipAt(p.cx, p.cy)){
+      cv.style.cursor = 'grab';
+    } else if(mailboxAt(p.cx, p.cy)  ||
+              parcelAt(p.cx, p.cy)   ||
+              intercomAt(p.cx, p.cy) ||
+              readerAt(p.cx, p.cy)   ||
+              camAt(p.cx, p.cy)){
+      cv.style.cursor = 'move';
     } else {
-      cv.style.cursor=tipAt(p.cx,p.cy)?'grab':(camAt(p.cx,p.cy)?'move':'crosshair');
+      cv.style.cursor = 'crosshair';
     }
     return;
   }
@@ -4271,6 +4815,15 @@ cv.addEventListener('mousemove',function(e){
     var dev = acDevices.find(function(d){return d.id===dragging.id;});
     if(!dev) return;
     dev.x = p.cx/viewScale; dev.y = p.cy/viewScale;
+    markDirty(); redraw();
+    return;
+  }
+  // Pass N+1 M3: smart-apartment drag types. All three look up in
+  // smartApartment[] by id (type-discriminator on the device itself).
+  if(dragging.type==='intercom-move' || dragging.type==='parcel-move' || dragging.type==='mailbox-move'){
+    var sdev = smartApartment.find(function(d){return d.id===dragging.id;});
+    if(!sdev) return;
+    sdev.x = p.cx/viewScale; sdev.y = p.cy/viewScale;
     markDirty(); redraw();
     return;
   }
@@ -4363,6 +4916,10 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Delete'||e.key==='Backspace'){
     if(selectedId){ deleteSelected(); }
     else if(acSelectedId){ deleteReader(acSelectedId); }
+    // Pass N+1 M3: smart-apartment delete-key branches.
+    else if(intercomSelectedId){ deleteIntercom(intercomSelectedId); }
+    else if(parcelSelectedId){   deleteParcel(parcelSelectedId);     }
+    else if(mailboxSelectedId){  deleteMailbox(mailboxSelectedId);   }
   }
   if(e.key==='Escape'){
     if(openMenuEl){ closeAllMenus(); return; }
@@ -4380,9 +4937,13 @@ document.addEventListener('keydown',function(e){
     closeRightPanel();
     updateAcList();
   }
-  // Panel-mode shortcuts
+  // Panel-mode shortcuts. Pass N+1 M1 (D0): six modes total.
   if(e.key === '1'){ setPanelMode('cameras'); }
   if(e.key === '2'){ setPanelMode('access'); }
+  if(e.key === '3'){ setPanelMode('intercom'); }
+  if(e.key === '4'){ setPanelMode('parcel'); }
+  if(e.key === '5'){ setPanelMode('mailbox'); }
+  if(e.key === '6'){ setPanelMode('suite'); }
 });
 
 function showCtxMenu(x,y){
@@ -4436,6 +4997,40 @@ function setPanelMode(mode){
       renderLeftPaneDrillDown('ac');
     }
   }
+  // Pass N+1 M3: smart-apartment mode entry. Auto-arm the first catalog
+  // SKU on first entry (cold start), restore the prior armed SKU on
+  // re-entry. renderLeftPaneDrillDown unconditional so the tiles refresh
+  // every time the mode is selected.
+  // Catalog-Tier1 warm-up: cold entry to each smart-apartment mode arms
+  // a default (brand, SKU) pair. Doorbird DB-D21DKV is the typical multi-
+  // family intercom; LuxerOne is the parcel default; Canada Post is the
+  // mailbox default (no SKU — brand alone arms with size set at place
+  // time). Returning to a mode mid-session preserves the prior arming.
+  if(mode === 'intercom'){
+    if(!currentIntercomBrand) currentIntercomBrand = 'Doorbird';
+    if(!currentIntercomModel){
+      currentIntercomModel = INTERCOM_DB['DB-D21DKV'] ? 'DB-D21DKV'
+                          : firstSkuForBrand(INTERCOM_DB, currentIntercomBrand);
+    }
+    renderLeftPaneDrillDown('intercom');
+    updateIntercomList();
+  }
+  if(mode === 'parcel'){
+    if(!currentParcelBrand) currentParcelBrand = 'LuxerOne';
+    if(!currentParcelModel) currentParcelModel = firstSkuForBrand(PARCEL_DB, currentParcelBrand);
+    renderLeftPaneDrillDown('parcel');
+    updateParcelList();
+  }
+  if(mode === 'mailbox'){
+    if(!currentMailboxBrand) currentMailboxBrand = 'Canada Post';
+    // Canada Post has no SKU — leave currentMailboxModel null. Custom
+    // brand resolves to the placeholder SKU.
+    if(currentMailboxBrand !== 'Canada Post' && !currentMailboxModel){
+      currentMailboxModel = firstSkuForBrand(MAILBOX_DB, currentMailboxBrand);
+    }
+    renderLeftPaneDrillDown('mailbox');
+    updateMailboxList();
+  }
 }
 
 function placeReader(cssX, cssY){
@@ -4483,7 +5078,12 @@ function placeReader(cssX, cssY){
 
 function selectReader(id){
   acSelectedId = id;
-  selectedId = null;
+  // Pass N+1 M1: clear all other selection states.
+  selectedId         = null;
+  intercomSelectedId = null;
+  parcelSelectedId   = null;
+  mailboxSelectedId  = null;
+  suiteSelectedId    = null;
   var d = acDevices.find(function(x){return x.id === id;});
   if(!d){ redraw(); updateList(); updateAcList(); return; }
 
@@ -4614,6 +5214,589 @@ function acRoundRect(c, x, y, w, h, r){
   c.closePath();
 }
 
+// ─── Pass N+1 M3: smart-apartment placement / drawing / selection ────────────
+// Three device families share the same scaffolding pattern as AC readers:
+//   - Drill-down render lists catalog SKUs as Tier-3-style picker rows
+//   - armX(sku) — state-only; per CLAUDE.md "Drill-down arming vs model
+//     assignment" pitfall, never mutates an existing device
+//   - placeX(cssX, cssY) — pushes a new device to smartApartment[], generates
+//     label INT-P{p}-{n} / PCL-P{p}-{n} / MBX-P{p}-{n}, markDirty, then
+//     selectX so the right panel opens (right-panel field-blocks land in M4)
+//   - selectX(id) — clears the other 5 selection states, redraws, refreshes
+//     the per-mode list
+//   - deleteX(id) — filters from smartApartment[], closeRightPanel if the
+//     deleted device was selected
+//   - drawX / XAt — canvas geometry, hit-test bounds match.
+//
+// All three families share smartApartment[] (type-discriminated per D3) and
+// smartAptCounters per-type per-page maps. List rendering reuses the .ac-item
+// row layout with per-family dot color (M3 CSS).
+
+// Pass N+1 M4-icons: tile-card SVG icons. One per family — picked here once
+// so the tile renderers stay readable. Filled with currentColor so the
+// active-state CSS rules can override the tile fill via the parent's
+// `color`. For intercom, the icon switches between a tall door-station
+// silhouette (with screen inset + call button) and a wider indoor-station
+// monitor (with screen + small base) based on seriesType.
+var SA_ICONS = {
+  intercomDoor:   '<svg class="sa-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">' +
+                    '<rect x="6" y="2" width="12" height="20" rx="2"/>' +
+                    '<rect x="8.5" y="5" width="7" height="6" rx="0.5" fill="#fff"/>' +
+                    '<circle cx="12" cy="17" r="1.3" fill="#fff"/>' +
+                  '</svg>',
+  intercomIndoor: '<svg class="sa-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">' +
+                    '<rect x="3" y="6" width="18" height="13" rx="1.5"/>' +
+                    '<rect x="5" y="8" width="14" height="9" rx="0.5" fill="#fff"/>' +
+                    '<rect x="10" y="20" width="4" height="1.5" rx="0.4"/>' +
+                  '</svg>',
+  parcel:         '<svg class="sa-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">' +
+                    '<rect x="3" y="9" width="18" height="12" rx="1"/>' +
+                    '<rect x="2" y="7" width="20" height="2.5" rx="0.4"/>' +
+                    '<rect x="11" y="7" width="2" height="14" fill="#fff" opacity="0.65"/>' +
+                    '<ellipse cx="9.5" cy="6" rx="2.6" ry="1.5"/>' +
+                    '<ellipse cx="14.5" cy="6" rx="2.6" ry="1.5"/>' +
+                  '</svg>',
+  mailbox:        '<svg class="sa-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">' +
+                    '<rect x="3" y="6" width="18" height="13" rx="1"/>' +
+                    '<path d="M3.5 7 L12 13 L20.5 7" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+                  '</svg>'
+};
+
+// Catalog-Tier1: two-tier drill-down render. Each renderer emits a brand
+// row (Tier 1) followed by the SKU grid for the active brand (Tier 2),
+// with a back-to-brands affordance between the two. Tier 1 tiles use the
+// .smart-apt-tile chrome with the family icon; Tier 2 tiles use the same
+// chrome with one tile per SKU. Mailbox Tier 2 is special-cased — Canada
+// Post brand has no SKU lookup, so Tier 2 is replaced by a help hint.
+
+function _renderSmartAptBrandTier1(opts){
+  // opts = { type, db, current, brandIcon, colorVar, activeCls,
+  //          armBrandFn, allBrands }
+  var html = '';
+  opts.allBrands.forEach(function(brand){
+    var isActive = (brand === opts.current);
+    var brandActiveCls = isActive ? ' ' + opts.activeCls : '';
+    var styleAttr = isActive ? '' : ' style="color:' + opts.colorVar + '"';
+    // Brand-level icon swap: intercom brand uses the door-station glyph
+    // (representative of the brand category, not a specific SKU); parcel
+    // uses the gift-box; mailbox uses the envelope.
+    html += '<div class="smart-apt-tile'+brandActiveCls+'"'+styleAttr+
+              ' onclick="' + opts.armBrandFn + '(\'' + brand + '\')" title="' + escapeHtml(brand) + '">' +
+              opts.brandIcon +
+              '<div class="sa-brand">'+escapeHtml(brand)+'</div>' +
+              '<div class="sa-cap">BRAND</div>' +
+            '</div>';
+  });
+  return html;
+}
+
+function _renderIntercomDrillDown(){
+  var listEl = document.getElementById('lp-intercom-tiles');
+  if(!listEl) return;
+  // Tier 1 — brand row
+  var tier1 = _renderSmartAptBrandTier1({
+    type: 'intercom',
+    db: INTERCOM_DB,
+    current: currentIntercomBrand,
+    brandIcon: SA_ICONS.intercomDoor,
+    colorVar: INTERCOM_COLOR,
+    activeCls: 'active-intercom',
+    armBrandFn: 'armIntercomBrand',
+    allBrands: smartAptBrandsForType('intercom')
+  });
+  // Tier 2 — SKU grid filtered by current brand
+  var tier2 = '';
+  if(currentIntercomBrand){
+    var skus = Object.keys(INTERCOM_DB).filter(function(s){
+      return INTERCOM_DB[s].brand === currentIntercomBrand;
+    });
+    skus.forEach(function(sku){
+      var spec = INTERCOM_DB[sku];
+      var isActive = (sku === currentIntercomModel);
+      var activeCls = isActive ? ' active-intercom' : '';
+      var icon = (spec.seriesType === 'indoor-station') ? SA_ICONS.intercomIndoor : SA_ICONS.intercomDoor;
+      var capTxt = spec.brand === 'Custom' ? 'Custom'
+                 : (spec.seriesType === 'indoor-station' ? 'Indoor Station'
+                                                         : (spec.unitCapacity === 1 ? 'Single Unit'
+                                                                                    : (spec.unitCapacity || 0) + ' Units'));
+      var modelTxt = spec.model || '— user-defined —';
+      var styleAttr = isActive ? '' : ' style="color:' + INTERCOM_COLOR + '"';
+      tier2 += '<div class="smart-apt-tile'+activeCls+'"'+styleAttr+
+                ' onclick="armIntercom(\''+sku+'\')" title="'+escapeHtml(spec.desc)+'">' +
+                icon +
+                '<div class="sa-brand">'+escapeHtml(spec.brand)+'</div>' +
+                '<div class="sa-model">'+escapeHtml(modelTxt)+'</div>' +
+                '<div class="sa-cap">'+escapeHtml(capTxt)+'</div>' +
+              '</div>';
+    });
+  }
+  listEl.innerHTML =
+    '<div class="sa-tier1-row">'+tier1+'</div>' +
+    (currentIntercomBrand ? '<div class="sa-tier-breadcrumb">' + escapeHtml(currentIntercomBrand) + ' &rsaquo;</div>' : '') +
+    '<div class="sa-tier2-row">'+tier2+'</div>';
+}
+
+function _renderParcelDrillDown(){
+  var listEl = document.getElementById('lp-parcel-tiles');
+  if(!listEl) return;
+  var tier1 = _renderSmartAptBrandTier1({
+    type: 'parcel',
+    db: PARCEL_DB,
+    current: currentParcelBrand,
+    brandIcon: SA_ICONS.parcel,
+    colorVar: PARCEL_COLOR,
+    activeCls: 'active-parcel',
+    armBrandFn: 'armParcelBrand',
+    allBrands: smartAptBrandsForType('parcel')
+  });
+  var tier2 = '';
+  if(currentParcelBrand){
+    var skus = Object.keys(PARCEL_DB).filter(function(s){
+      return PARCEL_DB[s].brand === currentParcelBrand;
+    });
+    skus.forEach(function(sku){
+      var spec = PARCEL_DB[sku];
+      var isActive = (sku === currentParcelModel);
+      var activeCls = isActive ? ' active-parcel' : '';
+      var capTxt = spec.brand === 'Custom' ? 'Custom'
+                 : (spec.bays || 0) + ' bay' + (spec.bays === 1 ? '' : 's');
+      var modelTxt = spec.model || '— user-defined —';
+      var styleAttr = isActive ? '' : ' style="color:' + PARCEL_COLOR + '"';
+      tier2 += '<div class="smart-apt-tile'+activeCls+'"'+styleAttr+
+                ' onclick="armParcel(\''+sku+'\')" title="'+escapeHtml(spec.desc)+'">' +
+                SA_ICONS.parcel +
+                '<div class="sa-brand">'+escapeHtml(spec.brand)+'</div>' +
+                '<div class="sa-model">'+escapeHtml(modelTxt)+'</div>' +
+                '<div class="sa-cap">'+escapeHtml(capTxt)+'</div>' +
+              '</div>';
+    });
+  }
+  listEl.innerHTML =
+    '<div class="sa-tier1-row">'+tier1+'</div>' +
+    (currentParcelBrand ? '<div class="sa-tier-breadcrumb">' + escapeHtml(currentParcelBrand) + ' &rsaquo;</div>' : '') +
+    '<div class="sa-tier2-row">'+tier2+'</div>';
+}
+
+function _renderMailboxDrillDown(){
+  var listEl = document.getElementById('lp-mailbox-tiles');
+  if(!listEl) return;
+  var tier1 = _renderSmartAptBrandTier1({
+    type: 'mailbox',
+    db: MAILBOX_DB,
+    current: currentMailboxBrand,
+    brandIcon: SA_ICONS.mailbox,
+    colorVar: MAILBOX_COLOR,
+    activeCls: 'active-mailbox',
+    armBrandFn: 'armMailboxBrand',
+    allBrands: smartAptBrandsForType('mailbox')
+  });
+  // Mailbox Tier 2 is asymmetric:
+  //   - Canada Post → no SKUs in MAILBOX_DB; render a help hint.
+  //   - Custom → 1 SKU placeholder; render the standard SKU tile.
+  var tier2 = '';
+  if(currentMailboxBrand === 'Canada Post'){
+    tier2 = '<div class="sa-hint">' +
+              'Canada Post mailbox banks are sized-to-order. ' +
+              'Click on the floor plan to place a default 4×4 bank — ' +
+              'edit columns and rows in the right panel after placement.' +
+            '</div>';
+  } else if(currentMailboxBrand){
+    var skus = Object.keys(MAILBOX_DB).filter(function(s){
+      return MAILBOX_DB[s].brand === currentMailboxBrand;
+    });
+    skus.forEach(function(sku){
+      var spec = MAILBOX_DB[sku];
+      var isActive = (sku === currentMailboxModel);
+      var activeCls = isActive ? ' active-mailbox' : '';
+      var capTxt = 'Custom';
+      var modelTxt = spec.model || '— user-defined —';
+      var styleAttr = isActive ? '' : ' style="color:' + MAILBOX_COLOR + '"';
+      tier2 += '<div class="smart-apt-tile'+activeCls+'"'+styleAttr+
+                ' onclick="armMailbox(\''+sku+'\')" title="'+escapeHtml(spec.desc)+'">' +
+                SA_ICONS.mailbox +
+                '<div class="sa-brand">'+escapeHtml(spec.brand)+'</div>' +
+                '<div class="sa-model">'+escapeHtml(modelTxt)+'</div>' +
+                '<div class="sa-cap">'+escapeHtml(capTxt)+'</div>' +
+              '</div>';
+    });
+  }
+  listEl.innerHTML =
+    '<div class="sa-tier1-row">'+tier1+'</div>' +
+    (currentMailboxBrand ? '<div class="sa-tier-breadcrumb">' + escapeHtml(currentMailboxBrand) + ' &rsaquo;</div>' : '') +
+    '<div class="sa-tier2-row">'+tier2+'</div>';
+}
+
+// State-only arming. Per CLAUDE.md "Drill-down arming vs model assignment":
+// these MUST NOT mutate an existing placed device. Tier-1 brand arms set
+// the brand state + auto-pick the first SKU of that brand (so the user
+// can immediately place without clicking through Tier 2). Tier-2 SKU
+// arms refine the (brand, model) pair within the current brand.
+function armIntercomBrand(brand){
+  currentIntercomBrand = brand;
+  currentIntercomModel = firstSkuForBrand(INTERCOM_DB, brand);
+  renderLeftPaneDrillDown('intercom');
+}
+function armIntercom(sku){
+  var spec = INTERCOM_DB[sku];
+  if(spec){ currentIntercomBrand = spec.brand; }
+  currentIntercomModel = sku;
+  renderLeftPaneDrillDown('intercom');
+}
+function armParcelBrand(brand){
+  currentParcelBrand = brand;
+  currentParcelModel = firstSkuForBrand(PARCEL_DB, brand);
+  renderLeftPaneDrillDown('parcel');
+}
+function armParcel(sku){
+  var spec = PARCEL_DB[sku];
+  if(spec){ currentParcelBrand = spec.brand; }
+  currentParcelModel = sku;
+  renderLeftPaneDrillDown('parcel');
+}
+// Mailbox is asymmetric: Canada Post brand has NO SKU lookup — the brand
+// itself is the placement key + grid size defaults at place time. Custom
+// brand uses the 1-SKU placeholder (mirrors intercom/parcel Custom path).
+function armMailboxBrand(brand){
+  currentMailboxBrand = brand;
+  currentMailboxModel = (brand === 'Canada Post') ? null : firstSkuForBrand(MAILBOX_DB, brand);
+  renderLeftPaneDrillDown('mailbox');
+}
+function armMailbox(sku){
+  var spec = MAILBOX_DB[sku];
+  if(spec){ currentMailboxBrand = spec.brand; }
+  currentMailboxModel = sku;
+  renderLeftPaneDrillDown('mailbox');
+}
+
+function placeIntercom(cssX, cssY){
+  if(!currentIntercomModel){
+    alert('Pick an intercom from the panel first.');
+    return;
+  }
+  if(!smartAptCounters.intercom[currentPage]) smartAptCounters.intercom[currentPage] = 1;
+  var n = smartAptCounters.intercom[currentPage]++;
+  var label = 'INT-P' + (currentPage+1) + '-' + n;
+  var dev = {
+    id: 'int-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    page: currentPage,
+    x: cssX/viewScale, y: cssY/viewScale,
+    type: 'intercom',
+    model: currentIntercomModel,
+    label: label,
+    notes: ''
+  };
+  smartApartment.push(dev);
+  markDirty();
+  selectIntercom(dev.id);
+}
+function placeParcel(cssX, cssY){
+  if(!currentParcelModel){
+    alert('Pick a parcel locker from the panel first.');
+    return;
+  }
+  if(!smartAptCounters.parcel[currentPage]) smartAptCounters.parcel[currentPage] = 1;
+  var n = smartAptCounters.parcel[currentPage]++;
+  var label = 'PCL-P' + (currentPage+1) + '-' + n;
+  var dev = {
+    id: 'pcl-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    page: currentPage,
+    x: cssX/viewScale, y: cssY/viewScale,
+    type: 'parcel',
+    model: currentParcelModel,
+    label: label,
+    notes: ''
+  };
+  smartApartment.push(dev);
+  markDirty();
+  selectParcel(dev.id);
+}
+function placeMailbox(cssX, cssY){
+  // Catalog-Tier1 v17: mailbox shape is { brand, cols, rows } — no model
+  // field. Canada Post brand has no catalog SKU; clicking it directly
+  // arms placement. Custom brand uses the 1-SKU placeholder but the
+  // device still doesn't store a model — the brand string carries the
+  // identity.
+  if(!currentMailboxBrand){
+    alert('Pick a mailbox brand from the panel first.');
+    return;
+  }
+  if(!smartAptCounters.mailbox[currentPage]) smartAptCounters.mailbox[currentPage] = 1;
+  var n = smartAptCounters.mailbox[currentPage]++;
+  var label = 'MBX-P' + (currentPage+1) + '-' + n;
+  var dev = {
+    id: 'mbx-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    page: currentPage,
+    x: cssX/viewScale, y: cssY/viewScale,
+    type: 'mailbox',
+    brand: currentMailboxBrand,
+    cols: 4,                // Catalog-Tier1 default — user edits in right panel
+    rows: 4,
+    label: label,
+    notes: ''
+  };
+  smartApartment.push(dev);
+  markDirty();
+  selectMailbox(dev.id);
+}
+
+// Selection — clear the other 5 states (cascade mirrors selectReader from M1).
+// Pass N+1 M4: opens the right panel for the selected device. Missing-device
+// guard mirrors selectReader: if the id doesn't match anything in
+// smartApartment, refresh the list and bail rather than opening an empty
+// panel.
+function selectIntercom(id){
+  intercomSelectedId = id;
+  selectedId = null; acSelectedId = null;
+  parcelSelectedId = null; mailboxSelectedId = null; suiteSelectedId = null;
+  var dev = smartApartment.find(function(d){return d.id === id;});
+  if(!dev){ redraw(); updateIntercomList(); return; }
+  redraw(); updateIntercomList();
+  openRightPanelForIntercom(dev);
+}
+function selectParcel(id){
+  parcelSelectedId = id;
+  selectedId = null; acSelectedId = null;
+  intercomSelectedId = null; mailboxSelectedId = null; suiteSelectedId = null;
+  var dev = smartApartment.find(function(d){return d.id === id;});
+  if(!dev){ redraw(); updateParcelList(); return; }
+  redraw(); updateParcelList();
+  openRightPanelForParcel(dev);
+}
+function selectMailbox(id){
+  mailboxSelectedId = id;
+  selectedId = null; acSelectedId = null;
+  intercomSelectedId = null; parcelSelectedId = null; suiteSelectedId = null;
+  var dev = smartApartment.find(function(d){return d.id === id;});
+  if(!dev){ redraw(); updateMailboxList(); return; }
+  redraw(); updateMailboxList();
+  openRightPanelForMailbox(dev);
+}
+
+function deleteIntercom(id){
+  smartApartment = smartApartment.filter(function(d){return d.id !== id;});
+  markDirty();
+  if(intercomSelectedId === id){ closeRightPanel(); }
+  else { redraw(); updateIntercomList(); }
+}
+function deleteParcel(id){
+  smartApartment = smartApartment.filter(function(d){return d.id !== id;});
+  markDirty();
+  if(parcelSelectedId === id){ closeRightPanel(); }
+  else { redraw(); updateParcelList(); }
+}
+function deleteMailbox(id){
+  smartApartment = smartApartment.filter(function(d){return d.id !== id;});
+  markDirty();
+  if(mailboxSelectedId === id){ closeRightPanel(); }
+  else { redraw(); updateMailboxList(); }
+}
+
+function updateIntercomList(){
+  var listEl = document.getElementById('intercom-list'); if(!listEl) return;
+  var devOnPage = smartApartment.filter(function(d){return d.type==='intercom' && d.page === currentPage;});
+  var countEl = document.getElementById('intercom-count');
+  if(countEl) countEl.textContent = devOnPage.length ? '('+devOnPage.length+')' : '';
+  if(devOnPage.length === 0){
+    listEl.innerHTML = '<div style="padding:10px 13px;color:#9ca3af;font-size:9px;font-style:italic">No intercoms on this page.</div>';
+    return;
+  }
+  listEl.innerHTML = devOnPage.map(function(d){
+    var sel = (d.id === intercomSelectedId) ? ' sel' : '';
+    return '<div class="ac-item'+sel+'" onclick="selectIntercom(\''+d.id+'\')">' +
+           '<div class="dot dot-intercom"></div>' +
+           '<div class="clabel">'+escapeHtml(d.label)+'</div>' +
+           '<div class="cmeta">'+escapeHtml(d.model||'')+'</div>' +
+           '<div class="cdel" onclick="event.stopPropagation();deleteIntercom(\''+d.id+'\')">&times;</div>' +
+           '</div>';
+  }).join('');
+}
+function updateParcelList(){
+  var listEl = document.getElementById('parcel-list'); if(!listEl) return;
+  var devOnPage = smartApartment.filter(function(d){return d.type==='parcel' && d.page === currentPage;});
+  var countEl = document.getElementById('parcel-count');
+  if(countEl) countEl.textContent = devOnPage.length ? '('+devOnPage.length+')' : '';
+  if(devOnPage.length === 0){
+    listEl.innerHTML = '<div style="padding:10px 13px;color:#9ca3af;font-size:9px;font-style:italic">No parcel lockers on this page.</div>';
+    return;
+  }
+  listEl.innerHTML = devOnPage.map(function(d){
+    var sel = (d.id === parcelSelectedId) ? ' sel' : '';
+    return '<div class="ac-item'+sel+'" onclick="selectParcel(\''+d.id+'\')">' +
+           '<div class="dot dot-parcel"></div>' +
+           '<div class="clabel">'+escapeHtml(d.label)+'</div>' +
+           '<div class="cmeta">'+escapeHtml(d.model||'')+'</div>' +
+           '<div class="cdel" onclick="event.stopPropagation();deleteParcel(\''+d.id+'\')">&times;</div>' +
+           '</div>';
+  }).join('');
+}
+function updateMailboxList(){
+  var listEl = document.getElementById('mailbox-list'); if(!listEl) return;
+  var devOnPage = smartApartment.filter(function(d){return d.type==='mailbox' && d.page === currentPage;});
+  var countEl = document.getElementById('mailbox-count');
+  if(countEl) countEl.textContent = devOnPage.length ? '('+devOnPage.length+')' : '';
+  if(devOnPage.length === 0){
+    listEl.innerHTML = '<div style="padding:10px 13px;color:#9ca3af;font-size:9px;font-style:italic">No mailbox banks on this page.</div>';
+    return;
+  }
+  listEl.innerHTML = devOnPage.map(function(d){
+    var sel = (d.id === mailboxSelectedId) ? ' sel' : '';
+    // Catalog-Tier1: meta is brand + cols×rows since model is dropped.
+    var meta = (d.brand || 'Canada Post') + ' · ' + (d.cols || 4) + '×' + (d.rows || 4);
+    return '<div class="ac-item'+sel+'" onclick="selectMailbox(\''+d.id+'\')">' +
+           '<div class="dot dot-mailbox"></div>' +
+           '<div class="clabel">'+escapeHtml(d.label)+'</div>' +
+           '<div class="cmeta">'+escapeHtml(meta)+'</div>' +
+           '<div class="cdel" onclick="event.stopPropagation();deleteMailbox(\''+d.id+'\')">&times;</div>' +
+           '</div>';
+  }).join('');
+}
+
+// ─── Canvas drawing for smart-apartment devices ──────────────────────────────
+// Flat icon style matching the rail-icon language. All three use the same
+// rounded-rect body silhouette and acRoundRect helper; differentiation
+// comes from aspect ratio + inset detail + family color. Selection ring
+// is yellow #fbbf24 per brief M3 step 6.
+function drawIntercom(c, dev, vs, isSelected){
+  var x = dev.x*vs, y = dev.y*vs;
+  // Doorbird shape: door-station (entry-mounted) renders larger; indoor-
+  // station (per-unit answering monitor) renders smaller. Unknown SKU
+  // (hand-edited save) falls back to door-station sizing.
+  var spec = INTERCOM_DB[dev.model] || { seriesType: 'door-station' };
+  var isDoor = spec.seriesType !== 'indoor-station';
+  var w = isDoor ? 16 : 12;
+  var h = isDoor ? 20 : 16;
+  c.save();
+  c.fillStyle = INTERCOM_COLOR;
+  c.strokeStyle = isSelected ? '#fbbf24' : '#fff';
+  c.lineWidth = isSelected ? 2.4 : 1.2;
+  acRoundRect(c, x - w/2, y - h/2, w, h, 2.5);
+  c.fill(); c.stroke();
+  // Video screen inset (white rounded rect) in the upper portion
+  c.fillStyle = '#fff';
+  var sw = w - 4, sh = isDoor ? 8 : 6;
+  c.fillRect(x - sw/2, y - h/2 + 2.5, sw, sh);
+  // Call button below the screen
+  c.beginPath();
+  c.arc(x, y + h/2 - 3.5, 1.3, 0, Math.PI*2);
+  c.fillStyle = '#fff';
+  c.fill();
+  // Label below
+  c.fillStyle = INTERCOM_COLOR;
+  c.font = 'bold 9px Courier New';
+  c.textAlign = 'center';
+  c.fillText(dev.label, x, y + h/2 + 11);
+  c.textAlign = 'left';
+  c.restore();
+}
+function drawParcelLocker(c, dev, vs, isSelected){
+  var x = dev.x*vs, y = dev.y*vs;
+  var w = 22, h = 16;
+  c.save();
+  c.fillStyle = PARCEL_COLOR;
+  c.strokeStyle = isSelected ? '#fbbf24' : '#fff';
+  c.lineWidth = isSelected ? 2.4 : 1.2;
+  acRoundRect(c, x - w/2, y - h/2, w, h, 2);
+  c.fill(); c.stroke();
+  // 3-column × 2-row locker grid: 2 vertical dividers + 1 horizontal
+  c.strokeStyle = '#fff';
+  c.lineWidth = 1.0;
+  c.beginPath();
+  var col1x = x - w/2 + w/3;
+  var col2x = x - w/2 + 2*w/3;
+  c.moveTo(col1x, y - h/2 + 1.5); c.lineTo(col1x, y + h/2 - 1.5);
+  c.moveTo(col2x, y - h/2 + 1.5); c.lineTo(col2x, y + h/2 - 1.5);
+  c.moveTo(x - w/2 + 1.5, y);     c.lineTo(x + w/2 - 1.5, y);
+  c.stroke();
+  // Label below
+  c.fillStyle = PARCEL_COLOR;
+  c.font = 'bold 9px Courier New';
+  c.textAlign = 'center';
+  c.fillText(dev.label, x, y + h/2 + 11);
+  c.textAlign = 'left';
+  c.restore();
+}
+function drawMailboxBank(c, dev, vs, isSelected){
+  var x = dev.x*vs, y = dev.y*vs;
+  // Catalog-Tier1 v17: cols/rows on the device. Defensive defaults handle
+  // any stale device that somehow escaped the applyProjectState migration.
+  var cols = Math.max(1, dev.cols || 4);
+  var rows = Math.max(1, dev.rows || 4);
+  // Tile size scales with grid count — wider bank, taller bank — but
+  // clamps so a 10×10 mailbox doesn't blow up the canvas. Base cell ~5.5
+  // pixels with 3.5 px padding all around.
+  var cellW = 5.5, cellH = 5.5;
+  var w = Math.min(48, cols * cellW + 4);
+  var h = Math.min(40, rows * cellH + 4);
+  c.save();
+  c.fillStyle = MAILBOX_COLOR;
+  c.strokeStyle = isSelected ? '#fbbf24' : '#fff';
+  c.lineWidth = isSelected ? 2.4 : 1.2;
+  acRoundRect(c, x - w/2, y - h/2, w, h, 2);
+  c.fill(); c.stroke();
+  // Grid dividers: (cols-1) vertical lines + (rows-1) horizontal lines.
+  c.strokeStyle = '#fff';
+  c.lineWidth = 0.9;
+  c.beginPath();
+  for(var i = 1; i < cols; i++){
+    var cx = x - w/2 + i * (w/cols);
+    c.moveTo(cx, y - h/2 + 1.5); c.lineTo(cx, y + h/2 - 1.5);
+  }
+  for(var j = 1; j < rows; j++){
+    var cy = y - h/2 + j * (h/rows);
+    c.moveTo(x - w/2 + 1.5, cy); c.lineTo(x + w/2 - 1.5, cy);
+  }
+  c.stroke();
+  // Label below
+  c.fillStyle = MAILBOX_COLOR;
+  c.font = 'bold 9px Courier New';
+  c.textAlign = 'center';
+  c.fillText(dev.label, x, y + h/2 + 11);
+  c.textAlign = 'left';
+  c.restore();
+}
+
+// Hit-test bounds match the drawX rectangles (with a small forgiveness
+// margin). Iterate newest-first so a device drawn on top wins.
+function intercomAt(cssX, cssY){
+  var hits = smartApartment.filter(function(d){return d.type==='intercom' && d.page === currentPage;});
+  for(var i = hits.length - 1; i >= 0; i--){
+    var dev = hits[i];
+    // Doorbird shape: door-station 16×20; indoor-station 12×16. Bounds
+    // match drawIntercom's sizing.
+    var spec = INTERCOM_DB[dev.model] || { seriesType: 'door-station' };
+    var isDoor = spec.seriesType !== 'indoor-station';
+    var w = isDoor ? 16 : 12;
+    var h = isDoor ? 20 : 16;
+    if(Math.abs(cssX - dev.x*viewScale) <= w/2 + 2 &&
+       Math.abs(cssY - dev.y*viewScale) <= h/2 + 2) return dev;
+  }
+  return null;
+}
+function parcelAt(cssX, cssY){
+  var hits = smartApartment.filter(function(d){return d.type==='parcel' && d.page === currentPage;});
+  for(var i = hits.length - 1; i >= 0; i--){
+    var dev = hits[i];
+    if(Math.abs(cssX - dev.x*viewScale) <= 13 &&
+       Math.abs(cssY - dev.y*viewScale) <= 10) return dev;
+  }
+  return null;
+}
+function mailboxAt(cssX, cssY){
+  var hits = smartApartment.filter(function(d){return d.type==='mailbox' && d.page === currentPage;});
+  for(var i = hits.length - 1; i >= 0; i--){
+    var dev = hits[i];
+    // Catalog-Tier1 v17: hit bounds derived from cols/rows. Mirrors
+    // drawMailboxBank's tile-size computation.
+    var cols = Math.max(1, dev.cols || 4);
+    var rows = Math.max(1, dev.rows || 4);
+    var w = Math.min(48, cols * 5.5 + 4);
+    var h = Math.min(40, rows * 5.5 + 4);
+    if(Math.abs(cssX - dev.x*viewScale) <= w/2 + 2 &&
+       Math.abs(cssY - dev.y*viewScale) <= h/2 + 2) return dev;
+  }
+  return null;
+}
+
 // ─── Camera management ────────────────────────────────────────────────────────
 
 // Pass A.7: structured auto-label generator — "<MFR>-<FLOOR>-<NUM>".
@@ -4736,11 +5919,20 @@ function addCamera(cssX,cssY){
 // Single deselect path for either mode (camera or reader). Clears both
 // selection vars; the UI lights/redraws are idempotent if one side wasn't set.
 function closeRightPanel(){
-  selectedId   = null;
-  acSelectedId = null;
+  // Pass N+1 M1: clear all six selection states. Devices for the four new
+  // modes can't be placed yet (M3/M6) so their *SelectedId vars stay null,
+  // but the cascade is wired here so M3/M6 plumbing has no extra work.
+  selectedId         = null;
+  acSelectedId       = null;
+  intercomSelectedId = null;
+  parcelSelectedId   = null;
+  mailboxSelectedId  = null;
+  suiteSelectedId    = null;
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
   redraw(); updateList(); updateAcList(); updateDoriInfo();
+  // Pass N+1 M3: refresh smart-apartment lists so selection highlight clears.
+  updateIntercomList(); updateParcelList(); updateMailboxList();
 }
 
 // Update the camera-details readouts (model name, description, specs) and
@@ -4926,11 +6118,212 @@ function openRightPanelForReader(dev){
   rp.setAttribute('aria-hidden', 'false');
 }
 
+// ─── Pass N+1 M4: smart-apartment right-panel field-block plumbing ───────────
+// Three update-display functions mirror updateRightPanelDisplayForReader but
+// without the variant override (placeholder catalogs have no variant axis).
+// Each fills: label input, brand+model readout (with optional desc subline),
+// type-specific metadata readout (seriesType+unitCapacity / bays / units), notes textarea.
+// All three are no-ops when the device or its catalog row is missing — the
+// readouts show '—' so a stale or hand-edited save's unknown SKU doesn't
+// throw, it just renders as Unspecified.
+
+function updateRightPanelDisplayForIntercom(dev){
+  if(!dev) return;
+  var spec = INTERCOM_DB[dev.model] || null;
+  var nameEl = document.querySelector('#rp-intercom-model-readout .rp-model-name');
+  var descEl = document.querySelector('#rp-intercom-model-readout .rp-model-desc');
+  if(nameEl) nameEl.textContent = spec ? (spec.brand + ' ' + spec.model) : 'Unspecified';
+  if(descEl){
+    descEl.textContent = (spec && spec.desc) ? spec.desc : '';
+    descEl.style.display = (spec && spec.desc) ? '' : 'none';
+  }
+  // Type readout: format based on seriesType + unitCapacity (Doorbird shape).
+  //   door-station capacity 1 → 'Door Station — 1 Unit'
+  //   door-station capacity N → 'Door Station — N Units'
+  //   indoor-station          → 'Indoor Station'
+  var tEl = document.querySelector('#rp-intercom-paneltype-readout .rp-model-name');
+  if(tEl){
+    if(!spec){
+      tEl.textContent = '—';
+    } else if(spec.seriesType === 'indoor-station'){
+      tEl.textContent = 'Indoor Station';
+    } else {
+      var cap = spec.unitCapacity || 0;
+      tEl.textContent = 'Door Station — ' + cap + ' Unit' + (cap === 1 ? '' : 's');
+    }
+  }
+  var labelInput = document.getElementById('inp-label-intercom');
+  var notesInput = document.getElementById('inp-notes-intercom');
+  if(labelInput) labelInput.value = dev.label || '';
+  if(notesInput) notesInput.value = dev.notes || '';
+}
+
+function updateRightPanelDisplayForParcel(dev){
+  if(!dev) return;
+  var spec = PARCEL_DB[dev.model] || null;
+  var nameEl = document.querySelector('#rp-parcel-model-readout .rp-model-name');
+  var descEl = document.querySelector('#rp-parcel-model-readout .rp-model-desc');
+  if(nameEl) nameEl.textContent = spec ? (spec.brand + ' ' + spec.model) : 'Unspecified';
+  if(descEl){
+    descEl.textContent = (spec && spec.desc) ? spec.desc : '';
+    descEl.style.display = (spec && spec.desc) ? '' : 'none';
+  }
+  var bEl = document.querySelector('#rp-parcel-bays-readout .rp-model-name');
+  if(bEl){
+    var b = spec && spec.bays;
+    bEl.textContent = b ? (b + ' bay' + (b === 1 ? '' : 's')) : '—';
+  }
+  var labelInput = document.getElementById('inp-label-parcel');
+  var notesInput = document.getElementById('inp-notes-parcel');
+  if(labelInput) labelInput.value = dev.label || '';
+  if(notesInput) notesInput.value = dev.notes || '';
+}
+
+function updateRightPanelDisplayForMailbox(dev){
+  if(!dev) return;
+  // Catalog-Tier1 v17: read brand + cols + rows from the device itself
+  // (no MAILBOX_DB lookup needed for Canada Post). The Brand readout
+  // shows 'Canada Post' or 'Custom'; the size inputs show cols/rows;
+  // the Total Slots line shows the live product.
+  var brand = dev.brand || 'Canada Post';
+  var cols  = Math.max(1, dev.cols || 4);
+  var rows  = Math.max(1, dev.rows || 4);
+  var brandNameEl = document.querySelector('#rp-mailbox-brand-readout .rp-model-name');
+  var brandDescEl = document.querySelector('#rp-mailbox-brand-readout .rp-model-desc');
+  if(brandNameEl) brandNameEl.textContent = brand;
+  if(brandDescEl){
+    // Show the catalog desc only for Custom brand (Canada Post has none).
+    var desc = '';
+    if(brand === 'Custom' && MAILBOX_DB['CUSTOM-MBX']) desc = MAILBOX_DB['CUSTOM-MBX'].desc || '';
+    brandDescEl.textContent = desc;
+    brandDescEl.style.display = desc ? '' : 'none';
+  }
+  var colsInput = document.getElementById('inp-mailbox-cols');
+  var rowsInput = document.getElementById('inp-mailbox-rows');
+  if(colsInput) colsInput.value = cols;
+  if(rowsInput) rowsInput.value = rows;
+  var totalEl = document.querySelector('#rp-mailbox-total-readout .rp-model-name');
+  if(totalEl){
+    var total = cols * rows;
+    totalEl.textContent = total + ' slot' + (total === 1 ? '' : 's');
+  }
+  var labelInput = document.getElementById('inp-label-mailbox');
+  var notesInput = document.getElementById('inp-notes-mailbox');
+  if(labelInput) labelInput.value = dev.label || '';
+  if(notesInput) notesInput.value = dev.notes || '';
+}
+
+// Open functions mirror openRightPanelForReader. Each sets data-mode to its
+// device-type name (matches the M1 CSS filter rules) and the rp-title text
+// to the requested per-mode header (brief M4: "Video Intercom" / "Parcel
+// Locker" / "Mailbox Bank").
+function openRightPanelForIntercom(dev){
+  if(!dev) return;
+  updateRightPanelDisplayForIntercom(dev);
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  rp.setAttribute('data-mode', 'intercom');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Video Intercom';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
+}
+function openRightPanelForParcel(dev){
+  if(!dev) return;
+  updateRightPanelDisplayForParcel(dev);
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  rp.setAttribute('data-mode', 'parcel');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Parcel Locker';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
+}
+function openRightPanelForMailbox(dev){
+  if(!dev) return;
+  updateRightPanelDisplayForMailbox(dev);
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  rp.setAttribute('data-mode', 'mailbox');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Mailbox Bank';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
+}
+
+// oninput handlers for the editable label / notes fields. Raw-write
+// semantics matching updateSelectedReader: empty inputs persist as empty
+// strings. markDirty + refresh the per-mode list (so the list-row label
+// updates live). No canvas redraw needed when only label/notes change —
+// drawIntercom etc. only render dev.label which is updated synchronously.
+function updateSelectedIntercom(){
+  if(!intercomSelectedId) return;
+  var dev = smartApartment.find(function(d){return d.id === intercomSelectedId;});
+  if(!dev) return;
+  var labelInput = document.getElementById('inp-label-intercom');
+  var notesInput = document.getElementById('inp-notes-intercom');
+  if(labelInput) dev.label = labelInput.value;
+  if(notesInput) dev.notes = notesInput.value;
+  markDirty();
+  redraw(); updateIntercomList();
+}
+function updateSelectedParcel(){
+  if(!parcelSelectedId) return;
+  var dev = smartApartment.find(function(d){return d.id === parcelSelectedId;});
+  if(!dev) return;
+  var labelInput = document.getElementById('inp-label-parcel');
+  var notesInput = document.getElementById('inp-notes-parcel');
+  if(labelInput) dev.label = labelInput.value;
+  if(notesInput) dev.notes = notesInput.value;
+  markDirty();
+  redraw(); updateParcelList();
+}
+function updateSelectedMailbox(){
+  if(!mailboxSelectedId) return;
+  var dev = smartApartment.find(function(d){return d.id === mailboxSelectedId;});
+  if(!dev) return;
+  var labelInput = document.getElementById('inp-label-mailbox');
+  var notesInput = document.getElementById('inp-notes-mailbox');
+  var colsInput  = document.getElementById('inp-mailbox-cols');
+  var rowsInput  = document.getElementById('inp-mailbox-rows');
+  if(labelInput) dev.label = labelInput.value;
+  if(notesInput) dev.notes = notesInput.value;
+  // Catalog-Tier1: cols/rows update. Clamp to [1, 20] silently — out-of-
+  // range values get rewritten in the input so the user sees the clamp.
+  if(colsInput){
+    var c = parseInt(colsInput.value, 10);
+    if(!isFinite(c) || c < 1) c = 1;
+    if(c > 20) c = 20;
+    dev.cols = c;
+    if(parseInt(colsInput.value, 10) !== c) colsInput.value = c;
+  }
+  if(rowsInput){
+    var r = parseInt(rowsInput.value, 10);
+    if(!isFinite(r) || r < 1) r = 1;
+    if(r > 20) r = 20;
+    dev.rows = r;
+    if(parseInt(rowsInput.value, 10) !== r) rowsInput.value = r;
+  }
+  // Update the live Total Slots readout without rebuilding the entire
+  // panel (avoids losing focus on the input the user is typing in).
+  var totalEl = document.querySelector('#rp-mailbox-total-readout .rp-model-name');
+  if(totalEl){
+    var total = (dev.cols || 4) * (dev.rows || 4);
+    totalEl.textContent = total + ' slot' + (total === 1 ? '' : 's');
+  }
+  markDirty();
+  redraw(); updateMailboxList();
+}
+
 function selectCamera(id){
   selectedId=id;
-  // Pass A.8: clear any stale reader selection so the right panel cleanly
-  // swaps from reader-mode to camera-mode (no dual selection).
-  acSelectedId=null;
+  // Pass A.8 / Pass N+1 M1: clear all other selection states so the right
+  // panel cleanly swaps to camera-mode (no dual selection across families).
+  acSelectedId       = null;
+  intercomSelectedId = null;
+  parcelSelectedId   = null;
+  mailboxSelectedId  = null;
+  suiteSelectedId    = null;
   var cam=cameras.find(function(c){return c.id===id;});
   if(!cam) return;
   document.getElementById('inp-label').value=cam.label;
@@ -5302,6 +6695,13 @@ function buildLiteSaveData(){
     bom: { customLines: bomCustomLines, autoOverrides: bomAutoOverrides, config: bomConfig },
     acDevices: acDevices,
     acCounters: acCounters,
+    // Pass N+1 M1 (v16): smart-apartment devices + suite tracking. Keep the
+    // counter maps in the save so per-page label sequences survive load
+    // (mirrors acCounters).
+    smartApartment:   smartApartment,
+    smartAptCounters: smartAptCounters,
+    suites:           suites,
+    suiteCounters:    suiteCounters,
     tabOrder: tabOrder    // Pass A.7: manual riser order (null = auto-parse)
   };
 }
@@ -5320,7 +6720,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 15,             // generation tag — autosave was produced by a v15-aware tool (Pass Left-Pane M5)
+      version: 17,             // generation tag — autosave produced by a v17-aware tool (Catalog-Tier1: mailbox cols/rows shape)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -5531,7 +6931,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 15,
+    version: 17,            // Catalog-Tier1: mailbox shape (brand + cols/rows, no model)
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -5541,6 +6941,11 @@ async function saveJSON(){
     bom: { customLines: bomCustomLines, autoOverrides: bomAutoOverrides, config: bomConfig },
     acDevices: acDevices,
     acCounters: acCounters,
+    // Pass N+1 M1 (v16): smart-apartment devices + suite tracking.
+    smartApartment:   smartApartment,
+    smartAptCounters: smartAptCounters,
+    suites:           suites,
+    suiteCounters:    suiteCounters,
     tabOrder: tabOrder    // Pass A.7: manual riser order (null = auto-parse)
   }, null, 2);
 
@@ -5631,6 +7036,49 @@ function applyProjectState(data){
   acDevices    = data.acDevices  || [];
   acCounters   = data.acCounters || {};
   acSelectedId = null;
+  // Pass N+1 M1 (v16): four new arrays + selection states + projectInfo
+  // fields. Saves predating v16 lack these keys; default empty so older
+  // projects load cleanly with no smart-apartment / suite content.
+  smartApartment   = Array.isArray(data.smartApartment) ? data.smartApartment : [];
+  smartAptCounters = (data.smartAptCounters && typeof data.smartAptCounters === 'object')
+    ? data.smartAptCounters
+    : { intercom: {}, parcel: {}, mailbox: {} };
+  // Defensive backfill — old saves may have a counter object missing one of
+  // the three type buckets, which would NPE when M3 increments it.
+  if(!smartAptCounters.intercom) smartAptCounters.intercom = {};
+  if(!smartAptCounters.parcel)   smartAptCounters.parcel   = {};
+  if(!smartAptCounters.mailbox)  smartAptCounters.mailbox  = {};
+  // Catalog-Tier1 (v16 → v17): mailbox device shape changed from
+  // {model:'MBX-16-CLU', ...} to {brand:'Canada Post'|'Custom', cols, rows, ...}.
+  // Detect old-shape mailboxes (have `model`, missing `cols`/`rows`) and
+  // migrate to default brand='Canada Post' + cols=4 + rows=4. Drop the
+  // now-stale `model` field. Log a count so the user sees the migration
+  // happened. Other smart-apt types are untouched.
+  var _migratedMailboxes = 0;
+  smartApartment.forEach(function(dev){
+    if(dev.type !== 'mailbox') return;
+    var hasGrid = (typeof dev.cols === 'number') && (typeof dev.rows === 'number');
+    if(hasGrid && dev.brand) return;
+    // v16-or-earlier mailbox device — migrate.
+    if(!dev.brand) dev.brand = 'Canada Post';
+    if(typeof dev.cols !== 'number') dev.cols = 4;
+    if(typeof dev.rows !== 'number') dev.rows = 4;
+    delete dev.model;
+    _migratedMailboxes++;
+  });
+  if(_migratedMailboxes > 0){
+    try { console.log('[migration] mailbox v17: migrated ' + _migratedMailboxes + ' device(s) to brand+cols+rows shape.'); } catch(_){}
+  }
+  suites         = Array.isArray(data.suites) ? data.suites : [];
+  suiteCounters  = (data.suiteCounters && typeof data.suiteCounters === 'object')
+    ? data.suiteCounters : {};
+  suitesHidden   = false;  // per-session view toggle — never persisted
+  intercomSelectedId = null;
+  parcelSelectedId   = null;
+  mailboxSelectedId  = null;
+  suiteSelectedId    = null;
+  if(!Array.isArray(projectInfo.unitTypes)) projectInfo.unitTypes = [];
+  if(!projectInfo.iotDevices || typeof projectInfo.iotDevices !== 'object') projectInfo.iotDevices = {};
   // Pass A.8: readers gained an editable `notes` field in v12. Older saves
   // (v9–v11) don't have it; default to empty so the right-panel input is safe.
   acDevices.forEach(function(dev){ if(typeof dev.notes !== 'string') dev.notes = ''; });
@@ -5701,6 +7149,8 @@ function applyProjectState(data){
   rebuildTabsDom();
   selectedId = null;
   redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList(); refreshFloorSuggestions();
+  // Pass N+1 M3: refresh smart-apartment lists on project load.
+  updateIntercomList(); updateParcelList(); updateMailboxList();
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
   if(bomOpen) recalcBom();
   // Pass C: deferred so the canvas paints with the migrated cones before the
@@ -7769,7 +9219,13 @@ function saveProjectInfo(){
     company: document.getElementById('proj-company').value,
     scope:   document.getElementById('proj-scope').value,
     proposalSections: projectInfo.proposalSections || { cover:true, bom:true, riser:true, plans:true },
-    acDefaults:       projectInfo.acDefaults       || cloneAcDefaults()
+    acDefaults:       projectInfo.acDefaults       || cloneAcDefaults(),
+    // Pass N+1 M1: preserve unit-type catalog and IoT-device selection. The
+    // project info modal doesn't edit these (they live in Suites-mode Modal
+    // #1 and Modal #3 — M5/M8), so without these two carry-overs a project
+    // info save would silently wipe both fields.
+    unitTypes:        Array.isArray(projectInfo.unitTypes) ? projectInfo.unitTypes : [],
+    iotDevices:       (projectInfo.iotDevices && typeof projectInfo.iotDevices === 'object') ? projectInfo.iotDevices : {}
   };
   markDirty();
   closeProjectModal();
