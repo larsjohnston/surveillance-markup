@@ -432,6 +432,74 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .modal-close-x { position:absolute; top:10px; right:12px; background:transparent; border:none; font:700 22px sans-serif; line-height:1; color:var(--text-muted); cursor:pointer; padding:4px 8px; border-radius:4px; }
 .modal-close-x:hover { color:var(--text); background:var(--surface-soft); }
 
+/* Pass N+1 M5: Unit Types modal — row layout. Header + flex row per
+   unit type with label, bedrooms, bathrooms, and a delete button. The
+   header row uses the same column structure so labels align. */
+.ut-row-header {
+  display:grid; grid-template-columns:1fr 70px 70px 32px; gap:8px;
+  font:700 9px var(--font-ui); color:var(--text-muted); letter-spacing:.05em;
+  text-transform:uppercase; padding:0 4px 4px;
+}
+.ut-row {
+  display:grid; grid-template-columns:1fr 70px 70px 32px; gap:8px;
+  margin-bottom:6px; align-items:center;
+}
+.ut-row input[type="text"],
+.ut-row input[type="number"] {
+  padding:6px 8px; border:1px solid var(--border); border-radius:4px;
+  font:500 12px var(--font-ui); background:#fff;
+}
+.ut-row input[type="text"]:focus,
+.ut-row input[type="number"]:focus {
+  outline:none; border-color:#15803d; box-shadow:0 0 0 2px rgba(21,128,61,.15);
+}
+.ut-row input[type="text"].invalid,
+.ut-row input[type="number"].invalid {
+  border-color:#dc2626; background:#fff1f1;
+}
+.ut-row-del {
+  width:32px; height:32px; border:1px solid var(--border); border-radius:4px;
+  background:#fff; color:var(--text-muted); cursor:pointer;
+  font:700 14px sans-serif; line-height:1; padding:0;
+}
+.ut-row-del:hover { background:#fff1f1; border-color:#dc2626; color:#dc2626; }
+.ut-empty-hint {
+  padding:14px; text-align:center; color:var(--text-muted);
+  font:italic 11px var(--font-ui); border:1px dashed var(--border); border-radius:4px;
+  margin-bottom:10px;
+}
+/* Pass N+1 M5: Suites left-pane unit-type read-only list. Compact
+   rows showing the catalog at a glance. Reuses .ac-item layout
+   conventions for visual consistency with the other mode lists. */
+#suite-unit-types-list { margin-bottom:10px; display:flex; flex-direction:column; gap:3px; }
+.suite-ut-item {
+  display:flex; align-items:center; gap:8px;
+  padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:4px;
+  font:500 11px var(--font-ui);
+}
+.suite-ut-item .dot { width:9px; height:9px; border-radius:50%; background:#15803d; flex-shrink:0; }
+.suite-ut-item .ut-label { flex:1; font-weight:700; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.suite-ut-item .ut-meta { font:600 10px var(--font-mono); color:var(--text-muted); white-space:nowrap; }
+.suite-ut-empty {
+  padding:12px; text-align:center; color:var(--text-muted);
+  font:italic 10px var(--font-ui); border:1px dashed var(--border); border-radius:4px;
+  margin-bottom:8px;
+}
+
+/* Pass N+1 M6: suite-placement modal form fields. Simpler layout
+   than the unit-types modal — two stacked fields + actions. */
+.sp-field { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+.sp-label { font:700 9px var(--font-ui); color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; }
+.sp-field input[type="text"],
+.sp-field select {
+  padding:8px 10px; border:1px solid var(--border); border-radius:4px;
+  font:500 13px var(--font-ui); background:#fff;
+}
+.sp-field input[type="text"]:focus,
+.sp-field select:focus {
+  outline:none; border-color:#15803d; box-shadow:0 0 0 2px rgba(21,128,61,.15);
+}
+
 #zoom-bar { position:absolute; bottom:12px; left:12px; display:flex; gap:4px; z-index:10; }
 #zoom-bar.hidden { display:none; }
 .zbtn { width:28px; height:28px; background:rgba(17,24,39,.9); color:#fff; border:none; border-radius:3px; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
@@ -1198,6 +1266,24 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div id="mailbox-list"></div>
     </div>
 
+    <!-- Pass N+1 M5: Suites panel-body. The unit-types catalog is a
+         project-level concept (not per-page), so the drill-down lists
+         the catalog with a "Manage Unit Types" button to open Modal #1.
+         No SKU tiles here — suite placement (M6) reads from
+         projectInfo.unitTypes, not from a placeholder catalog. -->
+    <div class="panel-body" data-mode-section="suite">
+      <div class="phdr">Unit Types</div>
+      <div id="ac-controls">
+        <button class="btn btn-blue" id="btn-manage-unit-types" style="width:100%; margin-bottom:8px;" onclick="openUnitTypesModal()">
+          Manage Unit Types&hellip;
+        </button>
+        <div id="suite-unit-types-list"></div>
+        <p class="reader-hint" id="suite-hint">Define unit types, then place suites on the floor plan (placement lands in M6).</p>
+      </div>
+      <div class="phdr">Suites on this page &nbsp;<span id="suite-count" style="color:#9ca3af;font-weight:400"></span></div>
+      <div id="suite-list"></div>
+    </div>
+
     <div id="footer">
       <span id="status">Import a PDF to begin</span>
       <span id="scale-ind" class="uncalibrated">Not calibrated</span>
@@ -1427,9 +1513,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <div class="rp-field">
           <label class="rp-label">Bank Size</label>
           <div class="rp-slot rp-mailbox-size-row">
-            <input type="number" id="inp-mailbox-cols" min="1" max="20" step="1" value="4" oninput="updateSelectedMailbox()" aria-label="Columns">
+            <input type="number" id="inp-mailbox-cols" min="1" max="99" step="1" value="4" oninput="updateSelectedMailbox()" onfocus="this.select()" aria-label="Columns">
             <span class="rp-mailbox-x">×</span>
-            <input type="number" id="inp-mailbox-rows" min="1" max="20" step="1" value="4" oninput="updateSelectedMailbox()" aria-label="Rows">
+            <input type="number" id="inp-mailbox-rows" min="1" max="99" step="1" value="4" oninput="updateSelectedMailbox()" onfocus="this.select()" aria-label="Rows">
             <span class="rp-mailbox-size-hint">cols × rows</span>
           </div>
         </div>
@@ -1572,6 +1658,62 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeExportModal()">Cancel</button>
       <button class="btn btn-green" id="btn-export-go" onclick="runExportPDF()">Export PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pass N+1 M5: Modal #1 — Unit Types catalog. Auto-opens on cold entry
+     to Suites mode when projectInfo.unitTypes is empty; manual reopen via
+     the "Manage Unit Types" button in the Suites left-pane. -->
+<div id="unit-types-modal" class="big-modal" onclick="if(event.target===this) closeUnitTypesModal()">
+  <div class="modal-box" style="min-width:520px; max-width:640px; position:relative;">
+    <button class="modal-close-x" onclick="closeUnitTypesModal()" title="Close" aria-label="Close">&times;</button>
+    <h3>&#127968; Unit Types</h3>
+    <p style="margin-bottom:10px;">Define the unit-type catalog for this project. Each row is a unit type that will appear in the per-suite placement modal (M6) and drive in-unit IoT device counts in the BOM (M8). You can revisit this list at any time via the <b>Manage Unit Types</b> button in Suites mode.</p>
+    <div id="unit-types-rows-container"></div>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button class="btn btn-blue" id="btn-add-unit-type-row" onclick="addUnitTypeRow()">+ Add Unit Type</button>
+    </div>
+    <p id="unit-types-err" class="calib-error" style="display:none; margin-top:10px;"></p>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn btn-dark"  onclick="skipUnitTypes()">Skip</button>
+      <button class="btn btn-green" onclick="saveUnitTypes()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pass N+1 M6: Modal #2 — Per-suite placement. Fires when the user
+     clicks empty canvas in Suites mode (no selection, no foreign-mode
+     hit). Auto-suggested label + unit-type dropdown. Cancel → no
+     placement; Confirm → push to suites[] and select. -->
+<div id="suite-placement-modal" class="big-modal" onclick="if(event.target===this) closeSuitePlacementModal()">
+  <div class="modal-box" style="min-width:380px; max-width:460px; position:relative;">
+    <button class="modal-close-x" onclick="closeSuitePlacementModal()" title="Close" aria-label="Close">&times;</button>
+    <h3>&#127968; Place Suite</h3>
+    <!-- Empty-catalog branch: brief edge case. Shown when
+         projectInfo.unitTypes is empty. The user must first add unit
+         types via Modal #1 (Manage Unit Types in the Suites left pane). -->
+    <div id="suite-placement-empty" style="display:none;">
+      <p style="margin-bottom:14px;">No unit types defined yet &mdash; click <b>Manage Unit Types</b> in the Suites panel to add some.</p>
+      <div class="modal-actions">
+        <button class="btn btn-dark" onclick="closeSuitePlacementModal()">Cancel</button>
+      </div>
+    </div>
+    <!-- Normal form branch. -->
+    <div id="suite-placement-form" style="display:none;">
+      <div class="sp-field">
+        <label class="sp-label">Label</label>
+        <input type="text" id="sp-label" placeholder="Unit 101" onfocus="this.select()">
+      </div>
+      <div class="sp-field">
+        <label class="sp-label">Unit Type</label>
+        <select id="sp-unittype"></select>
+      </div>
+      <p id="sp-err" class="calib-error" style="display:none; margin-top:10px;"></p>
+      <div class="modal-actions" style="margin-top:14px;">
+        <button class="btn btn-dark"  onclick="closeSuitePlacementModal()">Cancel</button>
+        <button class="btn btn-green" onclick="confirmSuitePlacement()">Place</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2766,6 +2908,7 @@ async function loadImage(file){
   smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
   suites=[]; suiteCounters={}; suitesHidden=false;
   intercomSelectedId=null; parcelSelectedId=null; mailboxSelectedId=null; suiteSelectedId=null;
+  _unitTypesModalShown=false;   // Pass N+1 M5: fresh import re-prompts on first Suites entry
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
   fovVisible=true;              // FOV Toggle: reset to default on fresh import
   tabOrder=null;                // Pass A.7: fresh import → no manual reorder
@@ -2833,6 +2976,7 @@ async function loadPDF(file){
   smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
   suites=[]; suiteCounters={}; suitesHidden=false;
   intercomSelectedId=null; parcelSelectedId=null; mailboxSelectedId=null; suiteSelectedId=null;
+  _unitTypesModalShown=false;   // Pass N+1 M5: fresh import re-prompts on first Suites entry
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
   fovVisible=true;              // FOV Toggle: reset to default on fresh import
   tabOrder=null;                // Pass A.7: fresh import → no manual reorder
@@ -3228,6 +3372,8 @@ function deletePage(idx){
   updateList(); updateAcList();
   // Pass N+1 M3: smart-apartment list refresh on tab delete.
   updateIntercomList(); updateParcelList(); updateMailboxList();
+  // Pass N+1 M5: also refresh the per-page suite list + unit-types drill-down.
+  updateSuiteList(); _renderSuiteDrillDown();
   updateScaleIndicator(); updateDoriInfo();
   refreshFloorSuggestions();
 }
@@ -3260,10 +3406,16 @@ function rewindToNoPdf(){
   });
   var fovBtn3 = document.getElementById('btn-fov');
   if(fovBtn3){ fovBtn3.classList.add('fov-on'); fovBtn3.title='Hide camera FOV'; }
-  // Close any open modals / overlays
-  ['project-modal','export-modal','help-modal','calib-modal'].forEach(function(id){
+  // Close any open modals / overlays. Pass N+1 M5/M6: include the suite modals.
+  ['project-modal','export-modal','help-modal','calib-modal','unit-types-modal','suite-placement-modal'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.classList.remove('show');
   });
+  // Pass N+1 M5: reset the "shown this session" flag so a fresh project
+  // re-prompts on first Suites mode entry.
+  _unitTypesModalShown = false;
+  // Pass N+1 M6: clear any pending suite-placement coords (stale state
+  // if the user had Modal #2 open when they rewound).
+  _pendingSuitePlacement = null;
   document.getElementById('bom-drawer').classList.remove('open');
   document.getElementById('bom-backdrop').classList.remove('show');
   document.getElementById('ctx-menu').classList.add('hidden');
@@ -3310,6 +3462,8 @@ function switchPage(idx){
   fitPage(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList();
   // Pass N+1 M3: refresh smart-apartment lists on page switch.
   updateIntercomList(); updateParcelList(); updateMailboxList();
+  // Pass N+1 M5: also refresh the per-page suite list + unit-types drill-down.
+  updateSuiteList(); _renderSuiteDrillDown();
   // Pass B: a manual tab switch closes the auto-calibration prompt — the user
   // has chosen to navigate themselves, so we yield. Internal advances set the
   // flag to bypass this.
@@ -4359,6 +4513,15 @@ function redraw(){
     drawMailboxBank(ctx, dev, viewScale, dev.id===mailboxSelectedId);
   });
 
+  // Pass N+1 M6: suites render last among placeable families (top-most
+  // z-order, matches the universal hit-test priority). M7's hide-toggle
+  // will replace the pill with a small dot when suitesHidden === true.
+  if(!suitesHidden){
+    suites.filter(function(s){return s.page===currentPage;}).forEach(function(s){
+      drawSuite(ctx, s, viewScale, s.id===suiteSelectedId);
+    });
+  }
+
   // Draw head-end marker on top
   if(headends[currentPage]){
     drawHeadEnd();
@@ -4671,20 +4834,17 @@ cv.addEventListener('mousedown',function(e){
   //
   // Z-order priority follows visual top-most. Current draw order in
   // redraw() is: cameras → AC readers → intercom → parcel → mailbox →
-  // head-end (head-end handled above). So hit-test runs reverse:
-  // mailbox → parcel → intercom → AC → camera.
+  // suites → head-end (head-end handled above). So hit-test runs
+  // reverse: suite → mailbox → parcel → intercom → AC → camera.
   //
   // The camera tip-handle (rotation grip) is intentionally checked
   // separately AFTER the universal hit AND only when a camera is the
   // selected device — it's a sub-element of an already-selected
   // camera, not a top-level placeable.
-  //
-  // TODO M6: add suiteAt() to this chain once suite hit-testing lands.
-  // Suites are drawn after smart-apartment devices, so they'll insert
-  // at the top of the priority list (above mailbox).
   var uniHit = null, uniFam = null;
-  var hitMbx = mailboxAt(p.cx, p.cy);
-  if(hitMbx){ uniHit = hitMbx; uniFam = 'mailbox'; }
+  var hitSte = suiteAt(p.cx, p.cy);
+  if(hitSte){ uniHit = hitSte; uniFam = 'suite'; }
+  if(!uniHit){ var hitMbx = mailboxAt(p.cx, p.cy);  if(hitMbx){ uniHit = hitMbx; uniFam = 'mailbox'; } }
   if(!uniHit){ var hitPcl = parcelAt(p.cx, p.cy);   if(hitPcl){ uniHit = hitPcl; uniFam = 'parcel'; } }
   if(!uniHit){ var hitInt = intercomAt(p.cx, p.cy); if(hitInt){ uniHit = hitInt; uniFam = 'intercom'; } }
   if(!uniHit){ var hitRdr = readerAt(p.cx, p.cy);   if(hitRdr){ uniHit = hitRdr; uniFam = 'access'; } }
@@ -4702,6 +4862,7 @@ cv.addEventListener('mousedown',function(e){
     else if(uniFam === 'intercom'){ selectIntercom(uniHit.id); dragging = { id: uniHit.id, type: 'intercom-move' }; }
     else if(uniFam === 'parcel'){   selectParcel(uniHit.id);   dragging = { id: uniHit.id, type: 'parcel-move' }; }
     else if(uniFam === 'mailbox'){  selectMailbox(uniHit.id);  dragging = { id: uniHit.id, type: 'mailbox-move' }; }
+    else if(uniFam === 'suite'){    selectSuite(uniHit.id);    dragging = { id: uniHit.id, type: 'suite-move' }; }
     return;
   }
   // Same-family hit OR no hit — fall through to existing per-mode logic
@@ -4739,6 +4900,17 @@ cv.addEventListener('mousedown',function(e){
     if(mdev){ selectMailbox(mdev.id); dragging = {id:mdev.id, type:'mailbox-move'}; return; }
     if(mailboxSelectedId){ closeRightPanel(); return; }
     placeMailbox(p.cx, p.cy);
+    return;
+  }
+  // Pass N+1 M6: Suites mode. Same select-then-place pattern as the
+  // other smart-apartment modes; empty-canvas placement routes through
+  // Modal #2 instead of directly calling the place function (so the
+  // user can confirm label + unit type before commit).
+  if(panelMode === 'suite'){
+    var sdev = suiteAt(p.cx, p.cy);
+    if(sdev){ selectSuite(sdev.id); dragging = {id:sdev.id, type:'suite-move'}; return; }
+    if(suiteSelectedId){ closeRightPanel(); return; }
+    openSuitePlacementModal(p.cx, p.cy);
     return;
   }
   // Cameras-mode branch (default). Tip-handle takes precedence over body
@@ -4795,7 +4967,8 @@ cv.addEventListener('mousemove',function(e){
       cv.style.cursor = 'move';
     } else if(panelMode === 'cameras' && tipAt(p.cx, p.cy)){
       cv.style.cursor = 'grab';
-    } else if(mailboxAt(p.cx, p.cy)  ||
+    } else if(suiteAt(p.cx, p.cy)    ||
+              mailboxAt(p.cx, p.cy)  ||
               parcelAt(p.cx, p.cy)   ||
               intercomAt(p.cx, p.cy) ||
               readerAt(p.cx, p.cy)   ||
@@ -4824,6 +4997,14 @@ cv.addEventListener('mousemove',function(e){
     var sdev = smartApartment.find(function(d){return d.id===dragging.id;});
     if(!sdev) return;
     sdev.x = p.cx/viewScale; sdev.y = p.cy/viewScale;
+    markDirty(); redraw();
+    return;
+  }
+  // Pass N+1 M6: suite drag (label-pill move). Looks up in suites[].
+  if(dragging.type==='suite-move'){
+    var stdev = suites.find(function(s){return s.id===dragging.id;});
+    if(!stdev) return;
+    stdev.x = p.cx/viewScale; stdev.y = p.cy/viewScale;
     markDirty(); redraw();
     return;
   }
@@ -4920,6 +5101,8 @@ document.addEventListener('keydown',function(e){
     else if(intercomSelectedId){ deleteIntercom(intercomSelectedId); }
     else if(parcelSelectedId){   deleteParcel(parcelSelectedId);     }
     else if(mailboxSelectedId){  deleteMailbox(mailboxSelectedId);   }
+    // Pass N+1 M6: suite delete.
+    else if(suiteSelectedId){    deleteSuite(suiteSelectedId);       }
   }
   if(e.key==='Escape'){
     if(openMenuEl){ closeAllMenus(); return; }
@@ -4929,6 +5112,11 @@ document.addEventListener('keydown',function(e){
     if(isCalibrationPromptOpen()){ closeCalibrationPrompt(); return; }
     if(document.getElementById('recovery-modal').classList.contains('show')){ discardRecovery(); return; }
     if(document.getElementById('export-modal').classList.contains('show')){ closeExportModal(); return; }
+    // Pass N+1 M5: Escape closes the Unit Types modal — same dismiss
+    // semantics as Skip (modal-shown flag flips, no commit).
+    if(document.getElementById('unit-types-modal').classList.contains('show')){ closeUnitTypesModal(); return; }
+    // Pass N+1 M6: Escape closes the Suite Placement modal (same as Cancel).
+    if(document.getElementById('suite-placement-modal').classList.contains('show')){ closeSuitePlacementModal(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
     // closeRightPanel handles the camera-selected case (clears selectedId,
@@ -5030,6 +5218,19 @@ function setPanelMode(mode){
     }
     renderLeftPaneDrillDown('mailbox');
     updateMailboxList();
+  }
+  // Pass N+1 M5: Suites mode entry. Paint the unit-types list +
+  // per-page suite list (M5 placeholder). Auto-open Modal #1 on first
+  // cold entry when the catalog is empty AND we haven't already shown
+  // it this session (skipping the modal explicitly dismisses re-prompt).
+  if(mode === 'suite'){
+    _renderSuiteDrillDown();
+    updateSuiteList();
+    if(!_unitTypesModalShown && (!projectInfo.unitTypes || projectInfo.unitTypes.length === 0)){
+      // setTimeout 0 so the panel-body data-mode swap paints before the
+      // modal opens — avoids the modal flashing over a stale panel.
+      setTimeout(function(){ openUnitTypesModal(); }, 0);
+    }
   }
 }
 
@@ -5797,6 +5998,379 @@ function mailboxAt(cssX, cssY){
   return null;
 }
 
+// ─── Pass N+1 M5: Suites — unit-types catalog (Modal #1) ─────────────────────
+// projectInfo.unitTypes[] holds the project-level unit catalog. Modal #1
+// edits this array; the Suites left-pane lists it read-only. Suite
+// placement (M6) and BOM IoT computation (M8) both consume the same
+// array. Shape per entry: { id, label, bedrooms, bathrooms }.
+//
+// IDs are stable across edits — assigned at row-add time. Removing a
+// row drops its id; M6 placements will reference suite.unitType by id,
+// so deletes are scoped to "this unit type can't be picked anymore",
+// not retroactive (existing suites keep their unitType id and the M6
+// renderer falls back to "Unknown type" if it can't resolve).
+
+// Per-session flag: did we auto-open Modal #1 on first Suites entry?
+// Prevents re-prompting after the user explicitly skipped.
+var _unitTypesModalShown = false;
+// Working draft of unit-type rows while the modal is open. Committed
+// to projectInfo.unitTypes on Save; discarded on Skip / Cancel.
+var _unitTypesDraft = [];
+
+function _newUnitTypeId(){
+  return 'ut-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+}
+
+function openUnitTypesModal(){
+  // Seed draft from the current persisted list. Clone so cancel works.
+  _unitTypesDraft = (projectInfo.unitTypes || []).map(function(ut){
+    return {
+      id:        ut.id || _newUnitTypeId(),
+      label:     ut.label || '',
+      bedrooms:  (typeof ut.bedrooms === 'number')  ? ut.bedrooms  : 1,
+      bathrooms: (typeof ut.bathrooms === 'number') ? ut.bathrooms : 1
+    };
+  });
+  if(_unitTypesDraft.length === 0){
+    // First-time / empty-catalog open — seed with one blank row so the
+    // user has something to fill in.
+    _unitTypesDraft.push({ id: _newUnitTypeId(), label: '', bedrooms: 1, bathrooms: 1 });
+  }
+  _renderUnitTypesRows();
+  document.getElementById('unit-types-err').style.display = 'none';
+  document.getElementById('unit-types-modal').classList.add('show');
+}
+
+function closeUnitTypesModal(){
+  document.getElementById('unit-types-modal').classList.remove('show');
+  _unitTypesDraft = [];
+  // Mark as shown so the auto-open guard doesn't re-fire this session.
+  _unitTypesModalShown = true;
+}
+
+function _renderUnitTypesRows(){
+  var container = document.getElementById('unit-types-rows-container');
+  if(!container) return;
+  if(_unitTypesDraft.length === 0){
+    container.innerHTML = '<div class="ut-empty-hint">No unit types yet. Click <b>+ Add Unit Type</b> to start.</div>';
+    return;
+  }
+  var html = '<div class="ut-row-header">' +
+              '<div>Label</div>' +
+              '<div>Bedrooms</div>' +
+              '<div>Bathrooms</div>' +
+              '<div></div>' +
+             '</div>';
+  _unitTypesDraft.forEach(function(ut, idx){
+    html += '<div class="ut-row" data-ut-idx="' + idx + '">' +
+              '<input type="text" data-field="label"     value="' + escapeHtml(ut.label) + '" placeholder="e.g. 1BR/1BA Standard" oninput="onUnitTypeRowEdit(' + idx + ', \'label\', this)">' +
+              '<input type="number" data-field="bedrooms"  value="' + ut.bedrooms + '"  min="0"   max="10" step="1"   oninput="onUnitTypeRowEdit(' + idx + ', \'bedrooms\', this)">' +
+              '<input type="number" data-field="bathrooms" value="' + ut.bathrooms + '" min="0.5" max="10" step="0.5" oninput="onUnitTypeRowEdit(' + idx + ', \'bathrooms\', this)">' +
+              '<button class="ut-row-del" onclick="removeUnitTypeRow(' + idx + ')" title="Remove this unit type">&times;</button>' +
+            '</div>';
+  });
+  container.innerHTML = html;
+}
+
+function onUnitTypeRowEdit(idx, field, inp){
+  if(!_unitTypesDraft[idx]) return;
+  if(field === 'label'){
+    _unitTypesDraft[idx].label = inp.value;
+  } else {
+    // Number field — parse, allow temporarily-empty during typing.
+    var v = parseFloat(inp.value);
+    if(isFinite(v)) _unitTypesDraft[idx][field] = v;
+  }
+  // Clear invalid class on edit; final validation runs on Save.
+  inp.classList.remove('invalid');
+}
+
+function addUnitTypeRow(){
+  _unitTypesDraft.push({ id: _newUnitTypeId(), label: '', bedrooms: 1, bathrooms: 1 });
+  _renderUnitTypesRows();
+}
+
+function removeUnitTypeRow(idx){
+  if(idx < 0 || idx >= _unitTypesDraft.length) return;
+  _unitTypesDraft.splice(idx, 1);
+  _renderUnitTypesRows();
+}
+
+function saveUnitTypes(){
+  // Validation: label required (non-empty after trim); bedrooms in
+  // [0, 10] integer; bathrooms in [0.5, 10] with half-step (multiple of
+  // 0.5). Mark invalid rows and bail on first failure with a single
+  // error message — keeps the modal open so the user can fix.
+  var errMsg = '';
+  var container = document.getElementById('unit-types-rows-container');
+  // Clear prior invalid markers.
+  container.querySelectorAll('.invalid').forEach(function(el){ el.classList.remove('invalid'); });
+
+  var cleaned = [];
+  for(var i = 0; i < _unitTypesDraft.length; i++){
+    var ut = _unitTypesDraft[i];
+    var label = (ut.label || '').trim();
+    var bed   = ut.bedrooms;
+    var bath  = ut.bathrooms;
+    var row = container.querySelector('.ut-row[data-ut-idx="' + i + '"]');
+    if(!label){
+      errMsg = 'Row ' + (i + 1) + ': label is required.';
+      if(row) row.querySelector('[data-field="label"]').classList.add('invalid');
+      break;
+    }
+    if(!isFinite(bed) || bed < 0 || bed > 10 || Math.floor(bed) !== bed){
+      errMsg = 'Row ' + (i + 1) + ': bedrooms must be a whole number from 0 to 10.';
+      if(row) row.querySelector('[data-field="bedrooms"]').classList.add('invalid');
+      break;
+    }
+    if(!isFinite(bath) || bath < 0.5 || bath > 10 || Math.abs(bath * 2 - Math.round(bath * 2)) > 1e-6){
+      errMsg = 'Row ' + (i + 1) + ': bathrooms must be a multiple of 0.5 from 0.5 to 10.';
+      if(row) row.querySelector('[data-field="bathrooms"]').classList.add('invalid');
+      break;
+    }
+    cleaned.push({ id: ut.id, label: label, bedrooms: bed, bathrooms: bath });
+  }
+
+  if(errMsg){
+    var errEl = document.getElementById('unit-types-err');
+    errEl.textContent = errMsg;
+    errEl.style.display = '';
+    return;
+  }
+
+  // Detect a change — only markDirty if the committed array differs
+  // from the prior persisted one. Cheap deep-compare via JSON.
+  var prior = projectInfo.unitTypes || [];
+  var changed = JSON.stringify(prior) !== JSON.stringify(cleaned);
+  projectInfo.unitTypes = cleaned;
+  if(changed) markDirty();
+  closeUnitTypesModal();
+  // Refresh the Suites left-pane list.
+  _renderSuiteDrillDown();
+}
+
+function skipUnitTypes(){
+  // Skip = commit nothing, just dismiss. If the user had nothing saved,
+  // unitTypes stays empty. Mark the modal-shown flag so warm-up doesn't
+  // re-prompt this session.
+  closeUnitTypesModal();
+}
+
+// Suites left-pane drill-down render. Lists the project's unit types
+// read-only with a count badge. The Manage button (in HTML) reopens
+// Modal #1; this just paints the current catalog state.
+function _renderSuiteDrillDown(){
+  var listEl = document.getElementById('suite-unit-types-list');
+  if(!listEl) return;
+  var uts = projectInfo.unitTypes || [];
+  if(uts.length === 0){
+    listEl.innerHTML = '<div class="suite-ut-empty">No unit types defined yet. Click <b>Manage Unit Types</b> above to add.</div>';
+    return;
+  }
+  listEl.innerHTML = uts.map(function(ut){
+    var bed  = (typeof ut.bedrooms === 'number')  ? ut.bedrooms  : '?';
+    var bath = (typeof ut.bathrooms === 'number') ? ut.bathrooms : '?';
+    // 1.5 → "1.5 BA", 2 → "2 BA"; same for bedrooms (always integer).
+    var bathTxt = (bath === parseInt(bath, 10)) ? (bath + ' BA') : (bath + ' BA');
+    return '<div class="suite-ut-item">' +
+             '<div class="dot"></div>' +
+             '<div class="ut-label">' + escapeHtml(ut.label || '(unlabeled)') + '</div>' +
+             '<div class="ut-meta">' + bed + ' BR · ' + bath + ' BA</div>' +
+           '</div>';
+  }).join('');
+}
+
+// ─── Pass N+1 M6: Suites placement (Modal #2 + drawSuite + drag/delete) ─────
+// Modal #2 fires on empty-canvas click in Suites mode (no selection, no
+// foreign-mode hit). Auto-suggested label uses (currentPage + 1) * 100 +
+// nextSuite formula → Floor 1 starts at 101 (101, 102, ...), Floor 10 at
+// 1001. Confirm pushes to suites[] and selects; the right-panel open
+// hook lands in M7 (selectSuite has a TODO marker for it).
+//
+// Canvas marker = label text in SUITE_COLOR pill (green-tinted bg, green
+// border), draggable via the pill bounds. Selection ring = yellow
+// #fbbf24 outline + amber-tinted bg, matching the per-family selection
+// convention from M3.
+
+// Stashed mousedown coords while Modal #2 is open. Cleared on close.
+var _pendingSuitePlacement = null;
+
+// Generate the next auto-suggested suite label for the current page.
+// Formula: prefix = currentPage + 1, suffix = next-up counter for that
+// page (zero-padded to 2 digits). Counter increments on placement
+// (placeSuite), not on label generation — so the same suggestion
+// re-appears if the user cancels the modal.
+function _suggestSuiteLabel(){
+  var prefix = currentPage + 1;
+  var n = (suiteCounters[currentPage] || 0) + 1;
+  return 'Unit ' + prefix + (n < 10 ? '0' + n : String(n));
+}
+
+function openSuitePlacementModal(cssX, cssY){
+  _pendingSuitePlacement = { cssX: cssX, cssY: cssY };
+  var emptyBranch = document.getElementById('suite-placement-empty');
+  var formBranch  = document.getElementById('suite-placement-form');
+  var uts = projectInfo.unitTypes || [];
+  if(uts.length === 0){
+    // Edge case per brief: no unit types defined yet. Show the hint
+    // branch with only a Cancel button — user must populate the
+    // catalog via Modal #1 first.
+    emptyBranch.style.display = '';
+    formBranch.style.display = 'none';
+  } else {
+    emptyBranch.style.display = 'none';
+    formBranch.style.display = '';
+    // Pre-fill label with the next auto-suggestion.
+    document.getElementById('sp-label').value = _suggestSuiteLabel();
+    // Build the unit-type dropdown.
+    var sel = document.getElementById('sp-unittype');
+    sel.innerHTML = uts.map(function(ut){
+      return '<option value="' + escapeHtml(ut.id) + '">' + escapeHtml(ut.label || '(unlabeled)') + '</option>';
+    }).join('');
+    document.getElementById('sp-err').style.display = 'none';
+  }
+  document.getElementById('suite-placement-modal').classList.add('show');
+}
+
+function closeSuitePlacementModal(){
+  document.getElementById('suite-placement-modal').classList.remove('show');
+  _pendingSuitePlacement = null;
+}
+
+function confirmSuitePlacement(){
+  if(!_pendingSuitePlacement) return;
+  var label = (document.getElementById('sp-label').value || '').trim();
+  var unitTypeId = document.getElementById('sp-unittype').value || '';
+  if(!label){
+    var errEl = document.getElementById('sp-err');
+    errEl.textContent = 'Label is required.';
+    errEl.style.display = '';
+    return;
+  }
+  if(!unitTypeId){
+    var errEl2 = document.getElementById('sp-err');
+    errEl2.textContent = 'Pick a unit type.';
+    errEl2.style.display = '';
+    return;
+  }
+  var coords = _pendingSuitePlacement;
+  closeSuitePlacementModal();
+  placeSuite(coords.cssX, coords.cssY, label, unitTypeId);
+}
+
+function placeSuite(cssX, cssY, label, unitTypeId){
+  // Increment the per-page counter at placement time (not at label
+  // suggestion time) so canceled modals don't burn numbers.
+  suiteCounters[currentPage] = (suiteCounters[currentPage] || 0) + 1;
+  var dev = {
+    id: 'st-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    page: currentPage,
+    x: cssX/viewScale, y: cssY/viewScale,
+    label: label,
+    unitType: unitTypeId,
+    notes: ''
+  };
+  suites.push(dev);
+  markDirty();
+  selectSuite(dev.id);
+}
+
+// Selection — clear the other 5 states (cascade mirrors selectReader).
+// M7 will add the right-panel open call; M6 just redraws + refreshes
+// the per-page suite list so the selection highlight appears.
+function selectSuite(id){
+  suiteSelectedId = id;
+  selectedId = null; acSelectedId = null;
+  intercomSelectedId = null; parcelSelectedId = null; mailboxSelectedId = null;
+  var dev = suites.find(function(s){return s.id === id;});
+  if(!dev){ redraw(); updateSuiteList(); return; }
+  redraw(); updateSuiteList();
+  // TODO M7: openRightPanelForSuite(dev) — right panel field-block + open fn.
+}
+
+function deleteSuite(id){
+  suites = suites.filter(function(s){return s.id !== id;});
+  markDirty();
+  if(suiteSelectedId === id){ closeRightPanel(); }
+  else { redraw(); updateSuiteList(); }
+}
+
+// Per-page suites list (M6 live render). Lookup unit-type label via
+// projectInfo.unitTypes; fall back to "(unknown type)" if the id
+// doesn't resolve (e.g., the type was deleted from the catalog).
+function updateSuiteList(){
+  var listEl = document.getElementById('suite-list'); if(!listEl) return;
+  var countEl = document.getElementById('suite-count');
+  var devOnPage = suites.filter(function(s){return s.page === currentPage;});
+  if(countEl) countEl.textContent = devOnPage.length ? '('+devOnPage.length+')' : '';
+  if(devOnPage.length === 0){
+    listEl.innerHTML = '<div style="padding:10px 13px;color:#9ca3af;font-size:9px;font-style:italic">No suites on this page.</div>';
+    return;
+  }
+  var uts = projectInfo.unitTypes || [];
+  listEl.innerHTML = devOnPage.map(function(s){
+    var sel = (s.id === suiteSelectedId) ? ' sel' : '';
+    var ut = uts.find(function(u){return u.id === s.unitType;});
+    var meta = ut ? (ut.label || '(unlabeled)') : '(unknown type)';
+    return '<div class="ac-item'+sel+'" onclick="selectSuite(\''+s.id+'\')">' +
+           '<div class="dot" style="background:' + SUITE_COLOR + '; border-radius:50%;"></div>' +
+           '<div class="clabel">' + escapeHtml(s.label) + '</div>' +
+           '<div class="cmeta">' + escapeHtml(meta) + '</div>' +
+           '<div class="cdel" onclick="event.stopPropagation();deleteSuite(\''+s.id+'\')">&times;</div>' +
+           '</div>';
+  }).join('');
+}
+
+// Canvas marker — a small pill with the label text in SUITE_COLOR.
+// Selected state: yellow #fbbf24 outline + amber-tinted bg (matches
+// the family selection convention). Drag bounds = the pill bounds.
+function drawSuite(c, suite, vs, isSelected){
+  var x = suite.x*vs, y = suite.y*vs;
+  c.save();
+  c.font = 'bold 12px Courier New';
+  var label = suite.label || '(unit)';
+  var tw = c.measureText(label).width;
+  var padX = 6, pillH = 18;
+  var pillW = tw + padX*2;
+  var px = x - pillW/2, py = y - pillH/2;
+  c.fillStyle   = isSelected ? '#fef3c7' : '#dcfce7';
+  c.strokeStyle = isSelected ? '#fbbf24' : SUITE_COLOR;
+  c.lineWidth   = isSelected ? 2.0 : 1.2;
+  acRoundRect(c, px, py, pillW, pillH, 4);
+  c.fill(); c.stroke();
+  c.fillStyle = SUITE_COLOR;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(label, x, y);
+  c.textAlign = 'left';
+  c.textBaseline = 'alphabetic';
+  c.restore();
+}
+
+// Hit-test: bounding-box around the pill. Measure text width via the
+// live canvas context (matches drawSuite's font setup). Iterate newest
+// first so an overlapping later-placed suite wins.
+function suiteAt(cssX, cssY){
+  if(!suites.length) return null;
+  var pageSuites = suites.filter(function(s){return s.page === currentPage;});
+  if(pageSuites.length === 0) return null;
+  ctx.save();
+  ctx.font = 'bold 12px Courier New';
+  for(var i = pageSuites.length - 1; i >= 0; i--){
+    var s = pageSuites[i];
+    var tw = ctx.measureText(s.label || '(unit)').width;
+    var pillW = tw + 12, pillH = 18;
+    var dx = cssX - s.x*viewScale;
+    var dy = cssY - s.y*viewScale;
+    if(Math.abs(dx) <= pillW/2 + 2 && Math.abs(dy) <= pillH/2 + 2){
+      ctx.restore();
+      return s;
+    }
+  }
+  ctx.restore();
+  return null;
+}
+
 // ─── Camera management ────────────────────────────────────────────────────────
 
 // Pass A.7: structured auto-label generator — "<MFR>-<FLOOR>-<NUM>".
@@ -5933,6 +6507,8 @@ function closeRightPanel(){
   redraw(); updateList(); updateAcList(); updateDoriInfo();
   // Pass N+1 M3: refresh smart-apartment lists so selection highlight clears.
   updateIntercomList(); updateParcelList(); updateMailboxList();
+  // Pass N+1 M5: also refresh the per-page suite list + unit-types drill-down.
+  updateSuiteList(); _renderSuiteDrillDown();
 }
 
 // Update the camera-details readouts (model name, description, specs) and
@@ -6288,19 +6864,22 @@ function updateSelectedMailbox(){
   var rowsInput  = document.getElementById('inp-mailbox-rows');
   if(labelInput) dev.label = labelInput.value;
   if(notesInput) dev.notes = notesInput.value;
-  // Catalog-Tier1: cols/rows update. Clamp to [1, 20] silently — out-of-
+  // Catalog-Tier1: cols/rows update. Clamp to [1, 99] silently — out-of-
   // range values get rewritten in the input so the user sees the clamp.
+  // Canvas-icon size clamps at 48×40 px in drawMailboxBank, so big grids
+  // render with compressed cells; the BOM line still carries the real
+  // total count.
   if(colsInput){
     var c = parseInt(colsInput.value, 10);
     if(!isFinite(c) || c < 1) c = 1;
-    if(c > 20) c = 20;
+    if(c > 99) c = 99;
     dev.cols = c;
     if(parseInt(colsInput.value, 10) !== c) colsInput.value = c;
   }
   if(rowsInput){
     var r = parseInt(rowsInput.value, 10);
     if(!isFinite(r) || r < 1) r = 1;
-    if(r > 20) r = 20;
+    if(r > 99) r = 99;
     dev.rows = r;
     if(parseInt(rowsInput.value, 10) !== r) rowsInput.value = r;
   }
@@ -7079,6 +7658,13 @@ function applyProjectState(data){
   suiteSelectedId    = null;
   if(!Array.isArray(projectInfo.unitTypes)) projectInfo.unitTypes = [];
   if(!projectInfo.iotDevices || typeof projectInfo.iotDevices !== 'object') projectInfo.iotDevices = {};
+  // Pass N+1 M5: project load reset — re-prompt the unit-types modal
+  // on first Suites entry of THIS session if the loaded project still
+  // has an empty catalog.
+  _unitTypesModalShown = false;
+  // M5: backfill unit-type IDs for hand-edited saves missing them
+  // (so M6 placements can reference suite.unitType by stable id).
+  projectInfo.unitTypes.forEach(function(ut){ if(!ut.id) ut.id = _newUnitTypeId(); });
   // Pass A.8: readers gained an editable `notes` field in v12. Older saves
   // (v9–v11) don't have it; default to empty so the right-panel input is safe.
   acDevices.forEach(function(dev){ if(typeof dev.notes !== 'string') dev.notes = ''; });
@@ -7151,6 +7737,8 @@ function applyProjectState(data){
   redraw(); updateList(); updateScaleIndicator(); updateDoriInfo(); updateAcList(); refreshFloorSuggestions();
   // Pass N+1 M3: refresh smart-apartment lists on project load.
   updateIntercomList(); updateParcelList(); updateMailboxList();
+  // Pass N+1 M5: also refresh the per-page suite list + unit-types drill-down.
+  updateSuiteList(); _renderSuiteDrillDown();
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
   if(bomOpen) recalcBom();
   // Pass C: deferred so the canvas paints with the migrated cones before the
