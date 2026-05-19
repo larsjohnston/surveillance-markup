@@ -2,6 +2,7 @@
 *.json
 saved_projects/
 client_data/
+source-data/
 
 # Imported floor plans
 *.pdf
