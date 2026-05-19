@@ -3515,8 +3515,10 @@ function rewindToNoPdf(){
   // re-prompts on first Suites mode entry.
   _unitTypesModalShown = false;
   // Pass N+1 M6: clear any pending suite-placement coords (stale state
-  // if the user had Modal #2 open when they rewound).
+  // if the user had Modal #2 open when they rewound). Also clear the
+  // empty-state chain stash for the same reason.
   _pendingSuitePlacement = null;
+  _suitePlacementChainCoords = null;
   document.getElementById('bom-drawer').classList.remove('open');
   document.getElementById('bom-backdrop').classList.remove('show');
   document.getElementById('ctx-menu').classList.add('hidden');
@@ -5065,6 +5067,14 @@ cv.addEventListener('mousedown',function(e){
     var sdev = suiteAt(p.cx, p.cy);
     if(sdev){ selectSuite(sdev.id); dragging = {id:sdev.id, type:'suite-move'}; return; }
     if(suiteSelectedId){ closeRightPanel(); return; }
+    // Empty-state redirect: with no unit types defined, route through
+    // Modal #1 first. Stash the click coords so saveUnitTypes can chain
+    // back into Modal #2 at the same point. See _suitePlacementChainCoords.
+    if((projectInfo.unitTypes || []).length === 0){
+      _suitePlacementChainCoords = { cssX: p.cx, cssY: p.cy };
+      openUnitTypesModal();
+      return;
+    }
     openSuitePlacementModal(p.cx, p.cy);
     return;
   }
@@ -6224,6 +6234,10 @@ function closeUnitTypesModal(){
   _unitTypesDraft = [];
   // Mark as shown so the auto-open guard doesn't re-fire this session.
   _unitTypesModalShown = true;
+  // Any close path (Skip / Esc / × / backdrop) breaks the suite-placement
+  // chain. saveUnitTypes captures the stash before this runs, so the
+  // chain still fires on successful save.
+  _suitePlacementChainCoords = null;
 }
 
 function _renderUnitTypesRows(){
@@ -6349,9 +6363,20 @@ function saveUnitTypes(){
   var changed = JSON.stringify(prior) !== JSON.stringify(cleaned);
   projectInfo.unitTypes = cleaned;
   if(changed) markDirty();
+  // Capture the suite-placement chain coords BEFORE closeUnitTypesModal
+  // clears them. Chain only fires when (a) user reached Modal #1 via the
+  // empty-state canvas click (stash set) and (b) at least one unit type
+  // now exists (cleaned.length > 0 — empty-save breaks the chain).
+  var chainCoords = (_suitePlacementChainCoords && cleaned.length > 0)
+    ? _suitePlacementChainCoords : null;
   closeUnitTypesModal();
   // Refresh the Suites left-pane list.
   _renderSuiteDrillDown();
+  if(chainCoords){
+    // Modal #2 opens at the original click coords; its dropdown's first
+    // <option> (the unit type the user just added) is selected by default.
+    openSuitePlacementModal(chainCoords.cssX, chainCoords.cssY);
+  }
 }
 
 function skipUnitTypes(){
@@ -6400,6 +6425,16 @@ function _renderSuiteDrillDown(){
 
 // Stashed mousedown coords while Modal #2 is open. Cleared on close.
 var _pendingSuitePlacement = null;
+
+// Chain stash: when the user clicks empty canvas in Suites mode with
+// zero unit types defined, we redirect through Modal #1 first instead
+// of showing Modal #2's defensive empty-state. This holds the original
+// click coords so Modal #1's Save can chain to Modal #2 at the same
+// point. Set only in the canvas-click path; the standalone "Manage
+// Unit Types…" left-pane button doesn't touch it, so its Save closes
+// the modal without opening Modal #2. Cleared on Modal #1 close
+// (any path) so cancel / skip / Esc / × all break the chain.
+var _suitePlacementChainCoords = null;
 
 // Generate the next auto-suggested suite label for the current page.
 // Formula: prefix = currentPage + 1, suffix = next-up counter for that
