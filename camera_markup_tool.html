@@ -8688,6 +8688,20 @@ async function runExportPDF(){
     drawProposalBOM(doc, pageW, pageH);
   }
 
+  // Take-Off Page (M2). Always render unless the project is entirely empty
+  // (no cameras, no AC, no smart apartment, no suites). M3 will gate this
+  // on a new export-modal toggle (projectInfo.proposalSections.takeOff);
+  // for now it's unconditional. Empty-project gate matches the disk-brief
+  // spec: "Empty project gate: if all device families are empty AND no
+  // suites placed, Take-Off page is omitted automatically".
+  var takeOffHasContent = (cameras.length > 0 || acDevices.length > 0
+                        || smartApartment.length > 0 || suites.length > 0);
+  if(takeOffHasContent){
+    showProgress('Composing Take-Off\u2026',20);
+    startSection('letter','portrait');
+    drawTakeOffPage(doc, pageW, pageH);
+  }
+
   // Riser Diagram (one or more pages \u2014 overflows continue the schedule).
   // Pass N: gate matches BOM \u2014 AC-only projects produce per-band AC rails +
   // equipment schedule AC rows (M4). drawRiserDiagram already handles the
@@ -9033,6 +9047,256 @@ function drawPageHeader(doc, W, title){
   var sub = (projectInfo.name || 'Security Proposal');
   if(projectInfo.ref) sub += '  ·  ' + projectInfo.ref;
   doc.text(sub, 40, 48);
+}
+
+// ─── Take-Off Page (M2) ──────────────────────────────────────────────────────
+// drawTakeOffPage renders the integrator's "schedule of quantities" — a
+// procurement + estimator document. Slots into the proposal PDF between BOM
+// and Riser. Reads buildTakeOffData(); pure vector primitives via jsPDF.
+//
+// Layout: US Letter portrait. Dark-navy page header matches BOM/cover/riser.
+// Subsection headers in red accent (#c8202c, matching cover GRAND TOTAL).
+// Column headers: dark-navy fill + white text (matches riser schedule).
+// Body rows: Courier 8pt; alternating row tint #f5f4f0 for readability.
+// Empty subsections: italic "— None placed —" hint (except 3b which omits
+// when both IoT and suites are zero — see render branch below).
+function drawTakeOffPage(doc, W, H){
+  drawPageHeader(doc, W, 'Take-Off');
+  var td = buildTakeOffData();
+  var y = 80;
+  var leftX = 40;
+  var rightX = W - 40;
+
+  doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120, 120, 140);
+  doc.text('Schedule of Quantities — Equipment, Cabling, Labor', leftX, y);
+  y += 18;
+
+  function ensureSpace(needed){
+    if(y + needed > H - 50){
+      drawPageFooter(doc, W, H);
+      doc.addPage('letter','portrait');
+      drawPageHeader(doc, W, 'Take-Off (cont.)');
+      y = 80;
+    }
+  }
+  function drawSubsectionHeader(text){
+    ensureSpace(22);
+    doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(200, 32, 44);
+    doc.text(text.toUpperCase(), leftX, y);
+    y += 14;
+  }
+  function drawColHeaders(cols){
+    var rowH = 14;
+    ensureSpace(rowH + 12);
+    doc.setFillColor(31, 41, 55);
+    doc.rect(leftX, y - 10, rightX - leftX, rowH, 'F');
+    doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+    cols.forEach(function(c){
+      doc.text(c.label, c.x, y, c.align ? { align: c.align } : undefined);
+    });
+    y += rowH;
+  }
+  // Truncate to col.maxChars with single-char ellipsis when too long.
+  function _fit(v, maxChars){
+    var s = (v == null) ? '' : String(v);
+    if(s.length > maxChars) s = s.slice(0, maxChars - 1) + '…';
+    return s;
+  }
+  function drawDataRow(cols, values, rowIdx){
+    var rowH = 12;
+    ensureSpace(rowH);
+    if(rowIdx % 2 === 1){
+      doc.setFillColor(245, 244, 240);
+      doc.rect(leftX, y - 9, rightX - leftX, rowH, 'F');
+    }
+    doc.setFont('courier','normal'); doc.setFontSize(8); doc.setTextColor(40, 40, 60);
+    cols.forEach(function(c, ci){
+      doc.text(_fit(values[ci], c.maxChars), c.x, y, c.align ? { align: c.align } : undefined);
+    });
+    y += rowH;
+  }
+  function drawEmpty(){
+    ensureSpace(16);
+    doc.setFont('courier','italic'); doc.setFontSize(9); doc.setTextColor(120, 120, 140);
+    doc.text('— None placed —', leftX + 6, y);
+    y += 14;
+  }
+
+  // ── Section 1 — Cameras ────────────────────────────────────────────────
+  drawSubsectionHeader('Section 1 — Cameras');
+  if(td.cameras.length === 0){
+    drawEmpty();
+  } else {
+    var camCols = [
+      { label:'FLOOR',    x:45,  maxChars:18 },
+      { label:'LABEL',    x:170, maxChars:12 },
+      { label:'BRAND',    x:255, maxChars:10 },
+      { label:'MODEL',    x:325, maxChars:14 },
+      { label:'TYPE',     x:420, maxChars:8 },
+      { label:'MOUNT',    x:470, maxChars:8 },
+      { label:'RES',      x:510, maxChars:6 },
+      { label:'FOV',      x:545, maxChars:5 },
+      { label:'REACH(m)', x:572, maxChars:7 }
+    ];
+    drawColHeaders(camCols);
+    td.cameras.forEach(function(r, idx){
+      drawDataRow(camCols, [r.floor, r.label, r.brand, r.model, r.type, r.mount, r.resolution, r.fov, r.reach], idx);
+    });
+  }
+  y += 6;
+
+  // ── Section 2 — Access Control ─────────────────────────────────────────
+  drawSubsectionHeader('Section 2 — Access Control');
+  if(td.accessControl.length === 0){
+    drawEmpty();
+  } else {
+    var acCols = [
+      { label:'FLOOR',       x:45,  maxChars:18 },
+      { label:'LABEL',       x:170, maxChars:12 },
+      { label:'BRAND',       x:255, maxChars:10 },
+      { label:'MODEL',       x:325, maxChars:14 },
+      { label:'TYPE',        x:420, maxChars:10 },
+      { label:'SUBCATEGORY', x:480, maxChars:14 },
+      { label:'VARIANT',     x:560, maxChars:10 }
+    ];
+    drawColHeaders(acCols);
+    td.accessControl.forEach(function(r, idx){
+      drawDataRow(acCols, [r.floor, r.label, r.brand, r.model, r.type, r.subcategory, r.variant], idx);
+    });
+  }
+  y += 6;
+
+  // ── Section 3a — Smart Apartment: Placed Devices ───────────────────────
+  drawSubsectionHeader('Section 3a — Smart Apartment: Placed Devices');
+  if(td.smartAptPlaced.length === 0){
+    drawEmpty();
+  } else {
+    var saCols = [
+      { label:'FLOOR',  x:45,  maxChars:20 },
+      { label:'LABEL',  x:180, maxChars:14 },
+      { label:'TYPE',   x:275, maxChars:10 },
+      { label:'BRAND',  x:340, maxChars:14 },
+      { label:'MODEL',  x:430, maxChars:18 },
+      { label:'CONFIG', x:540, maxChars:14 }
+    ];
+    drawColHeaders(saCols);
+    td.smartAptPlaced.forEach(function(r, idx){
+      drawDataRow(saCols, [r.floor, r.label, r.type, r.brand, r.model, r.config], idx);
+    });
+  }
+  y += 6;
+
+  // ── Section 3b — Smart Apartment: In-Unit (IoT) ────────────────────────
+  // Per the brief, omit entirely when both IoT and suites are zero. If
+  // suites exist but no IoT flags resolve to nonzero totals, render the
+  // header + "None placed" hint so the integrator sees the empty state.
+  var sb3b_visible = (td.smartAptIot.length > 0 || td.suites.length > 0);
+  if(sb3b_visible){
+    drawSubsectionHeader('Section 3b — Smart Apartment: In-Unit (IoT)');
+    if(td.smartAptIot.length === 0){
+      drawEmpty();
+    } else {
+      var iotCols = [
+        { label:'DEVICE',        x:45,                maxChars:30 },
+        { label:'PER-SUITE QTY', x:rightX - 200,      maxChars:18, align:'right' },
+        { label:'TOTAL QTY',     x:rightX - 12,       maxChars:12, align:'right' }
+      ];
+      drawColHeaders(iotCols);
+      td.smartAptIot.forEach(function(r, idx){
+        // Render perSuiteQty as integer if whole, decimal with " (avg)"
+        // marker otherwise (matches Suites Polish M4 brief spec).
+        var perSuite;
+        if(typeof r.perSuiteQty !== 'number') perSuite = '';
+        else if(r.perSuiteQty === Math.floor(r.perSuiteQty)) perSuite = String(r.perSuiteQty);
+        else perSuite = r.perSuiteQty.toFixed(1) + ' (avg)';
+        drawDataRow(iotCols, [r.device, perSuite, r.totalQty], idx);
+      });
+    }
+    y += 6;
+  }
+
+  // ── Section 4 — Suites ─────────────────────────────────────────────────
+  drawSubsectionHeader('Section 4 — Suites');
+  if(td.suites.length === 0){
+    drawEmpty();
+  } else {
+    var suCols = [
+      { label:'FLOOR',     x:45,           maxChars:22 },
+      { label:'LABEL',     x:200,          maxChars:14 },
+      { label:'UNIT TYPE', x:300,          maxChars:22 },
+      { label:'BR',        x:rightX - 80,  maxChars:4, align:'right' },
+      { label:'BA',        x:rightX - 12,  maxChars:4, align:'right' }
+    ];
+    drawColHeaders(suCols);
+    td.suites.forEach(function(r, idx){
+      var bedrooms  = (r.bedrooms  == null) ? '—' : r.bedrooms;
+      var bathrooms = (r.bathrooms == null) ? '—' : r.bathrooms;
+      drawDataRow(suCols, [r.floor, r.label, r.unitTypeLabel, bedrooms, bathrooms], idx);
+    });
+  }
+  y += 6;
+
+  // ── Section 5 — Head-End Equipment ─────────────────────────────────────
+  drawSubsectionHeader('Section 5 — Head-End Equipment');
+  if(td.headEnd.length === 0){
+    drawEmpty();
+  } else {
+    var heCols = [
+      { label:'LABEL', x:45,           maxChars:14 },
+      { label:'TYPE',  x:140,          maxChars:10 },
+      { label:'BRAND', x:215,          maxChars:14 },
+      { label:'MODEL', x:305,          maxChars:30 },
+      { label:'QTY',   x:rightX - 12,  maxChars:8, align:'right' }
+    ];
+    drawColHeaders(heCols);
+    td.headEnd.forEach(function(r, idx){
+      drawDataRow(heCols, [r.label, r.type, r.brand, r.model, r.qty], idx);
+    });
+  }
+  y += 6;
+
+  // ── Section 6 — Cabling Summary ────────────────────────────────────────
+  // Single-line summary rows, not a table. Pulls from td.cabling (see
+  // computeNonBomRows). When totalRuns === 0 (no head-end, or uncalibrated
+  // pages) the values are all 0 — render the section anyway so the
+  // integrator sees the zero state explicitly.
+  drawSubsectionHeader('Section 6 — Cabling Summary');
+  ensureSpace(54);
+  doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(40, 40, 60);
+  doc.text('Total camera cable runs:        ' + td.cabling.totalRuns, leftX + 6, y); y += 13;
+  doc.text('Total cable length (' + td.cabling.units + '):' + (td.cabling.units === 'ft' ? '       ' : '        ') + td.cabling.totalLength, leftX + 6, y); y += 13;
+  doc.text('Average run length (' + td.cabling.units + '):' + (td.cabling.units === 'ft' ? '       ' : '        ') + td.cabling.avgRunLength, leftX + 6, y); y += 13;
+  doc.text('Routing overhead multiplier:    ' + td.cabling.overheadMultiplier, leftX + 6, y); y += 13;
+  y += 6;
+
+  // ── Section 7 — Labor Summary ──────────────────────────────────────────
+  drawSubsectionHeader('Section 7 — Labor Summary');
+  if(td.labor.rows.length === 0){
+    drawEmpty();
+  } else {
+    td.labor.rows.forEach(function(r){
+      ensureSpace(13);
+      doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(40, 40, 60);
+      // Format: "Camera install:  12 × 1.5 = 18.00 hr"
+      var qtyStr   = (typeof r.qty   === 'number' && r.qty   === Math.floor(r.qty))   ? String(r.qty)   : (r.qty || 0).toString();
+      var rateStr  = (typeof r.rate  === 'number') ? r.rate.toString() : String(r.rate || 0);
+      var hoursStr = (typeof r.hours === 'number') ? r.hours.toFixed(2) : '0.00';
+      // Right-align hours by padding the left portion to a fixed width.
+      var label = r.category + ':';
+      var labelPadded = (label + '                              ').slice(0, 28);
+      doc.text(labelPadded + qtyStr + ' × ' + rateStr + ' = ' + hoursStr + ' hr', leftX + 6, y);
+      y += 13;
+    });
+    ensureSpace(20);
+    y += 4;
+    doc.setDrawColor(200, 32, 44); doc.setLineWidth(0.8);
+    doc.line(leftX + 6, y - 3, leftX + 280, y - 3);
+    doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(200, 32, 44);
+    doc.text('Total labor hours:          ' + td.labor.totalHours.toFixed(2), leftX + 6, y + 8);
+    y += 22;
+  }
+
+  drawPageFooter(doc, W, H);
 }
 
 function drawPageFooter(doc, W, H){
