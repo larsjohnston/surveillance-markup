@@ -1835,6 +1835,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <label><input type="checkbox" id="iot-thermostat"> Thermostat</label>
       <label><input type="checkbox" id="iot-water-sensor"> Water Sensor</label>
     </div>
+    <p style="margin-top:10px; font:italic 11px var(--font-ui); color:var(--text-muted); line-height:1.4;">Selected devices appear as columns on the Unit Types modal, where you set the per-suite count for each unit type. Unchecking a device removes its column; per-unit-type values will reset to 1 if the device is re-enabled later.</p>
     <div class="modal-actions" style="margin-top:16px;">
       <button class="btn btn-dark"  onclick="closeIotDevicesModal()">Cancel</button>
       <button class="btn btn-green" onclick="saveIotDevices()">Save</button>
@@ -6348,6 +6349,13 @@ function closeUnitTypesModal(){
   _suitePlacementChainCoords = null;
 }
 
+// Suites Polish M2: display name lookup for the dynamic IoT column headers.
+var _IOT_COLUMN_DISPLAY_NAMES = {
+  smartLock:   'SMART LOCK',
+  thermostat:  'THERMOSTAT',
+  waterSensor: 'WATER SENSOR'
+};
+
 function _renderUnitTypesRows(){
   var container = document.getElementById('unit-types-rows-container');
   if(!container) return;
@@ -6355,17 +6363,45 @@ function _renderUnitTypesRows(){
     container.innerHTML = '<div class="ut-empty-hint">No unit types yet. Click <b>+ Add Unit Type</b> to start.</div>';
     return;
   }
-  var html = '<div class="ut-row-header">' +
+  // Suites Polish M2: dynamic IoT columns. One per currently-checked
+  // iotDevices flag, in declared key order so column ordering stays
+  // deterministic (smartLock → thermostat → waterSensor).
+  var iotFlags = projectInfo.iotDevices || {};
+  var iotKeys = ['smartLock', 'thermostat', 'waterSensor'].filter(function(k){
+    return iotFlags[k] === true;
+  });
+  // Grid template: BR | BA | [80px × N IoT cols] | flex Label | × button.
+  var iotColsTemplate = iotKeys.map(function(){ return '80px'; }).join(' ');
+  var gridTemplate = '70px 70px' + (iotColsTemplate ? ' ' + iotColsTemplate : '') + ' 1fr 32px';
+  var styleAttr = 'style="grid-template-columns:' + gridTemplate + ';"';
+  // Suites Polish M2: bump the modal max-width to fit IoT columns. 640 + 80
+  // per column comfortably accommodates 1BR/1BA labels at 0/1/2/3 IoT cols.
+  var box = document.querySelector('#unit-types-modal .modal-box');
+  if(box) box.style.maxWidth = (640 + iotKeys.length * 80) + 'px';
+
+  var html = '<div class="ut-row-header" ' + styleAttr + '>' +
               '<div>Bedrooms</div>' +
-              '<div>Bathrooms</div>' +
-              '<div>Label</div>' +
+              '<div>Bathrooms</div>';
+  iotKeys.forEach(function(k){
+    html += '<div>' + _IOT_COLUMN_DISPLAY_NAMES[k] + '</div>';
+  });
+  html +=     '<div>Label</div>' +
               '<div></div>' +
              '</div>';
   _unitTypesDraft.forEach(function(ut, idx){
-    html += '<div class="ut-row" data-ut-idx="' + idx + '">' +
+    html += '<div class="ut-row" data-ut-idx="' + idx + '" ' + styleAttr + '>' +
               '<input type="number" data-field="bedrooms"  value="' + ut.bedrooms + '"  min="0"   max="10" step="1"   oninput="onUnitTypeRowEdit(' + idx + ', \'bedrooms\', this)">' +
-              '<input type="number" data-field="bathrooms" value="' + ut.bathrooms + '" min="0.5" max="10" step="0.5" oninput="onUnitTypeRowEdit(' + idx + ', \'bathrooms\', this)">' +
-              '<input type="text" data-field="label"     value="' + escapeHtml(ut.label) + '" placeholder="e.g. 1BR / 1BA Standard" oninput="onUnitTypeRowEdit(' + idx + ', \'label\', this)">' +
+              '<input type="number" data-field="bathrooms" value="' + ut.bathrooms + '" min="0.5" max="10" step="0.5" oninput="onUnitTypeRowEdit(' + idx + ', \'bathrooms\', this)">';
+    // Suites Polish M2: IoT cells. oninput parses + clamps to the draft.
+    // onblur refreshes the input to the post-clamp value (so a user-typed
+    // 99 visibly snaps to 10 when focus leaves the cell).
+    iotKeys.forEach(function(k){
+      var cnt = (ut.iotCounts && typeof ut.iotCounts[k] === 'number') ? ut.iotCounts[k] : 0;
+      html += '<input type="number" data-field="iot-' + k + '" value="' + cnt + '" min="0" max="10" step="1"' +
+              ' oninput="onUnitTypeRowEdit(' + idx + ', \'iot-' + k + '\', this)"' +
+              ' onblur="onUnitTypeIotBlur(' + idx + ', \'' + k + '\', this)">';
+    });
+    html +=   '<input type="text" data-field="label"     value="' + escapeHtml(ut.label) + '" placeholder="e.g. 1BR / 1BA Standard" oninput="onUnitTypeRowEdit(' + idx + ', \'label\', this)">' +
               '<button class="ut-row-del" onclick="removeUnitTypeRow(' + idx + ')" title="Remove this unit type">&times;</button>' +
             '</div>';
   });
@@ -6379,8 +6415,24 @@ function onUnitTypeRowEdit(idx, field, inp){
     // auto-fill off for this row for the rest of the modal session.
     _unitTypesDraft[idx].label = inp.value;
     _unitTypesDraft[idx].labelUserEdited = true;
+  } else if(field.indexOf('iot-') === 0){
+    // Suites Polish M2: IoT cell. Parse as integer, clamp to [0, 10],
+    // empty/NaN → 0. The DOM value is not forced mid-typing (so the user
+    // can type "10" without seeing "1" jump to "0" on backspace); the
+    // blur handler refreshes the visible value to the clamped data.
+    var iotKey = field.slice(4);
+    if(!_unitTypesDraft[idx].iotCounts || typeof _unitTypesDraft[idx].iotCounts !== 'object'){
+      _unitTypesDraft[idx].iotCounts = { smartLock: 0, thermostat: 0, waterSensor: 0 };
+    }
+    var raw = (inp.value || '').trim();
+    var n = (raw === '') ? 0 : parseInt(raw, 10);
+    if(!isFinite(n)) n = 0;
+    if(n < 0) n = 0;
+    if(n > 10) n = 10;
+    _unitTypesDraft[idx].iotCounts[iotKey] = n;
   } else {
-    // Number field — parse, allow temporarily-empty during typing.
+    // Number field (bedrooms / bathrooms) — parse, allow temporarily-empty
+    // during typing.
     var v = parseFloat(inp.value);
     if(isFinite(v)){
       _unitTypesDraft[idx][field] = v;
@@ -6402,6 +6454,15 @@ function onUnitTypeRowEdit(idx, field, inp){
   }
   // Clear invalid class on edit; final validation runs on Save.
   inp.classList.remove('invalid');
+}
+
+// Suites Polish M2: on blur, refresh the IoT cell to its post-clamp value.
+// Programmatic .value writes don't fire oninput, so this is a safe display
+// reconcile — the underlying data was already written on the input event.
+function onUnitTypeIotBlur(idx, key, inp){
+  if(!_unitTypesDraft[idx] || !_unitTypesDraft[idx].iotCounts) return;
+  var v = _unitTypesDraft[idx].iotCounts[key];
+  if(typeof v === 'number') inp.value = v;
 }
 
 function addUnitTypeRow(){
@@ -6476,6 +6537,30 @@ function saveUnitTypes(){
     var errEl = document.getElementById('unit-types-err');
     errEl.textContent = errMsg;
     errEl.style.display = '';
+    return;
+  }
+
+  // Suites Polish M2: duplicate-label validation. Trimmed + lower-cased
+  // matching so "Penthouse", "PENTHOUSE", and "  penthouse  " all collide.
+  // Mark both colliding rows invalid; report only the first conflict so
+  // the modal stays focused (user fixes one at a time).
+  var labelSeen = {};
+  for(var di = 0; di < cleaned.length; di++){
+    var nm = (cleaned[di].label || '').trim().toLowerCase();
+    if(labelSeen[nm] !== undefined){
+      errMsg = 'Two unit types share the name "' + cleaned[di].label + '". Each unit type needs a unique label.';
+      var rowA = container.querySelector('.ut-row[data-ut-idx="' + labelSeen[nm] + '"]');
+      var rowB = container.querySelector('.ut-row[data-ut-idx="' + di + '"]');
+      if(rowA){ var aLab = rowA.querySelector('[data-field="label"]'); if(aLab) aLab.classList.add('invalid'); }
+      if(rowB){ var bLab = rowB.querySelector('[data-field="label"]'); if(bLab) bLab.classList.add('invalid'); }
+      break;
+    }
+    labelSeen[nm] = di;
+  }
+  if(errMsg){
+    var errEl2 = document.getElementById('unit-types-err');
+    errEl2.textContent = errMsg;
+    errEl2.style.display = '';
     return;
   }
 
