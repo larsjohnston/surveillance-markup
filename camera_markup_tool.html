@@ -9641,6 +9641,16 @@ function testCompareForRiser(){
 var RISER_EMPTY_BAND_PT = 30;   // empty bands collapse to this height
 var RISER_MIN_BAND_PT   = 50;   // non-empty band minimum
 var RISER_MAX_BAND_PT   = 120;  // cap so a small project doesn't sprawl
+
+// ─── Riser Layout pass: multi-row wrap tuning constants ─────────────────
+// When a zone band's camera rail or AC rail contains more devices than
+// fit in one horizontal row at readable size, the layout wraps to a
+// second (and third, etc.) row. Each additional row adds vertical space
+// to the band so the rows don't crash into each other. M2 may tune these
+// after real-PDF eyeballing.
+var RISER_MAX_DEVICES_PER_ROW = 15;
+var RISER_RAIL_PADDING        = 24;   // pt of horizontal margin inside each rail
+var RISER_ROW_HEIGHT_EXTRA    = 16;   // pt added per row beyond the first
 var RISER_LABEL_W       = 64;   // left column reserved for the floor name
 var RISER_HEAD_W        = 130;  // horizontal span the head-end cluster occupies
 // Pass N M2 — AC rail dimensions (D2 same-band-two-rails).
@@ -9684,13 +9694,29 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
   // with whitespace below — small projects shouldn't sprawl.
   var STAGGER_BASE_PT = 9;
   var totalCams  = model.zones.reduce(function(s, z){ return s + z.cams.length; }, 0);
-  var baseHeights = model.zones.map(function(z){
+  // Riser Layout M1: per-zone extra height for multi-row wrap. Added to
+  // both the base height and the cap so a dense zone gets real vertical
+  // room instead of being clamped by the small-project caps.
+  var rowExtras = model.zones.map(function(z){
+    var acTotalForZone = z.acDevices.length
+                       + ((z.intercoms || []).length)
+                       + ((z.parcels   || []).length)
+                       + ((z.mailboxes || []).length);
+    var camRows = Math.max(1, Math.ceil(z.cams.length / RISER_MAX_DEVICES_PER_ROW));
+    var acRows  = Math.max(1, Math.ceil(acTotalForZone / RISER_MAX_DEVICES_PER_ROW));
+    return (camRows - 1) * RISER_ROW_HEIGHT_EXTRA + (acRows - 1) * RISER_ROW_HEIGHT_EXTRA;
+  });
+  var baseHeights = model.zones.map(function(z, zi){
     var hasCams = z.cams.length > 0;
-    var hasAc   = z.acDevices.length > 0;
+    var hasAc   = z.acDevices.length > 0
+               || ((z.intercoms || []).length > 0)
+               || ((z.parcels   || []).length > 0)
+               || ((z.mailboxes || []).length > 0);
     if(!hasCams && !hasAc) return RISER_EMPTY_BAND_PT;
-    if(!hasCams &&  hasAc) return RISER_AC_RAIL_MIN_PT;
+    var ex = rowExtras[zi];
+    if(!hasCams &&  hasAc) return RISER_AC_RAIL_MIN_PT + ex;
     var camsBase = RISER_MIN_BAND_PT + (z.cams.length >= 4 ? STAGGER_BASE_PT : 0);
-    return hasAc ? Math.round(camsBase * AC_RAIL_GROW_FACTOR) : camsBase;
+    return (hasAc ? Math.round(camsBase * AC_RAIL_GROW_FACTOR) : camsBase) + ex;
   });
   var baseTotal = baseHeights.reduce(function(a, b){ return a + b; }, 0);
   var bandHeights;
@@ -9704,9 +9730,16 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
     var extra = bandsH - baseTotal;
     bandHeights = model.zones.map(function(z, zi){
       if(z.cams.length === 0) return baseHeights[zi];
-      var hasAc = z.acDevices.length > 0;
+      // Riser Layout M1: hasAc considers smart-apartment families too, so
+      // a cameras+intercoms band (no Brivo readers) uses the mixed cap.
+      var hasAc = z.acDevices.length > 0
+               || ((z.intercoms || []).length > 0)
+               || ((z.parcels   || []).length > 0)
+               || ((z.mailboxes || []).length > 0);
       var grew  = baseHeights[zi] + extra * z.cams.length / totalCams;
-      var cap   = hasAc ? RISER_MIXED_MAX_BAND_PT : RISER_MAX_BAND_PT;
+      // Bump cap by rowExtras so dense bands don't get clamped below
+      // their own base height.
+      var cap   = (hasAc ? RISER_MIXED_MAX_BAND_PT : RISER_MAX_BAND_PT) + rowExtras[zi];
       return Math.min(cap, grew);
     });
   }
@@ -9835,6 +9868,11 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
   // passes through the band vertically (drawn by parent). For mixed bands,
   // the rail and icons are constrained to the upper sub-region via camRailY
   // / camRegionBot.
+  //
+  // Riser Layout M1: sort cameras by floor-plan x and wrap to multiple
+  // rows when > RISER_MAX_DEVICES_PER_ROW. Each row gets its own rail
+  // line at a stacked y; stubs connect each icon up to its row's rail.
+  // Cable IDs render above each row's rail at the icon's x.
   var cams = zone.cams;
   var n = cams.length;
   if(n === 0){
@@ -9844,60 +9882,61 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
 
   var railLeft  = trunkX + 4;
   var railRight = x0 + w - 6;
-  var railY     = camRailY;
-  doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.5);
-  doc.line(railLeft, railY, railRight, railY);
 
-  // Pass A.7.5: stagger camera-ID labels in two rows when 4+ cams in a
-  // zone to prevent label overlap. Odd-indexed (1, 3, 5, ...) labels
-  // render lower with a thin leader line connecting them to their icon.
-  // Threshold is per acceptance criterion 4 — zones with <4 cams keep a
-  // single row.
-  var staggerEnabled = n >= 4;
   var STAGGER_PT = 9;
+  var camsSorted = cams.slice().sort(function(a, b){ return (a.x || 0) - (b.x || 0); });
+  var camRailRows = Math.max(1, Math.ceil(n / RISER_MAX_DEVICES_PER_ROW));
+  var camPerRow   = Math.ceil(n / camRailRows);
 
-  // Distribute camera icons below the rail; icon size shrinks slightly when
-  // packed densely. Each icon stubs up to the rail with a thin connector.
-  var avail   = railRight - railLeft - 8;
-  var spacing = avail / (n + 1);
-  var iconSize = Math.min(13, Math.max(8, spacing * 0.55));
-  // Icons sit below the rail. Bottom margin reserves space for the label —
-  // 8 pt single-row, 18 pt when staggered so the lower row clears.
-  // Pass N M2: clamp to camRegionBot rather than y0+h so mixed-band icons
-  // don't bleed into the AC sub-region below the separator.
-  var bottomMargin = staggerEnabled ? 18 : 8;
-  var iconY = Math.min(railY + 18, camRegionBot - iconSize/2 - bottomMargin);
-
-  cams.forEach(function(cam, i){
-    var cx = railLeft + 4 + spacing * (i + 1);
-    // Stub: rail down to icon
-    doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
-    doc.line(cx, railY, cx, iconY - iconSize/2 - 1);
-
-    // Cable ID above the rail at the cam's vertical line. Pass A.7.5
-    // amended spec: dual-unit length labels descoped from the diagram;
-    // only the C-NN identifier renders here.
-    doc.setFont('courier','normal'); doc.setFontSize(5.5);
-    doc.setTextColor(60, 60, 80);
-    doc.text(cam.__cableId, cx + 1.5, railY - 1);
-
-    drawRiserCamIcon(doc, cam, cx, iconY, iconSize);
-
-    // Camera ID label below the icon. Pass A.7.5 staggers odd-indexed
-    // cams to a second row with a thin leader connecting icon to label
-    // (only when staggerEnabled — zone has 4+ cams).
-    var labelBaseline = iconY + iconSize/2 + 6;
-    if(staggerEnabled && (i % 2 === 1)){
-      labelBaseline += STAGGER_PT;
-      doc.setDrawColor(159, 165, 175); doc.setLineWidth(0.3);
-      doc.line(cx, iconY + iconSize/2 + 1, cx, labelBaseline - 4);
+  for(var rI = 0; rI < camRailRows; rI++){
+    var rowStart = rI * camPerRow;
+    var rowEnd   = Math.min(rowStart + camPerRow, n);
+    var rowCams  = camsSorted.slice(rowStart, rowEnd);
+    var rowN     = rowCams.length;
+    if(rowN === 0) break;
+    var rowRailY = camRailY + rI * RISER_ROW_HEIGHT_EXTRA;
+    doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.5);
+    doc.line(railLeft, rowRailY, railRight, rowRailY);
+    var rowAvail   = railRight - railLeft - RISER_RAIL_PADDING * 2;
+    var rowSpacing = rowAvail / (rowN + 1);
+    var rowIconSize = Math.min(13, Math.max(8, rowSpacing * 0.55));
+    // Pass A.7.5 stagger: only on row 0 with 4+ cams. Multi-row already
+    // stacks rows vertically; staggering within a row would compound the
+    // vertical pressure.
+    var rowStagger = (rI === 0) && rowN >= 4 && camRailRows === 1;
+    var rowBottomMargin = rowStagger ? 18 : 8;
+    var rowIconY = Math.min(rowRailY + 18, camRegionBot - rowIconSize/2 - rowBottomMargin);
+    // Multi-row case: rowIconY may need to extend past the original
+    // single-row constraint. The band-height computation already reserved
+    // extra space (rowExtras), so the icon y can simply follow the row's
+    // rail offset.
+    if(camRailRows > 1){
+      rowIconY = rowRailY + 18;
     }
-    doc.setFont('courier','bold'); doc.setFontSize(5.5);
-    doc.setTextColor(40, 40, 60);
-    var lab = cam.label || '';
-    if(lab.length > 11) lab = lab.slice(0, 10) + '…';
-    doc.text(lab, cx, labelBaseline, {align:'center'});
-  });
+
+    rowCams.forEach(function(cam, i){
+      var cx = railLeft + RISER_RAIL_PADDING + rowSpacing * (i + 1);
+      // Stub: row's rail down to icon.
+      doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
+      doc.line(cx, rowRailY, cx, rowIconY - rowIconSize/2 - 1);
+      // Cable ID above the row's rail.
+      doc.setFont('courier','normal'); doc.setFontSize(5.5);
+      doc.setTextColor(60, 60, 80);
+      doc.text(cam.__cableId, cx + 1.5, rowRailY - 1);
+      drawRiserCamIcon(doc, cam, cx, rowIconY, rowIconSize);
+      var labelBaseline = rowIconY + rowIconSize/2 + 6;
+      if(rowStagger && (i % 2 === 1)){
+        labelBaseline += STAGGER_PT;
+        doc.setDrawColor(159, 165, 175); doc.setLineWidth(0.3);
+        doc.line(cx, rowIconY + rowIconSize/2 + 1, cx, labelBaseline - 4);
+      }
+      doc.setFont('courier','bold'); doc.setFontSize(5.5);
+      doc.setTextColor(40, 40, 60);
+      var lab = cam.label || '';
+      if(lab.length > 11) lab = lab.slice(0, 10) + '…';
+      doc.text(lab, cx, labelBaseline, {align:'center'});
+    });
+  }
 
   }  // end cams-rail else block (Pass N M2)
 
@@ -9914,54 +9953,72 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
   // No reader→controller cable lines (Pass N D3 / CLAUDE.md "Reader-to-
   // controller cable lines are deferred").
   if(hasAc){
-    // Combined render list ordered per M9 brief.
+    // Riser Layout M1: sort each category by floor-plan x, then concat
+    // in Pass N+1 M9 order (readers → controllers → intercoms → parcels
+    // → mailboxes). Category boundaries are preserved across multi-row
+    // wraps (rows are just fixed-size slices of the ordered list — a
+    // row may end mid-category and the next row picks up from there,
+    // which is acceptable per brief).
+    function _byX(a, b){ return (a.x || 0) - (b.x || 0); }
+    var readers     = zone.acDevices.filter(function(d){ return acCategoryOf(d) === 'Readers';     }).slice().sort(_byX);
+    var controllers = zone.acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers'; }).slice().sort(_byX);
+    var otherAc     = zone.acDevices.filter(function(d){ var c = acCategoryOf(d); return c !== 'Readers' && c !== 'Controllers'; }).slice().sort(_byX);
+    var intercoms   = (zone.intercoms || []).slice().sort(_byX);
+    var parcels     = (zone.parcels   || []).slice().sort(_byX);
+    var mailboxes   = (zone.mailboxes || []).slice().sort(_byX);
     var railDevs = [];
-    zone.acDevices.forEach(function(d){
-      railDevs.push({ dev: d, kind: 'ac' });
-    });
-    (zone.intercoms || []).forEach(function(d){
-      railDevs.push({ dev: d, kind: 'intercom' });
-    });
-    (zone.parcels || []).forEach(function(d){
-      railDevs.push({ dev: d, kind: 'parcel' });
-    });
-    (zone.mailboxes || []).forEach(function(d){
-      railDevs.push({ dev: d, kind: 'mailbox' });
-    });
+    readers.forEach    (function(d){ railDevs.push({ dev: d, kind: 'ac' }); });
+    controllers.forEach(function(d){ railDevs.push({ dev: d, kind: 'ac' }); });
+    otherAc.forEach    (function(d){ railDevs.push({ dev: d, kind: 'ac' }); });
+    intercoms.forEach  (function(d){ railDevs.push({ dev: d, kind: 'intercom' }); });
+    parcels.forEach    (function(d){ railDevs.push({ dev: d, kind: 'parcel' }); });
+    mailboxes.forEach  (function(d){ railDevs.push({ dev: d, kind: 'mailbox' }); });
 
     var acN      = railDevs.length;
     var acRailL  = trunkX + 4;
     var acRailR  = x0 + w - 6;
-    doc.setDrawColor(29, 78, 216); doc.setLineWidth(0.5);   // Brivo blue
-    doc.line(acRailL, acRailY, acRailR, acRailY);
+    var acRailRows = Math.max(1, Math.ceil(acN / RISER_MAX_DEVICES_PER_ROW));
+    var acPerRow   = Math.ceil(acN / acRailRows);
 
-    var acAvail   = acRailR - acRailL - 8;
-    var acSpacing = acAvail / (acN + 1);
-    var acIconSize = Math.min(11, Math.max(7, acSpacing * 0.55));
-    var acBandBot = isMixed ? (y0 + h) : (y0 + h);
-    var acIconY   = Math.min(acRailY + 14, acBandBot - acIconSize/2 - 8);
+    for(var arI = 0; arI < acRailRows; arI++){
+      var arStart = arI * acPerRow;
+      var arEnd   = Math.min(arStart + acPerRow, acN);
+      var rowEntries = railDevs.slice(arStart, arEnd);
+      var rowN_ac = rowEntries.length;
+      if(rowN_ac === 0) break;
+      var rowAcRailY = acRailY + arI * RISER_ROW_HEIGHT_EXTRA;
+      doc.setDrawColor(29, 78, 216); doc.setLineWidth(0.5);   // Brivo blue
+      doc.line(acRailL, rowAcRailY, acRailR, rowAcRailY);
+      var rowAcAvail   = acRailR - acRailL - RISER_RAIL_PADDING * 2;
+      var rowAcSpacing = rowAcAvail / (rowN_ac + 1);
+      var rowAcIconSize = Math.min(11, Math.max(7, rowAcSpacing * 0.55));
+      var acBandBot = isMixed ? (y0 + h) : (y0 + h);
+      var rowAcIconY = (acRailRows > 1)
+        ? (rowAcRailY + 14)
+        : Math.min(rowAcRailY + 14, acBandBot - rowAcIconSize/2 - 8);
 
-    railDevs.forEach(function(entry, i){
-      var dev  = entry.dev;
-      var kind = entry.kind;
-      var cx   = acRailL + 4 + acSpacing * (i + 1);
-      // Cable stub: only for AC (readers + controllers) and intercom.
-      // Parcel and mailbox are physical-only — no vertical connector.
-      if(kind === 'ac' || kind === 'intercom'){
-        doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
-        doc.line(cx, acRailY, cx, acIconY - acIconSize/2 - 1);
-      }
-      if(kind === 'ac')            drawRiserAcIcon(doc, dev, cx, acIconY, acIconSize);
-      else if(kind === 'intercom') drawRiserIntercomIcon(doc, dev, cx, acIconY, acIconSize);
-      else if(kind === 'parcel')   drawRiserParcelIcon(doc, dev, cx, acIconY, acIconSize);
-      else if(kind === 'mailbox')  drawRiserMailboxIcon(doc, dev, cx, acIconY, acIconSize);
-      var labelBaseline = acIconY + acIconSize/2 + 6;
-      doc.setFont('courier','bold'); doc.setFontSize(5.5);
-      doc.setTextColor(40, 40, 60);
-      var lab = dev.label || '';
-      if(lab.length > 11) lab = lab.slice(0, 10) + '…';
-      doc.text(lab, cx, labelBaseline, {align:'center'});
-    });
+      rowEntries.forEach(function(entry, i){
+        var dev  = entry.dev;
+        var kind = entry.kind;
+        var cx   = acRailL + RISER_RAIL_PADDING + rowAcSpacing * (i + 1);
+        // Cable stub: only for AC (readers + controllers) and intercom.
+        // Parcel and mailbox are physical-only — no vertical connector.
+        if(kind === 'ac' || kind === 'intercom'){
+          doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
+          doc.line(cx, rowAcRailY, cx, rowAcIconY - rowAcIconSize/2 - 1);
+        }
+        if(kind === 'ac')            drawRiserAcIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
+        else if(kind === 'intercom') drawRiserIntercomIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
+        else if(kind === 'parcel')   drawRiserParcelIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
+        else if(kind === 'mailbox')  drawRiserMailboxIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
+        var labelBaseline = rowAcIconY + rowAcIconSize/2 + 6;
+        doc.setFont('courier','bold'); doc.setFontSize(5.5);
+        doc.setTextColor(40, 40, 60);
+        var lab = dev.label || '';
+        if(lab.length > 11) lab = lab.slice(0, 10) + '…';
+        doc.text(lab, cx, labelBaseline, {align:'center'});
+      });
+    }
   }
 
   // (Pass A.7.5: the per-zone "(no head-end)" red italic hint that used to
