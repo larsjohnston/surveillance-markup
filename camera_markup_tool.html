@@ -10409,30 +10409,51 @@ function computeAutoRows(){
     });
   });
 
-  // 4. In-unit IoT devices. qty sums pageMultiplier across every placed
-  // suite — a suite on a 3-typical-floor page contributes 3 to the IoT
-  // total. Mirrors the intercom/parcel/mailbox accounting in this same
-  // section (and the AC/cameras/cabling accounting elsewhere). Skipped
-  // when no suites are placed.
+  // 4. In-unit IoT devices. Suites Polish M4: per-unit-type math.
+  // For each checked iotDevices flag, qty sums (suite count of each
+  // unit type × that unit type's iotCounts[device]). Suite count per
+  // type is pageMultiplier-aware so typical floors multiply through.
+  //
+  // Suites referencing unknown unit type IDs (deleted types) contribute
+  // 0 to the IoT qty — they still appear on the floor plan but don't
+  // pull material until reassigned to a defined unit type.
+  //
+  // Zero-qty rows are omitted (consistent with the rest of computeAutoRows
+  // — empty groups don't emit). A flag=true scenario with all unit types
+  // at iotCounts=0 produces no row.
   var iot = projectInfo.iotDevices || {};
   var suiteArr = (typeof suites !== 'undefined' && Array.isArray(suites)) ? suites : [];
-  var suiteMultCount = suiteArr.reduce(function(s, d){ return s + pageMultiplier(d.page); }, 0);
-  if(suiteMultCount > 0){
-    var iotMap = [
-      { key:'smartLock',   label:'Smart Lock' },
-      { key:'thermostat',  label:'Thermostat' },
-      { key:'waterSensor', label:'Water Sensor' }
-    ];
-    iotMap.forEach(function(entry){
-      if(iot[entry.key]){
-        smartAptRows.push({
-          auto: true, src: 'smartApartment', key: 'auto-sa-iot-' + entry.key,
-          desc: entry.label + ' — in-unit',
-          qty: suiteMultCount, unit: 0, sectionAuto: true
-        });
-      }
+  var unitTypesArr = projectInfo.unitTypes || [];
+  // Per-unit-type suite count, multiplied across typical floors.
+  var iotSuitesByType = {};
+  unitTypesArr.forEach(function(ut){ iotSuitesByType[ut.id] = 0; });
+  suiteArr.forEach(function(s){
+    if(s && s.unitType && iotSuitesByType.hasOwnProperty(s.unitType)){
+      iotSuitesByType[s.unitType] += pageMultiplier(s.page);
+    }
+  });
+  var iotMap = [
+    { key:'smartLock',   label:'Smart Lock' },
+    { key:'thermostat',  label:'Thermostat' },
+    { key:'waterSensor', label:'Water Sensor' }
+  ];
+  iotMap.forEach(function(entry){
+    if(!iot[entry.key]) return;
+    var iotQty = 0;
+    unitTypesArr.forEach(function(ut){
+      var perTypeCount = iotSuitesByType[ut.id] || 0;
+      var perTypeIotCount = (ut.iotCounts && typeof ut.iotCounts[entry.key] === 'number')
+        ? ut.iotCounts[entry.key] : 0;
+      iotQty += perTypeCount * perTypeIotCount;
     });
-  }
+    if(iotQty > 0){
+      smartAptRows.push({
+        auto: true, src: 'smartApartment', key: 'auto-sa-iot-' + entry.key,
+        desc: entry.label + ' — in-unit',
+        qty: iotQty, unit: 0, sectionAuto: true
+      });
+    }
+  });
 
   return {
     cameras: camRows,
@@ -10607,10 +10628,25 @@ function buildTakeOffData(){
     };
   });
 
-  // Section 3b — In-unit IoT.
+  // Section 3b — In-unit IoT. Suites Polish M4: per-unit-type math.
+  // perSuiteQty is a weighted average across unit types of iotCounts[device],
+  // weighted by pageMultiplier-aware suite count per type. totalQty is the
+  // sum of (suite count of type × iotCounts[device]) across all types —
+  // matches the BOM auto-row qty exactly. Shape unchanged for external
+  // consumers; only perSuiteQty semantics shift.
+  //
+  // Zero-totalQty rows are omitted (flag=true but all unit types have
+  // iotCounts=0, or no suites placed). Matches computeAutoRows omission.
   var iot = projectInfo.iotDevices || {};
   var suiteArr = (typeof suites !== 'undefined' && Array.isArray(suites)) ? suites : [];
-  var suiteMultCount = suiteArr.reduce(function(s, d){ return s + pageMultiplier(d.page); }, 0);
+  var unitTypesArr = projectInfo.unitTypes || [];
+  var iotSuitesByType = {};
+  unitTypesArr.forEach(function(ut){ iotSuitesByType[ut.id] = 0; });
+  suiteArr.forEach(function(s){
+    if(s && s.unitType && iotSuitesByType.hasOwnProperty(s.unitType)){
+      iotSuitesByType[s.unitType] += pageMultiplier(s.page);
+    }
+  });
   var iotMap = [
     { key:'smartLock',   label:'Smart Lock' },
     { key:'thermostat',  label:'Thermostat' },
@@ -10618,11 +10654,24 @@ function buildTakeOffData(){
   ];
   var smartAptIot = [];
   iotMap.forEach(function(entry){
-    if(iot[entry.key]){
+    if(!iot[entry.key]) return;
+    var weightedSum = 0;
+    var totalSuites = 0;
+    unitTypesArr.forEach(function(ut){
+      var perType = iotSuitesByType[ut.id] || 0;
+      var iotCount = (ut.iotCounts && typeof ut.iotCounts[entry.key] === 'number')
+        ? ut.iotCounts[entry.key] : 0;
+      weightedSum += perType * iotCount;
+      totalSuites += perType;
+    });
+    if(weightedSum > 0){
+      var perSuiteQty = totalSuites > 0
+        ? Math.round((weightedSum / totalSuites) * 10) / 10
+        : 0;
       smartAptIot.push({
         device:       entry.label,
-        perSuiteQty:  1,
-        totalQty:     suiteMultCount
+        perSuiteQty:  perSuiteQty,
+        totalQty:     weightedSum
       });
     }
   });

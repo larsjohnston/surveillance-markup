@@ -38,9 +38,12 @@ One row per placed intercom / parcel locker / mailbox bank. `Type` is one of `In
 
 | Device | Per-Suite Qty | Total Qty |
 
-One row per IoT flag set true in `projectInfo.iotDevices` (Smart Lock / Thermostat / Water Sensor). For v1, **Per-Suite Qty is always 1** (per-bedroom-type rules ship later via the Rules Page editor). Total Qty = sum of suites × pageMultiplier across all suite pages.
+One row per IoT flag set true in `projectInfo.iotDevices` (Smart Lock / Thermostat / Water Sensor). After Suites Polish M4, the per-unit-type IoT count model is in place:
 
-If no IoT flags are checked AND no suites are placed, this subsection is omitted entirely.
+- **Per-Suite Qty** = weighted average across unit types of `iotCounts[device]`, weighted by pageMultiplier-aware suite count of each type. When all unit types specify the same count for a device, Per-Suite Qty is that integer. When unit types differ, Per-Suite Qty is the weighted average rounded to 1 decimal place. Render layer should show the integer form (e.g., `1`) when the value is whole and the decimal form (e.g., `1.2`) when not. M2 of Take-Off will add an "(avg)" suffix to flag mixed-unit-type rows for readers.
+- **Total Qty** = sum across unit types of (suite count of that type × pageMultiplier × `iotCounts[device]`). Matches the BOM auto-row qty exactly.
+
+Rows with `totalQty === 0` (flag is checked but all unit types have `iotCounts[device] === 0`, or no suites are placed) are omitted from the data layer. The render layer can show "None — no per-unit-type counts configured" if the entire subsection is empty AND the user has at least one IoT flag checked, otherwise this subsection is omitted entirely.
 
 ### Section 4 — Suites
 
@@ -191,6 +194,7 @@ Device counts feeding Section 7 use `pageMultiplier` consistently — same accou
 - Subsection ordering: cameras → AC → smart apt placed → smart apt IoT → suites → head-end → cabling → labor
 - Typical-floor multiplier sanity: place 2 cameras on a 3-typical page. Camera section shows 2 rows (one per placed marker). Cabling Summary total length = (run1 + run2) × 3. Labor Summary camera-install hours = 2 × 3 × 1.5 = 9.
 - IoT-only edge case: zero placed devices, 5 suites, Smart Lock checked. Section 3b shows one row (Smart Lock, per-suite=1, total=5). Sections 1, 2, 3a, 5 all show "None placed". Section 6 shows total cable length = 0. Section 7 shows IoT install + commissioning + head-end-base = some total.
+- Mixed per-unit-type IoT counts (post Suites Polish M4): two unit types, "1BR" with `iotCounts.smartLock = 1` and "Penthouse" with `iotCounts.smartLock = 2`. Place 4 suites of 1BR + 1 suite of Penthouse on a non-typical page, Smart Lock flag checked. Section 3b row reads `Smart Lock | 1.2 | 6` (weighted average 6/5 = 1.2, total 4×1 + 1×2 = 6). On a 3-typical page same setup: row reads `Smart Lock | 1.2 | 18` (totalQty triples, per-suite avg unchanged since multiplier cancels in the average).
 
 ## Out of scope
 
