@@ -6262,6 +6262,45 @@ function _formatUnitTypeLabel(br, ba){
   return br + 'BR / ' + ba + 'BA';
 }
 
+// ─── Suites Polish M1 — iotCounts helpers ────────────────────────────────────
+// Per-unit-type IoT counts (e.g., 1BR gets 1 smart lock, Penthouse gets 2).
+// Schema: each unit type may carry an `iotCounts` object whose keys mirror
+// `projectInfo.iotDevices` (smartLock / thermostat / waterSensor). A value of
+// 0 means "this unit type does not get this device". A value > 0 multiplies
+// into the BOM IoT row per-suite-of-this-type.
+//
+// applyProjectState backfills missing iotCounts on load. addUnitTypeRow,
+// openUnitTypesModal, and saveIotDevices seed iotCounts from current
+// iotDevices flags (1 if true, 0 if false). Unchecking an iotDevices flag
+// preserves the iotCounts value so re-checking restores prior state.
+
+// Mutates `ut` in place so iotCounts has all three keys. Missing keys are
+// backfilled from current projectInfo.iotDevices flags (1 if true, 0 if
+// false). Present keys are trusted as-is. Safe to call on already-backfilled
+// rows (no-op for fully-populated iotCounts).
+function _backfillUnitTypeIotCounts(ut){
+  var iot = projectInfo.iotDevices || {};
+  if(!ut.iotCounts || typeof ut.iotCounts !== 'object') ut.iotCounts = {};
+  if(typeof ut.iotCounts.smartLock   !== 'number') ut.iotCounts.smartLock   = iot.smartLock   ? 1 : 0;
+  if(typeof ut.iotCounts.thermostat  !== 'number') ut.iotCounts.thermostat  = iot.thermostat  ? 1 : 0;
+  if(typeof ut.iotCounts.waterSensor !== 'number') ut.iotCounts.waterSensor = iot.waterSensor ? 1 : 0;
+}
+
+// Returns a fresh iotCounts object for a draft entry. If `ut` is provided and
+// already has iotCounts, those values are cloned (per-key, with type guard
+// against bad data). Missing keys fall back to current iotDevices flags.
+// Pass null/undefined to get a brand-new template seeded purely from flags
+// (used by addUnitTypeRow and the empty-seed branch in openUnitTypesModal).
+function _seedDraftIotCounts(ut){
+  var iot = projectInfo.iotDevices || {};
+  var src = (ut && ut.iotCounts) ? ut.iotCounts : {};
+  return {
+    smartLock:   typeof src.smartLock   === 'number' ? src.smartLock   : (iot.smartLock   ? 1 : 0),
+    thermostat:  typeof src.thermostat  === 'number' ? src.thermostat  : (iot.thermostat  ? 1 : 0),
+    waterSensor: typeof src.waterSensor === 'number' ? src.waterSensor : (iot.waterSensor ? 1 : 0)
+  };
+}
+
 function openUnitTypesModal(){
   // Seed draft from the current persisted list. Clone so cancel works.
   // Existing rows load with labelUserEdited=true: we don't know their edit
@@ -6273,7 +6312,10 @@ function openUnitTypesModal(){
       label:     ut.label || '',
       bedrooms:  (typeof ut.bedrooms === 'number')  ? ut.bedrooms  : 1,
       bathrooms: (typeof ut.bathrooms === 'number') ? ut.bathrooms : 1,
-      labelUserEdited: true
+      labelUserEdited: true,
+      // Suites Polish M1: clone iotCounts into the draft so cancel doesn't
+      // commit edits. Missing keys (defensive) fall back to current flags.
+      iotCounts: _seedDraftIotCounts(ut)
     };
   });
   if(_unitTypesDraft.length === 0){
@@ -6284,7 +6326,10 @@ function openUnitTypesModal(){
       label: _formatUnitTypeLabel(1, 1),
       bedrooms: 1,
       bathrooms: 1,
-      labelUserEdited: false
+      labelUserEdited: false,
+      // Suites Polish M1: new row inherits iotCounts from current flags
+      // (1 for every flagged device, 0 otherwise).
+      iotCounts: _seedDraftIotCounts(null)
     });
   }
   _renderUnitTypesRows();
@@ -6367,7 +6412,11 @@ function addUnitTypeRow(){
     label: _formatUnitTypeLabel(1, 1),
     bedrooms: 1,
     bathrooms: 1,
-    labelUserEdited: false
+    labelUserEdited: false,
+    // Suites Polish M1: seed iotCounts from current iotDevices flags so the
+    // common case (every unit type gets every flagged device) takes zero
+    // clicks. User can edit per-cell in M2's dynamic IoT columns.
+    iotCounts: _seedDraftIotCounts(null)
   });
   _renderUnitTypesRows();
 }
@@ -6410,7 +6459,17 @@ function saveUnitTypes(){
       if(row) row.querySelector('[data-field="bathrooms"]').classList.add('invalid');
       break;
     }
-    cleaned.push({ id: ut.id, label: label, bedrooms: bed, bathrooms: bath });
+    // Suites Polish M1: persist iotCounts. Defensive fallback to all-zeros
+    // if the draft row somehow lacks the field (shouldn't happen — every
+    // creation path seeds it — but cheap insurance against a partial save).
+    var iotCounts = (ut.iotCounts && typeof ut.iotCounts === 'object')
+      ? {
+          smartLock:   typeof ut.iotCounts.smartLock   === 'number' ? ut.iotCounts.smartLock   : 0,
+          thermostat:  typeof ut.iotCounts.thermostat  === 'number' ? ut.iotCounts.thermostat  : 0,
+          waterSensor: typeof ut.iotCounts.waterSensor === 'number' ? ut.iotCounts.waterSensor : 0
+        }
+      : { smartLock: 0, thermostat: 0, waterSensor: 0 };
+    cleaned.push({ id: ut.id, label: label, bedrooms: bed, bathrooms: bath, iotCounts: iotCounts });
   }
 
   if(errMsg){
@@ -6477,6 +6536,24 @@ function saveIotDevices(){
              || (prior.thermostat !== next.thermostat)
              || (prior.waterSensor !== next.waterSensor);
   projectInfo.iotDevices = next;
+  // Suites Polish M1: on false→true transitions, every existing unit type
+  // gets iotCounts[device]=1 — unconditionally, overwriting any existing
+  // numeric value. Stored counts written while the flag was false are
+  // placeholders (the BOM doesn't read them), so resetting to 1 on enable
+  // matches user intent. Users who want 0 for specific unit types can edit
+  // Modal #1 once in M2's UI.
+  //
+  // true→false: do nothing — values are preserved on uncheck so the user
+  // can re-enable later without re-entering per-type counts they tuned
+  // while the flag was true.
+  ['smartLock', 'thermostat', 'waterSensor'].forEach(function(key){
+    if(next[key] && !prior[key]){
+      (projectInfo.unitTypes || []).forEach(function(ut){
+        if(!ut.iotCounts || typeof ut.iotCounts !== 'object') ut.iotCounts = {};
+        ut.iotCounts[key] = 1;
+      });
+    }
+  });
   if(changed) markDirty();
   closeIotDevicesModal();
   // Recompute the BOM so the SMART APARTMENT IoT rows reflect the new
@@ -8118,6 +8195,15 @@ function applyProjectState(data){
   if(typeof projectInfo.iotDevices.smartLock    !== 'boolean') projectInfo.iotDevices.smartLock    = false;
   if(typeof projectInfo.iotDevices.thermostat   !== 'boolean') projectInfo.iotDevices.thermostat   = false;
   if(typeof projectInfo.iotDevices.waterSensor  !== 'boolean') projectInfo.iotDevices.waterSensor  = false;
+  // Suites Polish M1: backfill per-unit-type iotCounts. Pre-pass saves
+  // (every save before this milestone) lack iotCounts entirely; we seed
+  // each unit type with 1 for currently-true flags, 0 for false. This
+  // exactly preserves M8 "every flagged device on every suite" behavior
+  // for old saves. Per-key partial-state defensive fill covers the
+  // shouldn't-happen-but-cheap-insurance case where iotCounts exists but
+  // a key is missing. Runs AFTER the iotDevices backfill above so the
+  // defaults are consistent with the just-loaded flags.
+  projectInfo.unitTypes.forEach(_backfillUnitTypeIotCounts);
   // Pass N+1 M5: project load reset — re-prompt the unit-types modal
   // on first Suites entry of THIS session if the loaded project still
   // has an empty catalog.
