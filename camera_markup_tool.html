@@ -1816,6 +1816,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="export-opts">
       <label><input type="checkbox" id="export-cover" oninput="updateExportAllDisabledHint()" checked> Cover Page</label>
       <label><input type="checkbox" id="export-bom"   oninput="updateExportAllDisabledHint()" checked> Bill of Materials</label>
+      <label><input type="checkbox" id="export-takeoff" oninput="updateExportAllDisabledHint()" checked> Take-Off Page</label>
       <label><input type="checkbox" id="export-riser" oninput="updateExportAllDisabledHint()" checked> Riser Diagram</label>
       <label><input type="checkbox" id="export-plans" oninput="updateExportAllDisabledHint()" checked> Floor Plan Pages</label>
     </div>
@@ -2329,6 +2330,14 @@ var MAILBOX_DB = {
 // PLACEHOLDER VALUES. Integrator should tune over time based on real
 // job-cost data. Future Rules Page editor pass will migrate this to a
 // per-project projectInfo.laborRates persisted object.
+//
+// Consumed by computeNonBomRows() → buildTakeOffData().labor, which feeds
+// the Take-Off page's Section 7 Labor Summary (drawTakeOffPage at M2).
+// Each labor row is (qty × rate-from-this-table = hours). The Take-Off
+// renders HOURS only — no dollars. Dollar pricing comes later from the
+// Pricing Foundation pass: a separate labor_rate_per_hour value will
+// multiply through to produce final-customer pricing on the Quote page.
+// Keep this table units-consistent (all values in hours-per-task).
 var LABOR_RATES = {
   cameraInstall:     1.5,   // hours per camera
   readerInstall:     2.0,   // hours per reader
@@ -2541,7 +2550,7 @@ var bomTierFilter = 'all';
 var projectInfo = {
   name:'', ref:'', client:'', address:'', date:'', valid:'',
   sales:'', company:'', scope:'',
-  proposalSections: { cover:true, bom:true, riser:true, plans:true },
+  proposalSections: { cover:true, bom:true, takeOff:true, riser:true, plans:true },
   // Pass Left-Pane: project-wide variant defaults for the AC drill-down.
   // Persisted in the JSON save (proposed v15 — version bump in M5).
   acDefaults: cloneAcDefaults(),
@@ -8310,7 +8319,14 @@ function applyProjectState(data){
     delete c.reach;
   });
   if(!projectInfo.proposalSections){
-    projectInfo.proposalSections = { cover:true, bom:true, riser:true, plans:true };
+    projectInfo.proposalSections = { cover:true, bom:true, takeOff:true, riser:true, plans:true };
+  }
+  // Take-Off M3: backfill takeOff key on saves predating this milestone.
+  // `!== false` semantics (used at gate sites) mean undefined is also
+  // treated as "on", but we set the explicit boolean here so save/load
+  // round-trips are stable.
+  if(typeof projectInfo.proposalSections.takeOff !== 'boolean'){
+    projectInfo.proposalSections.takeOff = true;
   }
   // Pass Left-Pane (v15 backfill): saves predating the AC drill-down lack
   // projectInfo.acDefaults. Default it so M3/M4 reads don't NPE. M5 wraps
@@ -8601,10 +8617,11 @@ function openExportModal(){
   // settings. `!== false` semantics mean missing fields (legacy projects,
   // brand-new sessions) default to checked.
   var sec = projectInfo.proposalSections || {};
-  document.getElementById('export-cover').checked = sec.cover !== false;
-  document.getElementById('export-bom').checked   = sec.bom   !== false;
-  document.getElementById('export-riser').checked = sec.riser !== false;
-  document.getElementById('export-plans').checked = sec.plans !== false;
+  document.getElementById('export-cover').checked   = sec.cover   !== false;
+  document.getElementById('export-bom').checked     = sec.bom     !== false;
+  document.getElementById('export-takeoff').checked = sec.takeOff !== false;
+  document.getElementById('export-riser').checked   = sec.riser   !== false;
+  document.getElementById('export-plans').checked   = sec.plans   !== false;
   updateExportAllDisabledHint();
   document.getElementById('export-modal').classList.add('show');
 }
@@ -8616,7 +8633,7 @@ function closeExportModal(){
 // user (un)checks the four section boxes. Soft warning only — Export PDF
 // still proceeds and produces a header-only document.
 function updateExportAllDisabledHint(){
-  var anyOn = ['export-cover','export-bom','export-riser','export-plans']
+  var anyOn = ['export-cover','export-bom','export-takeoff','export-riser','export-plans']
     .some(function(id){
       var el = document.getElementById(id);
       return el && el.checked;
@@ -8633,15 +8650,17 @@ async function runExportPDF(){
   var opts = {
     cover:       document.getElementById('export-cover').checked,
     bom:         document.getElementById('export-bom').checked,
+    takeOff:     document.getElementById('export-takeoff').checked,
     riser:       document.getElementById('export-riser').checked,
     plans:       document.getElementById('export-plans').checked,
     currentOnly: document.getElementById('exp-current-only').checked
   };
   projectInfo.proposalSections = {
-    cover: opts.cover,
-    bom:   opts.bom,
-    riser: opts.riser,
-    plans: opts.plans
+    cover:   opts.cover,
+    bom:     opts.bom,
+    takeOff: opts.takeOff,
+    riser:   opts.riser,
+    plans:   opts.plans
   };
   markDirty();
   closeExportModal();
@@ -8688,15 +8707,12 @@ async function runExportPDF(){
     drawProposalBOM(doc, pageW, pageH);
   }
 
-  // Take-Off Page (M2). Always render unless the project is entirely empty
-  // (no cameras, no AC, no smart apartment, no suites). M3 will gate this
-  // on a new export-modal toggle (projectInfo.proposalSections.takeOff);
-  // for now it's unconditional. Empty-project gate matches the disk-brief
-  // spec: "Empty project gate: if all device families are empty AND no
-  // suites placed, Take-Off page is omitted automatically".
+  // Take-Off Page. Gated on (a) the export-modal toggle (M3) AND (b) the
+  // empty-project content gate (M2). Toggle off \u2192 skip entirely; toggle on
+  // but empty project \u2192 also skip. Toggle on with any content \u2192 render.
   var takeOffHasContent = (cameras.length > 0 || acDevices.length > 0
                         || smartApartment.length > 0 || suites.length > 0);
-  if(takeOffHasContent){
+  if(opts.takeOff && takeOffHasContent){
     showProgress('Composing Take-Off\u2026',20);
     startSection('letter','portrait');
     drawTakeOffPage(doc, pageW, pageH);
@@ -8744,7 +8760,10 @@ async function runExportPDF(){
   }
   if(!firstUsed){
     hideProgress();
-    alert('Nothing to export with the current selection. Place a camera or AC device first, or include Floor Plan Pages.');
+    // Take-Off M3: alert mentions the broader set of content-bearing sections.
+    // Either a placed device (cameras / AC / smart apartment / suites) feeds
+    // the BOM / Take-Off / Riser, or Floor Plan Pages must be enabled.
+    alert('Nothing to export with the current selection. Place a device on a floor plan, or enable Floor Plan Pages in the export modal.');
     return;
   }
   showProgress('Saving\u2026',95);
@@ -9080,7 +9099,12 @@ function drawTakeOffPage(doc, W, H){
     }
   }
   function drawSubsectionHeader(text){
-    ensureSpace(22);
+    // M4 polish: reserve enough vertical space for header (14) + column
+    // header row (14) + at least one data row (12) so a header never
+    // orphans at the bottom of a page above its body. Tabular sections
+    // need this most; the few non-tabular sections (6 Cabling, 7 Labor)
+    // get extra padding but no harm.
+    ensureSpace(40);
     doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(200, 32, 44);
     doc.text(text.toUpperCase(), leftX, y);
     y += 14;
@@ -9127,16 +9151,20 @@ function drawTakeOffPage(doc, W, H){
   if(td.cameras.length === 0){
     drawEmpty();
   } else {
+    // M4 polish: shifted left, REACH(m) no longer overflows the right
+    // margin (M2 had x:572 which sat AT rightX → header text spilled past
+    // page edge). FLOOR widened to 22 chars to fit typical-floor badges
+    // like "Tower Typical · F3-17 (×10)" without truncating the mult.
     var camCols = [
-      { label:'FLOOR',    x:45,  maxChars:18 },
-      { label:'LABEL',    x:170, maxChars:12 },
-      { label:'BRAND',    x:255, maxChars:10 },
-      { label:'MODEL',    x:325, maxChars:14 },
-      { label:'TYPE',     x:420, maxChars:8 },
-      { label:'MOUNT',    x:470, maxChars:8 },
-      { label:'RES',      x:510, maxChars:6 },
-      { label:'FOV',      x:545, maxChars:5 },
-      { label:'REACH(m)', x:572, maxChars:7 }
+      { label:'FLOOR',    x:45,  maxChars:22 },
+      { label:'LABEL',    x:155, maxChars:12 },
+      { label:'BRAND',    x:220, maxChars:10 },
+      { label:'MODEL',    x:275, maxChars:14 },
+      { label:'TYPE',     x:350, maxChars:8 },
+      { label:'MOUNT',    x:395, maxChars:8 },
+      { label:'RES',      x:440, maxChars:6 },
+      { label:'FOV',      x:475, maxChars:5 },
+      { label:'REACH(m)', x:505, maxChars:7 }
     ];
     drawColHeaders(camCols);
     td.cameras.forEach(function(r, idx){
@@ -9150,14 +9178,16 @@ function drawTakeOffPage(doc, W, H){
   if(td.accessControl.length === 0){
     drawEmpty();
   } else {
+    // M4 polish: VARIANT shifted left so its data + header don't overflow
+    // the right margin. FLOOR widened to 22 chars for typical-floor badges.
     var acCols = [
-      { label:'FLOOR',       x:45,  maxChars:18 },
-      { label:'LABEL',       x:170, maxChars:12 },
-      { label:'BRAND',       x:255, maxChars:10 },
-      { label:'MODEL',       x:325, maxChars:14 },
-      { label:'TYPE',        x:420, maxChars:10 },
-      { label:'SUBCATEGORY', x:480, maxChars:14 },
-      { label:'VARIANT',     x:560, maxChars:10 }
+      { label:'FLOOR',       x:45,  maxChars:22 },
+      { label:'LABEL',       x:155, maxChars:12 },
+      { label:'BRAND',       x:220, maxChars:10 },
+      { label:'MODEL',       x:275, maxChars:14 },
+      { label:'TYPE',        x:350, maxChars:10 },
+      { label:'SUBCATEGORY', x:405, maxChars:14 },
+      { label:'VARIANT',     x:485, maxChars:14 }
     ];
     drawColHeaders(acCols);
     td.accessControl.forEach(function(r, idx){
@@ -9171,13 +9201,15 @@ function drawTakeOffPage(doc, W, H){
   if(td.smartAptPlaced.length === 0){
     drawEmpty();
   } else {
+    // M4 polish: CONFIG shifted left so its data doesn't overflow the right
+    // margin. FLOOR widened to 22 chars for typical-floor badge consistency.
     var saCols = [
-      { label:'FLOOR',  x:45,  maxChars:20 },
-      { label:'LABEL',  x:180, maxChars:14 },
-      { label:'TYPE',   x:275, maxChars:10 },
-      { label:'BRAND',  x:340, maxChars:14 },
-      { label:'MODEL',  x:430, maxChars:18 },
-      { label:'CONFIG', x:540, maxChars:14 }
+      { label:'FLOOR',  x:45,  maxChars:22 },
+      { label:'LABEL',  x:155, maxChars:14 },
+      { label:'TYPE',   x:250, maxChars:10 },
+      { label:'BRAND',  x:315, maxChars:14 },
+      { label:'MODEL',  x:395, maxChars:18 },
+      { label:'CONFIG', x:495, maxChars:14 }
     ];
     drawColHeaders(saCols);
     td.smartAptPlaced.forEach(function(r, idx){
@@ -11557,7 +11589,7 @@ function saveProjectInfo(){
     sales:   document.getElementById('proj-sales').value,
     company: document.getElementById('proj-company').value,
     scope:   document.getElementById('proj-scope').value,
-    proposalSections: projectInfo.proposalSections || { cover:true, bom:true, riser:true, plans:true },
+    proposalSections: projectInfo.proposalSections || { cover:true, bom:true, takeOff:true, riser:true, plans:true },
     acDefaults:       projectInfo.acDefaults       || cloneAcDefaults(),
     // Pass N+1 M1: preserve unit-type catalog and IoT-device selection. The
     // project info modal doesn't edit these (they live in Suites-mode Modal
