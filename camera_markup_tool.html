@@ -1338,6 +1338,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <button class="btn btn-blue" id="btn-manage-unit-types" style="width:100%; margin-bottom:8px;" onclick="openUnitTypesModal()">
           Manage Unit Types&hellip;
         </button>
+        <!-- Pass N+1 M8: opens Modal #3 to toggle in-unit IoT devices applied
+             across every suite. Drives the SMART APARTMENT BOM IoT rows. -->
+        <button class="btn btn-blue" id="btn-iot-devices" style="width:100%; margin-bottom:8px;" onclick="openIotDevicesModal()">
+          IoT Devices&hellip;
+        </button>
         <!-- Visibility Toggles UX pass: the "Hide unit labels" button moved
              to View menu + eye dropdown (top bar). The suitesHidden state
              is unchanged; setViewToggle('suiteLabels') drives the swap. -->
@@ -1811,6 +1816,28 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <button class="btn btn-dark"  onclick="closeSuitePlacementModal()">Cancel</button>
         <button class="btn btn-green" onclick="confirmSuitePlacement()">Place</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pass N+1 M8: Modal #3 — IoT in-unit devices. Triggered from the
+     "IoT Devices…" button in the Suites left pane. Checkbox state binds to
+     projectInfo.iotDevices.{smartLock, thermostat, waterSensor}. Save commits
+     the selection and refreshes the BOM SMART APARTMENT section (which
+     computes qty per device = suites.length per the M8 brief). -->
+<div id="iot-devices-modal" class="big-modal" onclick="if(event.target===this) closeIotDevicesModal()">
+  <div class="modal-box" style="min-width:380px; max-width:480px; position:relative;">
+    <button class="modal-close-x" onclick="closeIotDevicesModal()" title="Close" aria-label="Close">&times;</button>
+    <h3>IoT Devices</h3>
+    <p style="margin-bottom:10px;">Select which in-unit smart devices are included for every suite. Each selection rolls one line into the Smart Apartment section of the BOM, with quantity equal to the suite count.</p>
+    <div class="export-opts">
+      <label><input type="checkbox" id="iot-smart-lock"> Smart Lock</label>
+      <label><input type="checkbox" id="iot-thermostat"> Thermostat</label>
+      <label><input type="checkbox" id="iot-water-sensor"> Water Sensor</label>
+    </div>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn btn-dark"  onclick="closeIotDevicesModal()">Cancel</button>
+      <button class="btn btn-green" onclick="saveIotDevices()">Save</button>
     </div>
   </div>
 </div>
@@ -2405,9 +2432,12 @@ var bomCustomLines = {
   network: [],
   cabling: [],
   // Pass N M3: ACCESS CONTROL section sits between Cabling and Labor (D1).
-  // Holds reader, controller, credential, and future smart-apartment custom
-  // lines (Pass N+1 reuses this key — see PASS_N1_BRIEF.md D0).
+  // Holds reader, controller, credential custom lines.
   accessControl: [],
+  // Pass N+1 M8: SMART APARTMENT section sits between Access Control and
+  // Labor. Holds custom lines for intercoms, parcel lockers, mailbox banks,
+  // and in-unit IoT devices.
+  smartApartment: [],
   labor: [],
   other: []
 };
@@ -2425,10 +2455,11 @@ var projectInfo = {
   // until the user populates it via Modal #1 (M5).
   //   [{id, label, bedrooms, bathrooms}, ...]
   unitTypes: [],
-  // Pass N+1 M1 (D7): IoT-device selection applied to all suites for BOM
-  // computation (M8). Empty object until the user opens Modal #3 (M8).
-  //   { smartLock:bool, thermostat:bool, waterSensor:bool }
-  iotDevices: {}
+  // Pass N+1 M1 (D7) / M8: IoT-device selection applied to all suites for
+  // BOM computation. Each flag drives one row in the SMART APARTMENT section
+  // with qty = suites.length. Modal #3 (Suites left pane → IoT Devices…)
+  // toggles these values.
+  iotDevices: { smartLock: false, thermostat: false, waterSensor: false }
 };
 
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -3507,8 +3538,9 @@ function rewindToNoPdf(){
     var el = document.getElementById(id); if(el) el.classList.remove('active');
   });
   _syncViewToggleUI();
-  // Close any open modals / overlays. Pass N+1 M5/M6: include the suite modals.
-  ['project-modal','export-modal','help-modal','calib-modal','unit-types-modal','suite-placement-modal'].forEach(function(id){
+  // Close any open modals / overlays. Pass N+1 M5/M6/M8: include the suite
+  // modals and the IoT-devices modal.
+  ['project-modal','export-modal','help-modal','calib-modal','unit-types-modal','suite-placement-modal','iot-devices-modal'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.classList.remove('show');
   });
   // Pass N+1 M5: reset the "shown this session" flag so a fresh project
@@ -5288,6 +5320,8 @@ document.addEventListener('keydown',function(e){
     if(document.getElementById('unit-types-modal').classList.contains('show')){ closeUnitTypesModal(); return; }
     // Pass N+1 M6: Escape closes the Suite Placement modal (same as Cancel).
     if(document.getElementById('suite-placement-modal').classList.contains('show')){ closeSuitePlacementModal(); return; }
+    // Pass N+1 M8: Escape closes the IoT Devices modal (same as Cancel).
+    if(document.getElementById('iot-devices-modal').classList.contains('show')){ closeIotDevicesModal(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
     // closeRightPanel handles the camera-selected case (clears selectedId,
@@ -6384,6 +6418,43 @@ function skipUnitTypes(){
   // unitTypes stays empty. Mark the modal-shown flag so warm-up doesn't
   // re-prompt this session.
   closeUnitTypesModal();
+}
+
+// ─── Pass N+1 M8: Modal #3 — IoT in-unit devices ──────────────────────────
+// projectInfo.iotDevices.{smartLock, thermostat, waterSensor} drives the
+// SMART APARTMENT BOM IoT rows. Cancel discards edits; Save commits to
+// projectInfo and recalcs the BOM. No JSON version bump — keys backfilled
+// on load (applyProjectState) so older saves load cleanly.
+function openIotDevicesModal(){
+  var iot = projectInfo.iotDevices || {};
+  document.getElementById('iot-smart-lock').checked   = !!iot.smartLock;
+  document.getElementById('iot-thermostat').checked   = !!iot.thermostat;
+  document.getElementById('iot-water-sensor').checked = !!iot.waterSensor;
+  document.getElementById('iot-devices-modal').classList.add('show');
+}
+
+function closeIotDevicesModal(){
+  document.getElementById('iot-devices-modal').classList.remove('show');
+}
+
+function saveIotDevices(){
+  var next = {
+    smartLock:   document.getElementById('iot-smart-lock').checked,
+    thermostat:  document.getElementById('iot-thermostat').checked,
+    waterSensor: document.getElementById('iot-water-sensor').checked
+  };
+  var prior = projectInfo.iotDevices || {};
+  var changed = (prior.smartLock !== next.smartLock)
+             || (prior.thermostat !== next.thermostat)
+             || (prior.waterSensor !== next.waterSensor);
+  projectInfo.iotDevices = next;
+  if(changed) markDirty();
+  closeIotDevicesModal();
+  // Recompute the BOM so the SMART APARTMENT IoT rows reflect the new
+  // selection immediately (drawer doesn't need to be open for recalcBom
+  // to update the underlying state, but the section visibility refreshes
+  // either way).
+  recalcBom();
 }
 
 // Suites left-pane drill-down render. Lists the project's unit types
@@ -8013,6 +8084,11 @@ function applyProjectState(data){
   suiteSelectedId    = null;
   if(!Array.isArray(projectInfo.unitTypes)) projectInfo.unitTypes = [];
   if(!projectInfo.iotDevices || typeof projectInfo.iotDevices !== 'object') projectInfo.iotDevices = {};
+  // Pass N+1 M8: explicit per-key backfill so older saves (Pass M1 default
+  // was `{}`) load with all-false flags. Modal #3 reads/writes these keys.
+  if(typeof projectInfo.iotDevices.smartLock    !== 'boolean') projectInfo.iotDevices.smartLock    = false;
+  if(typeof projectInfo.iotDevices.thermostat   !== 'boolean') projectInfo.iotDevices.thermostat   = false;
+  if(typeof projectInfo.iotDevices.waterSensor  !== 'boolean') projectInfo.iotDevices.waterSensor  = false;
   // Pass N+1 M5: project load reset — re-prompt the unit-types modal
   // on first Suites entry of THIS session if the loaded project still
   // has an empty catalog.
@@ -8075,6 +8151,9 @@ function applyProjectState(data){
     // saved object didn't have). Other sections were present in earlier
     // versions so no backfill needed for them.
     if(!Array.isArray(bomCustomLines.accessControl)) bomCustomLines.accessControl = [];
+    // Pass N+1 M8: same backfill for the SMART APARTMENT key — pre-M8
+    // saves won't have it.
+    if(!Array.isArray(bomCustomLines.smartApartment)) bomCustomLines.smartApartment = [];
     if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
     if(data.bom.config){
       if(data.bom.config.laborRate !== undefined) document.getElementById('bom-labor-rate').value = data.bom.config.laborRate;
@@ -8505,7 +8584,7 @@ function drawProposalCover(doc, W, H){
     doc.text('GRAND TOTAL', 65, summaryY);
     var auto = computeAutoRows();
     var subtotal = 0;
-    ['cameras','recording','network','cabling','accessControl','labor','other'].forEach(function(k){
+    ['cameras','recording','network','cabling','accessControl','smartApartment','labor','other'].forEach(function(k){
       auto[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
       bomCustomLines[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
     });
@@ -8536,6 +8615,7 @@ function drawProposalBOM(doc, W, H){
     { title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
     { title:'Cabling',               items: auto.cabling.concat(bomCustomLines.cabling) },
     { title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
+    { title:'Smart Apartment',       items: auto.smartApartment.concat(bomCustomLines.smartApartment) },
     { title:'Labor',                 items: auto.labor.concat(bomCustomLines.labor) },
     { title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
   ];
@@ -9740,12 +9820,118 @@ function computeAutoRows(){
     });
   }
 
+  // Pass N+1 M8: SMART APARTMENT auto-rows. Four categories:
+  //   1. Intercoms      — grouped by SKU (smartApartment[type='intercom'])
+  //   2. Parcel lockers — grouped by SKU (smartApartment[type='parcel'])
+  //   3. Mailbox banks  — grouped by brand + cols×rows (no SKU since v17)
+  //   4. IoT in-unit    — one row per selected flag, qty sums pageMultiplier
+  //                       across every placed suite (a suite on a 3-typical
+  //                       page contributes 3). Same accounting as the other
+  //                       three categories in this section, and AC/cameras
+  //                       elsewhere.
+  // Zero-qty handling mirrors AC: groups only created when devices exist,
+  // so empty groups never emit rows. Section visibility hides the whole
+  // block when both smartApartment-auto and bomCustomLines.smartApartment
+  // are empty (recalcBom-style guard).
+  var smartAptRows = [];
+
+  // 1. Intercoms.
+  var intercomGroups = {};
+  smartApartment.filter(function(d){ return d.type === 'intercom'; }).forEach(function(d){
+    var sku = d.model || '';
+    if(!sku) return;
+    if(!intercomGroups[sku]){
+      var cat = INTERCOM_DB[sku];
+      var brandName = cat ? (cat.brand + (cat.model ? ' ' + cat.model : '')) : sku;
+      var detail = cat ? cat.desc : 'Intercom device';
+      intercomGroups[sku] = { desc: brandName + ' — ' + detail, qty: 0 };
+    }
+    intercomGroups[sku].qty += pageMultiplier(d.page);
+  });
+  Object.keys(intercomGroups).sort().forEach(function(sku){
+    var g = intercomGroups[sku];
+    smartAptRows.push({
+      auto: true, src: 'smartApartment', key: 'auto-sa-intercom-' + sku,
+      desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
+    });
+  });
+
+  // 2. Parcel lockers.
+  var parcelGroups = {};
+  smartApartment.filter(function(d){ return d.type === 'parcel'; }).forEach(function(d){
+    var sku = d.model || '';
+    if(!sku) return;
+    if(!parcelGroups[sku]){
+      var cat = PARCEL_DB[sku];
+      var brandName = cat ? (cat.brand + (cat.model ? ' ' + cat.model : '')) : sku;
+      var detail = cat ? cat.desc : 'Parcel locker';
+      parcelGroups[sku] = { desc: brandName + ' — ' + detail, qty: 0 };
+    }
+    parcelGroups[sku].qty += pageMultiplier(d.page);
+  });
+  Object.keys(parcelGroups).sort().forEach(function(sku){
+    var g = parcelGroups[sku];
+    smartAptRows.push({
+      auto: true, src: 'smartApartment', key: 'auto-sa-parcel-' + sku,
+      desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
+    });
+  });
+
+  // 3. Mailbox banks — keyed by brand + cols×rows. v17 shape has no SKU/model.
+  var mailboxGroups = {};
+  smartApartment.filter(function(d){ return d.type === 'mailbox'; }).forEach(function(d){
+    var brand = d.brand || 'Custom';
+    var cols  = (typeof d.cols === 'number') ? d.cols : 4;
+    var rows  = (typeof d.rows === 'number') ? d.rows : 4;
+    var key   = brand + '-' + cols + 'x' + rows;
+    if(!mailboxGroups[key]){
+      mailboxGroups[key] = {
+        desc: brand + ' Mailbox Bank — ' + cols + ' × ' + rows + ' unit grid',
+        qty: 0
+      };
+    }
+    mailboxGroups[key].qty += pageMultiplier(d.page);
+  });
+  Object.keys(mailboxGroups).sort().forEach(function(k){
+    var g = mailboxGroups[k];
+    smartAptRows.push({
+      auto: true, src: 'smartApartment', key: 'auto-sa-mailbox-' + k,
+      desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
+    });
+  });
+
+  // 4. In-unit IoT devices. qty sums pageMultiplier across every placed
+  // suite — a suite on a 3-typical-floor page contributes 3 to the IoT
+  // total. Mirrors the intercom/parcel/mailbox accounting in this same
+  // section (and the AC/cameras/cabling accounting elsewhere). Skipped
+  // when no suites are placed.
+  var iot = projectInfo.iotDevices || {};
+  var suiteArr = (typeof suites !== 'undefined' && Array.isArray(suites)) ? suites : [];
+  var suiteMultCount = suiteArr.reduce(function(s, d){ return s + pageMultiplier(d.page); }, 0);
+  if(suiteMultCount > 0){
+    var iotMap = [
+      { key:'smartLock',   label:'Smart Lock' },
+      { key:'thermostat',  label:'Thermostat' },
+      { key:'waterSensor', label:'Water Sensor' }
+    ];
+    iotMap.forEach(function(entry){
+      if(iot[entry.key]){
+        smartAptRows.push({
+          auto: true, src: 'smartApartment', key: 'auto-sa-iot-' + entry.key,
+          desc: entry.label + ' — in-unit',
+          qty: suiteMultCount, unit: 0, sectionAuto: true
+        });
+      }
+    });
+  }
+
   return {
     cameras: camRows,
     recording: recordingRows,
     network: networkRows,
     cabling: computeAutoCableRows(),
     accessControl: acRows,
+    smartApartment: smartAptRows,
     labor: laborRows,
     other: []
   };
@@ -9805,13 +9991,14 @@ function recalcBom(){
   recalcStorage();
 
   var sections = [
-    { key:'cameras',       title:'Cameras &amp; Imaging',     auto: auto.cameras,       custom: bomCustomLines.cameras },
-    { key:'recording',     title:'Recording &amp; Storage',   auto: auto.recording,     custom: bomCustomLines.recording },
-    { key:'network',       title:'Network &amp; Power',       auto: auto.network,       custom: bomCustomLines.network },
-    { key:'cabling',       title:'Cabling',                   auto: auto.cabling,       custom: bomCustomLines.cabling },
-    { key:'accessControl', title:'Access Control',            auto: auto.accessControl, custom: bomCustomLines.accessControl },
-    { key:'labor',         title:'Labor',                     auto: auto.labor,         custom: bomCustomLines.labor },
-    { key:'other',         title:'Other / Accessories',       auto: auto.other,         custom: bomCustomLines.other }
+    { key:'cameras',        title:'Cameras &amp; Imaging',     auto: auto.cameras,        custom: bomCustomLines.cameras },
+    { key:'recording',      title:'Recording &amp; Storage',   auto: auto.recording,      custom: bomCustomLines.recording },
+    { key:'network',        title:'Network &amp; Power',       auto: auto.network,        custom: bomCustomLines.network },
+    { key:'cabling',        title:'Cabling',                   auto: auto.cabling,        custom: bomCustomLines.cabling },
+    { key:'accessControl',  title:'Access Control',            auto: auto.accessControl,  custom: bomCustomLines.accessControl },
+    { key:'smartApartment', title:'Smart Apartment',           auto: auto.smartApartment, custom: bomCustomLines.smartApartment },
+    { key:'labor',          title:'Labor',                     auto: auto.labor,          custom: bomCustomLines.labor },
+    { key:'other',          title:'Other / Accessories',       auto: auto.other,          custom: bomCustomLines.other }
   ];
 
   var subtotal = 0;
@@ -10083,13 +10270,14 @@ function exportBomCSV(){
   var rows = ['Section,Description,Quantity,Unit Price,Line Total'];
 
   var sections = [
-    { key:'cameras',       title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
-    { key:'recording',     title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
-    { key:'network',       title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
-    { key:'cabling',       title:'Cabling',               items: auto.cabling.concat(bomCustomLines.cabling) },
-    { key:'accessControl', title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
-    { key:'labor',         title:'Labor',                 items: auto.labor.concat(bomCustomLines.labor) },
-    { key:'other',         title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
+    { key:'cameras',        title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
+    { key:'recording',      title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
+    { key:'network',        title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
+    { key:'cabling',        title:'Cabling',               items: auto.cabling.concat(bomCustomLines.cabling) },
+    { key:'accessControl',  title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
+    { key:'smartApartment', title:'Smart Apartment',       items: auto.smartApartment.concat(bomCustomLines.smartApartment) },
+    { key:'labor',          title:'Labor',                 items: auto.labor.concat(bomCustomLines.labor) },
+    { key:'other',          title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
   ];
 
   var subtotal = 0;
