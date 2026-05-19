@@ -9211,7 +9211,14 @@ function drawProposalBOM(doc, W, H){
     doc.text('UNIT', W-110, y, {align:'right'});
     doc.text('TOTAL', W-45, y, {align:'right'});
     y += 12;
-    doc.setDrawColor(208,206,200); doc.line(40, y-4, W-40, y-4);
+    // Section divider line: sits in the gutter between the column-header
+    // row and the first data row. y is now 12pt below the column header
+    // baseline. Data row text top is at y-6 (8pt font ascent ≈ 6pt). The
+    // gutter is roughly (y-10) to (y-6) — column descender at y-10, data
+    // top at y-6. y-8 places the divider in the middle of that strip.
+    // (Pre-fix value was y-4, which landed inside the data row text band
+    // and cut through the first row's text.)
+    doc.setDrawColor(208,206,200); doc.line(40, y-8, W-40, y-8);
 
     doc.setFont('courier','normal'); doc.setTextColor(31, 41, 55);
     sec.items.forEach(function(r){
