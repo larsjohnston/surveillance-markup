@@ -106,6 +106,56 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .topbar-icon-btn:hover:not(:disabled) { background:var(--primary-faint); color:var(--primary); }
 .topbar-icon-btn:disabled { opacity:.4; cursor:default; }
 .topbar-icon-btn svg { width:20px; height:20px; }
+/* Visibility Toggles UX pass — eye icon dropdown. Lives in the top bar
+   between the save-indicator/spacer and the undo/clear icons. Mirrors
+   the View menu's five toggles; setViewToggle() repaints both surfaces. */
+.eye-wrap { position:relative; }
+.eye-btn { position:relative; }
+/* Subtle dot when any toggle is in a non-default state (DORI/Blind/
+   Heatmap on, FOV off, or unit labels hidden). */
+.eye-btn.has-active::after {
+  content:'';
+  position:absolute;
+  top:6px; right:6px;
+  width:7px; height:7px;
+  background:var(--primary);
+  border:2px solid var(--surface);
+  border-radius:50%;
+  box-sizing:content-box;
+}
+.eye-btn.has-active:hover::after { border-color:var(--primary-faint); }
+.eye-dropdown {
+  position:absolute;
+  right:0; top:calc(100% + 4px);
+  background:var(--surface);
+  border:1px solid var(--border);
+  box-shadow:0 4px 14px rgba(0,0,0,.12);
+  min-width:180px;
+  padding:4px 0;
+  display:none;
+  z-index:120;
+  border-radius:6px;
+}
+.eye-wrap.open .eye-dropdown { display:block; }
+.eye-item {
+  display:flex; align-items:center; gap:8px;
+  width:100%;
+  padding:6px 12px;
+  background:none; border:none; cursor:pointer;
+  font:11px var(--font-ui);
+  color:var(--text);
+  text-align:left;
+}
+.eye-item:hover { background:var(--primary-faint); }
+.eye-item .eye-check {
+  width:14px;
+  color:var(--primary);
+  visibility:hidden;
+  font-size:11px;
+  line-height:1;
+}
+.eye-item.active .eye-check { visibility:visible; }
+.eye-item .eye-label { flex:1; }
 /* Pass D: save status indicator. Hidden until pdfLoaded; muted while clean,
    slightly bolder + darker while dirty. Click → saveJSON. */
 .save-indicator {
@@ -504,9 +554,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #zoom-bar.hidden { display:none; }
 .zbtn { width:28px; height:28px; background:rgba(17,24,39,.9); color:#fff; border:none; border-radius:3px; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .zbtn:hover { background:#111827; }
-/* FOV Toggle: filled triangle when cones visible (default), outline when hidden. */
-#btn-fov.fov-on svg { fill:currentColor; }
-#btn-fov:not(.fov-on) svg { fill:none; opacity:.7; }
 #zoom-label { line-height:28px; color:#fff; font:700 11px monospace; background:rgba(17,24,39,.8); padding:0 8px; border-radius:3px; min-width:44px; text-align:center; }
 
 #ctx-menu { position:fixed; background:#1f2937; border:1px solid #374151; border-radius:4px; overflow:hidden; z-index:100; min-width:140px; box-shadow:0 4px 12px rgba(0,0,0,.4); }
@@ -927,16 +974,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="menu" data-menu="view">
       <button class="menu-trigger">View</button>
       <div class="menu-dropdown">
-        <button class="menu-item" id="btn-dori" onclick="toggleDori()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">DORI Zones</span></button>
-        <button class="menu-item" id="btn-blind" onclick="toggleBlind()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Blind Spots</span></button>
-        <button class="menu-item" id="btn-heatmap" onclick="toggleHeatmap()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Heatmap</span></button>
-        <div class="menu-divider"></div>
-        <div class="submenu">
-          <button class="menu-item submenu-trigger"><span class="menu-check">&#10003;</span><span class="menu-label">Toggles</span><span class="submenu-arrow">&#9656;</span></button>
-          <div class="menu-dropdown submenu-dropdown">
-            <button class="menu-item" id="btn-cables" onclick="toggleCables()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Cables</span></button>
-          </div>
-        </div>
+        <button class="menu-item" id="btn-fov" onclick="setViewToggle('fov')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Camera FOV</span></button>
+        <button class="menu-item" id="btn-suite-labels" onclick="setViewToggle('suiteLabels')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Unit Labels</span></button>
+        <button class="menu-item" id="btn-cables" onclick="setViewToggle('cables')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Cables</span></button>
+        <button class="menu-item" id="btn-dori" onclick="setViewToggle('dori')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">DORI Zones</span></button>
+        <button class="menu-item" id="btn-blind" onclick="setViewToggle('blind')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Blind Spots</span></button>
+        <button class="menu-item" id="btn-heatmap" onclick="setViewToggle('heatmap')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Heatmap</span></button>
       </div>
     </div>
     <div class="menu" data-menu="tools">
@@ -960,6 +1003,25 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   <!-- Pass D: auto-save status. updateSaveIndicator() controls visibility/text. -->
   <span id="save-indicator" class="save-indicator" style="display:none" onclick="saveJSON()" title="Click to save (Ctrl+S)"></span>
   <div class="topbar-spacer"></div>
+  <!-- Visibility Toggles UX pass: eye icon + dropdown. Mirrors the View menu's
+       five toggles in a click-anywhere surface. setViewToggle() drives both
+       this dropdown's checkmarks and the View menu's checkmarks in lockstep. -->
+  <div class="eye-wrap" id="eye-wrap">
+    <button id="btn-eye" class="topbar-icon-btn eye-btn" title="Visibility toggles" onclick="toggleEyeDropdown(event)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </button>
+    <div class="eye-dropdown" id="eye-dropdown">
+      <button class="eye-item" data-toggle="fov"         onclick="setViewToggle('fov')"><span class="eye-check">&#10003;</span><span class="eye-label">Camera FOV</span></button>
+      <button class="eye-item" data-toggle="suiteLabels" onclick="setViewToggle('suiteLabels')"><span class="eye-check">&#10003;</span><span class="eye-label">Unit Labels</span></button>
+      <button class="eye-item" data-toggle="cables"      onclick="setViewToggle('cables')"><span class="eye-check">&#10003;</span><span class="eye-label">Cables</span></button>
+      <button class="eye-item" data-toggle="dori"        onclick="setViewToggle('dori')"><span class="eye-check">&#10003;</span><span class="eye-label">DORI Zones</span></button>
+      <button class="eye-item" data-toggle="blind"       onclick="setViewToggle('blind')"><span class="eye-check">&#10003;</span><span class="eye-label">Blind Spots</span></button>
+      <button class="eye-item" data-toggle="heatmap"     onclick="setViewToggle('heatmap')"><span class="eye-check">&#10003;</span><span class="eye-label">Heatmap</span></button>
+    </div>
+  </div>
   <button id="btn-undo" class="topbar-icon-btn" title="Undo" onclick="undoLast()" disabled>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 10h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-7"/>
@@ -1058,7 +1120,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div id="zoom-label">100%</div>
       <button class="zbtn" onclick="zoom(+0.25)">+</button>
       <button class="zbtn" onclick="fitPage()" style="font-size:10px;width:auto;padding:0 8px">Fit</button>
-      <button class="zbtn fov-on" id="btn-fov" onclick="toggleFov()" title="Hide camera FOV"><svg width="14" height="14" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4 L20 19 L4 19 Z"/></svg></button>
     </div>
   </div>
 
@@ -1277,6 +1338,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <button class="btn btn-blue" id="btn-manage-unit-types" style="width:100%; margin-bottom:8px;" onclick="openUnitTypesModal()">
           Manage Unit Types&hellip;
         </button>
+        <!-- Visibility Toggles UX pass: the "Hide unit labels" button moved
+             to View menu + eye dropdown (top bar). The suitesHidden state
+             is unchanged; setViewToggle('suiteLabels') drives the swap. -->
         <div id="suite-unit-types-list"></div>
         <p class="reader-hint" id="suite-hint">Define unit types, then place suites on the floor plan (placement lands in M6).</p>
       </div>
@@ -1529,6 +1593,39 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           <label class="rp-label">Notes</label>
           <div class="rp-slot" data-rp-slot="notes-mailbox">
             <textarea id="inp-notes-mailbox" placeholder="e.g. Canada Post-approved cluster, lobby pedestal" oninput="updateSelectedMailbox()"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pass N+1 M7: Suite right-panel field block. Mirrors the smart-
+           apartment blocks but with a Unit Type dropdown (populated live
+           from projectInfo.unitTypes by updateRightPanelDisplayForSuite)
+           instead of a brand/model readout, and a read-only position
+           readout (page name + stored PDF-point coords). The CSS
+           data-mode filter from M1 controls visibility. -->
+      <div class="rp-suite-fields">
+        <div class="rp-field">
+          <label class="rp-label">Label</label>
+          <div class="rp-slot" data-rp-slot="label-suite">
+            <input type="text" id="inp-label-suite" oninput="updateSelectedSuite()">
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Unit Type</label>
+          <div class="rp-slot" data-rp-slot="unittype-suite">
+            <select id="inp-unittype-suite" onchange="updateSelectedSuite()"></select>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Notes</label>
+          <div class="rp-slot" data-rp-slot="notes-suite">
+            <textarea id="inp-notes-suite" placeholder="e.g. Corner unit, balcony, deposit on file" oninput="updateSelectedSuite()"></textarea>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Position</label>
+          <div class="rp-readout" id="rp-suite-position-readout">
+            <div class="rp-model-name">&mdash;</div>
           </div>
         </div>
       </div>
@@ -2021,7 +2118,7 @@ var fovVisible=true;
 var calibrations={}, calibMode=false, calibPoints=[], calibCursor=null;
 var headends = {};            // pageIdx -> {x, y} in logical PDF units
 var headendMode = false;      // currently placing head-end?
-var cablesMode = false;       // showing cable runs?
+var cablesMode = true;        // showing cable runs? default on; gated by headend presence at draw time
 var cableOverhead = 1.25;     // multiplier for cable routing (vs straight-line)
 var maxCableM = 90;           // PoE Cat6 max length
 // Pass A.7: manual tab/floor ordering for the riser. null = auto-parse via
@@ -2911,12 +3008,12 @@ async function loadImage(file){
   _unitTypesModalShown=false;   // Pass N+1 M5: fresh import re-prompts on first Suites entry
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
   fovVisible=true;              // FOV Toggle: reset to default on fresh import
+  cablesMode=true;              // Cables Toggle: default ON; rendering still gated by head-end presence
   tabOrder=null;                // Pass A.7: fresh import → no manual reorder
   skippedPages = new Set();
-  document.getElementById('btn-blind').classList.remove('active');
-  document.getElementById('btn-dori').classList.remove('active');
-  var fovBtn=document.getElementById('btn-fov');
-  if(fovBtn){ fovBtn.classList.add('fov-on'); fovBtn.title='Hide camera FOV'; }
+  // Visibility Toggles UX pass: single sync call drives all six view-
+  // toggle UI surfaces (replaces per-button class/title fiddling).
+  _syncViewToggleUI();
   document.getElementById('tabs').innerHTML='';
   showProgress('Loading image\u2026',20);
 
@@ -2958,7 +3055,7 @@ async function loadImage(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-suite-labels','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -2979,12 +3076,11 @@ async function loadPDF(file){
   _unitTypesModalShown=false;   // Pass N+1 M5: fresh import re-prompts on first Suites entry
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
   fovVisible=true;              // FOV Toggle: reset to default on fresh import
+  cablesMode=true;              // Cables Toggle: default ON; rendering still gated by head-end presence
   tabOrder=null;                // Pass A.7: fresh import → no manual reorder
   skippedPages = new Set();
-  document.getElementById('btn-blind').classList.remove('active');
-  document.getElementById('btn-dori').classList.remove('active');
-  var fovBtn2=document.getElementById('btn-fov');
-  if(fovBtn2){ fovBtn2.classList.add('fov-on'); fovBtn2.title='Hide camera FOV'; }
+  // Visibility Toggles UX pass: single sync drives all six view toggles.
+  _syncViewToggleUI();
   document.getElementById('tabs').innerHTML='';
   showProgress('Loading PDF\u2026',0);
   var buf=await file.arrayBuffer();
@@ -3012,8 +3108,8 @@ async function loadPDF(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
-    document.getElementById(id).disabled=false;
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-suite-labels','btn-cables','btn-eye'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
   maybeFireAutoCalibrationPrompt();
@@ -3397,15 +3493,20 @@ function rewindToNoPdf(){
   tabOrder = null;            // Pass A.7: clear manual order with the rest of state
   _inpLabelSource = 'auto';   // Pass A.7: reset label provenance
   blindMode = false; doriMode = false; heatmapMode = false;
-  cablesMode = false; calibMode = false; calibPoints = []; calibCursor = null;
+  cablesMode = true; calibMode = false; calibPoints = []; calibCursor = null;
   headendMode = false; bomOpen = false;
   fovVisible = true;          // FOV Toggle: reset on project load (no persistence)
-  // Clear active toggles on (now-disabled) menu items
-  ['btn-blind','btn-dori','btn-heatmap','btn-cables','btn-calib','btn-headend','btn-bom'].forEach(function(id){
+  // Clear active toggles on (now-disabled) menu items. Visibility Toggles
+  // UX pass: btn-fov / btn-suite-labels / btn-dori / btn-blind / btn-heatmap
+  // are repainted via _syncViewToggleUI below — kept out of this list so
+  // we don't double-write checkmark state.
+  // Visibility Toggles UX pass: btn-cables was removed from the View menu;
+  // the cablesMode state itself stays (cables auto-draw on head-end
+  // placement) — just no UI active-class to clear here.
+  ['btn-calib','btn-headend','btn-bom'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.classList.remove('active');
   });
-  var fovBtn3 = document.getElementById('btn-fov');
-  if(fovBtn3){ fovBtn3.classList.add('fov-on'); fovBtn3.title='Hide camera FOV'; }
+  _syncViewToggleUI();
   // Close any open modals / overlays. Pass N+1 M5/M6: include the suite modals.
   ['project-modal','export-modal','help-modal','calib-modal','unit-types-modal','suite-placement-modal'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.classList.remove('show');
@@ -3427,7 +3528,7 @@ function rewindToNoPdf(){
   document.getElementById('dropzone').classList.remove('hidden');
   document.getElementById('tabs').innerHTML = '';
   // Disable menu items + corner icons
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-cables','btn-project','btn-heatmap'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-suite-labels','btn-cables','btn-eye'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.disabled = true;
   });
   document.body.classList.add('no-pdf');
@@ -4266,14 +4367,11 @@ function placeHeadend(cssX, cssY){
   headends[currentPage] = { x: cssX/viewScale, y: cssY/viewScale };
   markDirty();
   cancelHeadendPlacement();
+  // Placing a head-end implies the user wants to see cables. Force the
+  // Cables toggle on regardless of prior state, then resync both View
+  // menu + eye-dropdown checkmarks via _syncViewToggleUI.
   cablesMode = true;
-  document.getElementById('btn-cables').classList.add('active');
-  redraw();
-}
-
-function toggleCables(){
-  cablesMode = !cablesMode;
-  document.getElementById('btn-cables').classList.toggle('active', cablesMode);
+  _syncViewToggleUI();
   redraw();
 }
 
@@ -4395,34 +4493,91 @@ function updateDoriInfo(){
   el.innerHTML='<div class="di-title">'+res+'px @ '+cam.fov+'\u00b0 FOV</div>'+rows.join('')+mountInfo;
 }
 
-function toggleDori(){
-  doriMode=!doriMode;
-  document.getElementById('btn-dori').classList.toggle('active',doriMode);
+// Visibility Toggles UX pass: unified setter for the five view-state
+// toggles (FOV, Unit Labels, DORI, Blind Spots, Heatmap). Both the View
+// menu items and the eye-dropdown checkboxes route through this one
+// helper, so the two surfaces can never drift out of sync. Blind/Heatmap
+// keep their mutual-exclusion behavior from before. After mutating
+// state, _syncViewToggleUI repaints both surfaces' checkmarks and the
+// eye icon's non-default-state indicator dot.
+//
+// Toggle names map to state-var semantics. The "checked" state in the UI
+// is the default-visible reading of each toggle (e.g., Camera FOV is
+// "checked" when cones are showing, Unit Labels is "checked" when labels
+// are showing — inverted from suitesHidden).
+function setViewToggle(name){
+  if(name === 'dori'){
+    doriMode = !doriMode;
+  } else if(name === 'blind'){
+    blindMode = !blindMode;
+    if(blindMode) heatmapMode = false;
+  } else if(name === 'heatmap'){
+    heatmapMode = !heatmapMode;
+    if(heatmapMode) blindMode = false;
+  } else if(name === 'fov'){
+    fovVisible = !fovVisible;
+  } else if(name === 'suiteLabels'){
+    suitesHidden = !suitesHidden;
+  } else if(name === 'cables'){
+    cablesMode = !cablesMode;
+  } else {
+    return;
+  }
+  _syncViewToggleUI();
   redraw();
 }
-function toggleBlind(){
-  blindMode=!blindMode;
-  if(blindMode) heatmapMode=false; // mutually exclusive
-  document.getElementById('btn-blind').classList.toggle('active',blindMode);
-  document.getElementById('btn-heatmap').classList.toggle('active',false);
-  redraw();
+
+// Repaint the View-menu checkmarks (.active class — the existing CSS rule
+// at .menu[data-menu="view"] .menu-item.active .menu-check shows the
+// checkmark) AND the eye-dropdown checkmarks (.eye-item.active). Also
+// flips the eye icon's .has-active class when any toggle is in its non-
+// default state, so the user has a top-bar indicator that something is
+// hidden / overlaid. Safe to call before the menu/eye DOM exists (each
+// lookup is null-guarded for the rewindToNoPdf / init paths).
+function _syncViewToggleUI(){
+  var map = {
+    fov:         fovVisible,        // checked when cones are visible
+    suiteLabels: !suitesHidden,     // inverted: checked when labels show
+    cables:      cablesMode,        // checked when cable runs are visible
+    dori:        doriMode,
+    blind:       blindMode,
+    heatmap:     heatmapMode
+  };
+  var menuIds = {
+    fov: 'btn-fov',
+    suiteLabels: 'btn-suite-labels',
+    cables: 'btn-cables',
+    dori: 'btn-dori',
+    blind: 'btn-blind',
+    heatmap: 'btn-heatmap'
+  };
+  Object.keys(map).forEach(function(key){
+    var checked = !!map[key];
+    var mi = document.getElementById(menuIds[key]);
+    if(mi) mi.classList.toggle('active', checked);
+    var ei = document.querySelector('.eye-item[data-toggle="' + key + '"]');
+    if(ei) ei.classList.toggle('active', checked);
+  });
+  // Non-default = any toggle in a state opposite its cold-load default.
+  // Defaults: FOV/Unit Labels/Cables visible; DORI/Blind/Heatmap off.
+  var anyNonDefault = doriMode || blindMode || heatmapMode || !fovVisible || suitesHidden || !cablesMode;
+  var eye = document.getElementById('btn-eye');
+  if(eye) eye.classList.toggle('has-active', anyNonDefault);
 }
-function toggleHeatmap(){
-  heatmapMode=!heatmapMode;
-  if(heatmapMode) blindMode=false;
-  document.getElementById('btn-heatmap').classList.toggle('active',heatmapMode);
-  document.getElementById('btn-blind').classList.toggle('active',false);
-  redraw();
+
+// Eye-dropdown open/close. Lives outside the menubar's closeAllMenus
+// machinery so the dropdown can stay open while the user toggles
+// multiple checkboxes — matches the brief's "dropdown stays open" rule.
+// Outside-click closes via the document-level handler installed at init.
+function toggleEyeDropdown(e){
+  if(e && e.stopPropagation) e.stopPropagation();
+  var wrap = document.getElementById('eye-wrap');
+  if(!wrap) return;
+  wrap.classList.toggle('open');
 }
-// FOV Toggle (per-session canvas-only). Hides cone polygon + reach radius + angle
-// arrow for every camera while keeping body icons, labels, and selection visible.
-// Not persisted in JSON; PDF export is unaffected.
-function toggleFov(){
-  fovVisible=!fovVisible;
-  var btn=document.getElementById('btn-fov');
-  btn.classList.toggle('fov-on',fovVisible);
-  btn.title=fovVisible?'Hide camera FOV':'Show camera FOV';
-  redraw();
+function closeEyeDropdown(){
+  var wrap = document.getElementById('eye-wrap');
+  if(wrap) wrap.classList.remove('open');
 }
 
 // ─── Draw ─────────────────────────────────────────────────────────────────────
@@ -4515,12 +4670,12 @@ function redraw(){
 
   // Pass N+1 M6: suites render last among placeable families (top-most
   // z-order, matches the universal hit-test priority). M7's hide-toggle
-  // will replace the pill with a small dot when suitesHidden === true.
-  if(!suitesHidden){
-    suites.filter(function(s){return s.page===currentPage;}).forEach(function(s){
-      drawSuite(ctx, s, viewScale, s.id===suiteSelectedId);
-    });
-  }
+  // routes the pill ↔ dot swap through drawSuite itself (reads
+  // suitesHidden), so this loop runs unconditionally — hidden mode just
+  // produces dots instead of pills.
+  suites.filter(function(s){return s.page===currentPage;}).forEach(function(s){
+    drawSuite(ctx, s, viewScale, s.id===suiteSelectedId);
+  });
 
   // Draw head-end marker on top
   if(headends[currentPage]){
@@ -5057,8 +5212,14 @@ document.querySelectorAll('#menubar .menu-item').forEach(function(item){
   item.addEventListener('click', function(){ closeAllMenus(); });
 });
 document.addEventListener('mousedown', function(e){
-  if(!openMenuEl) return;
-  if(!openMenuEl.contains(e.target)) closeAllMenus();
+  if(openMenuEl && !openMenuEl.contains(e.target)) closeAllMenus();
+  // Visibility Toggles UX pass: also close the eye dropdown on outside
+  // click. Internal clicks inside the eye wrap (checkbox items) keep it
+  // open so the user can toggle multiple visibilities in one gesture.
+  var eyeWrap = document.getElementById('eye-wrap');
+  if(eyeWrap && eyeWrap.classList.contains('open') && !eyeWrap.contains(e.target)){
+    closeEyeDropdown();
+  }
 });
 
 document.addEventListener('keydown',function(e){
@@ -6277,8 +6438,7 @@ function placeSuite(cssX, cssY, label, unitTypeId){
 }
 
 // Selection — clear the other 5 states (cascade mirrors selectReader).
-// M7 will add the right-panel open call; M6 just redraws + refreshes
-// the per-page suite list so the selection highlight appears.
+// M7 wires the right-panel open call (replaces the M6 TODO marker).
 function selectSuite(id){
   suiteSelectedId = id;
   selectedId = null; acSelectedId = null;
@@ -6286,7 +6446,7 @@ function selectSuite(id){
   var dev = suites.find(function(s){return s.id === id;});
   if(!dev){ redraw(); updateSuiteList(); return; }
   redraw(); updateSuiteList();
-  // TODO M7: openRightPanelForSuite(dev) — right panel field-block + open fn.
+  openRightPanelForSuite(dev);
 }
 
 function deleteSuite(id){
@@ -6333,12 +6493,31 @@ function _suiteDisplayLabel(suite){
 }
 
 // Canvas marker — a small neutral-grey pill with the display label.
+// When the per-session suitesHidden toggle is on, the pill collapses to
+// a 6px suite-green dot (selection still shown via the yellow ring).
 // Selected state: yellow #fbbf24 selection ring (background + text
 // colors unchanged from the resting grey scheme; the ring alone
-// signals selection). Drag bounds = the pill bounds.
+// signals selection). Drag bounds = the rendered shape's bounds.
 function drawSuite(c, suite, vs, isSelected){
   var x = suite.x*vs, y = suite.y*vs;
   c.save();
+  if(suitesHidden){
+    // Dot mode: filled green disc, yellow ring when selected.
+    var r = 3;
+    c.fillStyle = SUITE_COLOR;
+    c.beginPath();
+    c.arc(x, y, r, 0, Math.PI*2);
+    c.fill();
+    if(isSelected){
+      c.strokeStyle = '#fbbf24';
+      c.lineWidth = 2.0;
+      c.beginPath();
+      c.arc(x, y, r + 2, 0, Math.PI*2);
+      c.stroke();
+    }
+    c.restore();
+    return;
+  }
   c.font = 'bold 12px Courier New';
   var label = _suiteDisplayLabel(suite);
   var tw = c.measureText(label).width;
@@ -6359,13 +6538,25 @@ function drawSuite(c, suite, vs, isSelected){
   c.restore();
 }
 
-// Hit-test: bounding-box around the pill. Measure the DISPLAY label so
-// bounds match the rendered pill width (not the stored label). Iterate
-// newest first so an overlapping later-placed suite wins.
+// Hit-test: bounding-box around the rendered shape. When suitesHidden,
+// hit a small radial bound around the dot (radius+2 padding). Otherwise
+// measure the DISPLAY label so bounds match the rendered pill width
+// (not the stored label). Iterate newest first so an overlapping
+// later-placed suite wins.
 function suiteAt(cssX, cssY){
   if(!suites.length) return null;
   var pageSuites = suites.filter(function(s){return s.page === currentPage;});
   if(pageSuites.length === 0) return null;
+  if(suitesHidden){
+    var hitR = 5; // dot radius 3 + 2 padding
+    for(var j = pageSuites.length - 1; j >= 0; j--){
+      var sd = pageSuites[j];
+      var ddx = cssX - sd.x*viewScale;
+      var ddy = cssY - sd.y*viewScale;
+      if(ddx*ddx + ddy*ddy <= hitR*hitR) return sd;
+    }
+    return null;
+  }
   ctx.save();
   ctx.font = 'bold 12px Courier New';
   for(var i = pageSuites.length - 1; i >= 0; i--){
@@ -6838,6 +7029,79 @@ function openRightPanelForMailbox(dev){
   rp.classList.add('open');
   rp.setAttribute('aria-hidden', 'false');
 }
+
+// Pass N+1 M7: Suite right-panel display + open + edit handlers.
+// updateRightPanelDisplayForSuite fills the label, rebuilds the
+// unit-type dropdown from projectInfo.unitTypes (synthesising a
+// '(unknown type)' placeholder when the suite points at a deleted
+// type), populates notes, and renders the position readout from the
+// page name + stored PDF-point coords.
+function updateRightPanelDisplayForSuite(dev){
+  if(!dev) return;
+  var labelInput  = document.getElementById('inp-label-suite');
+  var notesInput  = document.getElementById('inp-notes-suite');
+  var typeSelect  = document.getElementById('inp-unittype-suite');
+  var posEl       = document.querySelector('#rp-suite-position-readout .rp-model-name');
+  if(labelInput) labelInput.value = dev.label || '';
+  if(notesInput) notesInput.value = dev.notes || '';
+  if(typeSelect){
+    var uts = projectInfo.unitTypes || [];
+    var resolved = uts.some(function(u){return u.id === dev.unitType;});
+    var html = '';
+    if(uts.length === 0){
+      html = '<option value="" disabled selected>(no unit types defined)</option>';
+    } else {
+      if(!resolved){
+        // Suite points at a deleted/missing unit type — show a synthetic
+        // option so the dropdown reflects current state honestly. Picking
+        // a real type from the list re-resolves on next change.
+        html += '<option value="' + escapeHtml(dev.unitType || '') + '" selected>(unknown type)</option>';
+      }
+      html += uts.map(function(ut){
+        var sel = (resolved && ut.id === dev.unitType) ? ' selected' : '';
+        return '<option value="' + escapeHtml(ut.id) + '"' + sel + '>' + escapeHtml(ut.label || '(unlabeled)') + '</option>';
+      }).join('');
+    }
+    typeSelect.innerHTML = html;
+  }
+  if(posEl){
+    var pageName = (pages[dev.page] && pages[dev.page].name) ? pages[dev.page].name : ('Page ' + (dev.page+1));
+    var px = Math.round(dev.x), py = Math.round(dev.y);
+    posEl.textContent = pageName + ' · (' + px + ', ' + py + ')';
+  }
+}
+
+function openRightPanelForSuite(dev){
+  if(!dev) return;
+  updateRightPanelDisplayForSuite(dev);
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  rp.setAttribute('data-mode', 'suite');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Suite';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
+}
+
+// oninput / onchange handler. Mirrors updateSelectedReader: raw-write
+// label and notes, then commit unitType from the dropdown. Empty label
+// is allowed (matches reader/intercom semantics). Redraw is needed
+// because the canvas pill renders dev.label, and the list shows the
+// label + the resolved unit-type meta.
+function updateSelectedSuite(){
+  if(!suiteSelectedId) return;
+  var dev = suites.find(function(s){return s.id === suiteSelectedId;});
+  if(!dev) return;
+  var labelInput  = document.getElementById('inp-label-suite');
+  var notesInput  = document.getElementById('inp-notes-suite');
+  var typeSelect  = document.getElementById('inp-unittype-suite');
+  if(labelInput) dev.label = labelInput.value;
+  if(notesInput) dev.notes = notesInput.value;
+  if(typeSelect && typeSelect.value) dev.unitType = typeSelect.value;
+  markDirty();
+  redraw(); updateSuiteList();
+}
+
 
 // oninput handlers for the editable label / notes fields. Raw-write
 // semantics matching updateSelectedReader: empty inputs persist as empty
@@ -7751,6 +8015,11 @@ function applyProjectState(data){
   updateIntercomList(); updateParcelList(); updateMailboxList();
   // Pass N+1 M5: also refresh the per-page suite list + unit-types drill-down.
   updateSuiteList(); _renderSuiteDrillDown();
+  // Visibility Toggles UX pass: applyProjectState forces suitesHidden=false
+  // (per-session default) and may follow an autosave-recovery path that
+  // skipped loadPDF's _syncViewToggleUI. Re-sync defensively so the View
+  // menu / eye dropdown match state regardless of entry point.
+  _syncViewToggleUI();
   if(typeof updateUncalibBanner === 'function') updateUncalibBanner();
   if(bomOpen) recalcBom();
   // Pass C: deferred so the canvas paints with the migrated cones before the
