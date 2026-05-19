@@ -817,9 +817,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
 .smart-apt-tile .sa-cap   { font:700 7px var(--font-ui); color:#9ca3af; text-transform:uppercase; letter-spacing:.04em; line-height:1.15;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
-.smart-apt-tile.active-intercom { border-color:#0d9488; background:#ccfbf1; color:#0d9488; }
+.smart-apt-tile.active-intercom { border-color:#0f766e; background:#ccfbf1; color:#0f766e; }
 .smart-apt-tile.active-intercom .sa-brand,
-.smart-apt-tile.active-intercom .sa-cap { color:#0d9488; }
+.smart-apt-tile.active-intercom .sa-cap { color:#0f766e; }
 .smart-apt-tile.active-parcel   { border-color:#ea580c; background:#ffedd5; color:#ea580c; }
 .smart-apt-tile.active-parcel .sa-brand,
 .smart-apt-tile.active-parcel .sa-cap { color:#ea580c; }
@@ -915,7 +915,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .pmt-btn.active { color:#fff; background:#111827; border-bottom-color:var(--primary); }
 .pmt-btn[data-mode="access"].active   { border-bottom-color:#1d4ed8; }
 /* Pass N+1 M1 (D6): per-mode accent colors for the 4 new device families. */
-.pmt-btn[data-mode="intercom"].active { border-bottom-color:#0d9488; }
+.pmt-btn[data-mode="intercom"].active { border-bottom-color:#0f766e; }
 .pmt-btn[data-mode="parcel"].active   { border-bottom-color:#ea580c; }
 .pmt-btn[data-mode="mailbox"].active  { border-bottom-color:#e11d48; }
 .pmt-btn[data-mode="suite"].active    { border-bottom-color:#15803d; }
@@ -945,10 +945,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    per-family dot color + per-family selection accent. The selection ring
    on the canvas itself is yellow #fbbf24 (matches reader convention). */
 #intercom-list, #parcel-list, #mailbox-list { flex:1; overflow-y:auto; }
-.dot-intercom { background:#0d9488; border-radius:2px; }
+.dot-intercom { background:#0f766e; border-radius:2px; }
 .dot-parcel   { background:#ea580c; border-radius:2px; }
 .dot-mailbox  { background:#e11d48; border-radius:2px; }
-#intercom-list .ac-item.sel { background:#ccfbf1; border-left-color:#0d9488; }
+#intercom-list .ac-item.sel { background:#ccfbf1; border-left-color:#0f766e; }
 #parcel-list   .ac-item.sel { background:#ffedd5; border-left-color:#ea580c; }
 #mailbox-list  .ac-item.sel { background:#ffe4e6; border-left-color:#e11d48; }
 
@@ -1934,6 +1934,17 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
          display and value via coverModel.readerCount / controllerCount. -->
     <div class="bom-stat" id="bom-ac-readers-stat" style="display:none"><span class="lbl">AC Readers</span><span class="val" id="bom-ac-readers">0</span></div>
     <div class="bom-stat" id="bom-ac-controllers-stat" style="display:none"><span class="lbl">AC Controllers</span><span class="val" id="bom-ac-controllers">0</span></div>
+    <!-- Pass N+1 M9: smart-apartment header tiles mirror the cover summary
+         INTERCOMS / PARCEL LOCKERS / MAILBOX BANKS lines. Hidden when
+         their count is 0; recalcBom toggles display and value. -->
+    <div class="bom-stat" id="bom-intercom-stat"     style="display:none"><span class="lbl">Intercoms</span><span class="val" id="bom-intercom-count">0</span></div>
+    <div class="bom-stat" id="bom-parcel-stat"       style="display:none"><span class="lbl">Parcel Lockers</span><span class="val" id="bom-parcel-count">0</span></div>
+    <div class="bom-stat" id="bom-mailbox-stat"      style="display:none"><span class="lbl">Mailbox Banks</span><span class="val" id="bom-mailbox-count">0</span></div>
+    <!-- Pass N+1 M9: per-unit-type tile container — populated by recalcBom
+         from projectInfo.unitTypes + coverModel.suiteCountsByUnitType.
+         Each tile shares the .bom-stat class. Tiles for zero-suite types
+         are omitted entirely. Order follows declared unit-type sequence. -->
+    <div id="bom-suite-types-container" style="display:contents"></div>
     <div class="bom-stat"><span class="lbl">Margin (<span id="bom-margin-pct-disp">0</span>%)</span><span class="val" id="bom-margin-amt">$0.00</span></div>
     <div class="bom-stat"><span class="lbl">Tax (<span id="bom-tax-pct-disp">0</span>%)</span><span class="val" id="bom-tax-amt">$0.00</span></div>
     <div class="bom-stat total" style="grid-column:1 / -1; border-top:1px solid #e5e7eb; padding-top:6px; margin-top:2px;"><span class="lbl">Grand Total</span><span class="val" id="bom-grand-total">$0.00</span></div>
@@ -2086,7 +2097,7 @@ var TYPE_COLORS = { dome:'#c8202c', bullet:'#2563eb', ptz:'#7c3aed', lpr:'#d9770
 // Each chosen to be distinct from existing camera/AC palette at both canvas
 // scale (~17–24 pt) and riser scale (~10–13 pt). Visual collision check moved
 // to M9 once all icons render in the same project.
-var INTERCOM_COLOR = '#0d9488';   // teal — darker than turret '#0891b2'
+var INTERCOM_COLOR = '#0f766e';   // teal-700 — Pass N+1 M9 recolor (was '#0d9488'/teal-600) to resolve riser-scale collision with turret cyan '#0891b2'
 var PARCEL_COLOR   = '#ea580c';   // orange — more saturated than LPR '#d97706'
 var MAILBOX_COLOR  = '#e11d48';   // rose — pinker than dome '#c8202c'
 var SUITE_COLOR    = '#15803d';   // forest green — darker than fisheye '#16a34a'
@@ -8521,17 +8532,32 @@ function drawProposalCover(doc, W, H){
     doc.text(lines, 50, y); y += lines.length * 12 + 10;
   }
 
-  // Summary box. Pass N M5: pre-compute AC counts so box height and the
-  // Y-cursor below can slot in the two optional rows ("AC READERS",
-  // "AC CONTROLLERS") between SCALE CALIBRATED and GRAND TOTAL. Each
-  // optional row is hidden when its count is 0 per D5. The box grows by
-  // 20 pt per added line; an AC-only project (both lines) ends up at
-  // H = 170, matching the M5 brief.
+  // Summary box. Pass N M5 / Pass N+1 M9: pre-compute AC + smart-apartment
+  // counts so box height and the Y-cursor below can slot in optional rows
+  // between SCALE CALIBRATED and GRAND TOTAL. Each optional row is hidden
+  // when its count is 0 per D5. The box grows by 20 pt per added line.
+  //
+  // Optional rows in order:
+  //   AC READERS, AC CONTROLLERS,
+  //   INTERCOMS, PARCEL LOCKERS, MAILBOX BANKS,
+  //   <one per defined unit type with > 0 suites>
   var coverModel  = computeRiserModel();
   var showReaders = coverModel.readerCount > 0;
   var showCtrls   = coverModel.controllerCount > 0;
-  var acLineCount = (showReaders ? 1 : 0) + (showCtrls ? 1 : 0);
-  var boxH = 130 + acLineCount * 20;
+  var showInter   = coverModel.intercomCount > 0;
+  var showParcel  = coverModel.parcelCount > 0;
+  var showMailbox = coverModel.mailboxCount > 0;
+  // Per-unit-type lines: iterate projectInfo.unitTypes in declared order.
+  // Each line only renders when its multiplied suite count > 0.
+  var unitTypeLines = [];
+  (projectInfo.unitTypes || []).forEach(function(ut){
+    var cnt = coverModel.suiteCountsByUnitType[ut.id] || 0;
+    if(cnt > 0) unitTypeLines.push({ label: ut.label || '(unlabeled)', count: cnt });
+  });
+  var optionalLines = (showReaders ? 1 : 0) + (showCtrls ? 1 : 0)
+                    + (showInter ? 1 : 0) + (showParcel ? 1 : 0) + (showMailbox ? 1 : 0)
+                    + unitTypeLines.length;
+  var boxH = 130 + optionalLines * 20;
   y = H - 220;
   doc.setFillColor(245, 244, 240); doc.rect(50, y, W-100, boxH, 'F');
   doc.setDrawColor(208, 206, 200); doc.rect(50, y, W-100, boxH);
@@ -8573,6 +8599,16 @@ function drawProposalCover(doc, W, H){
   // wins over canvas shape; same rule as the BOM section in M3).
   if(showReaders) drawSummaryRow('AC READERS',     coverModel.readerCount);
   if(showCtrls)   drawSummaryRow('AC CONTROLLERS', coverModel.controllerCount);
+  // Pass N+1 M9: smart-apartment device count lines. Each multiplied across
+  // typical floors, hidden when count is 0 per D5.
+  if(showInter)   drawSummaryRow('INTERCOMS',      coverModel.intercomCount);
+  if(showParcel)  drawSummaryRow('PARCEL LOCKERS', coverModel.parcelCount);
+  if(showMailbox) drawSummaryRow('MAILBOX BANKS',  coverModel.mailboxCount);
+  // Pass N+1 M9: per-unit-type suite count lines. Order follows the user's
+  // projectInfo.unitTypes definition order; zero-suite types are omitted.
+  unitTypeLines.forEach(function(ln){
+    drawSummaryRow(ln.label.toUpperCase(), ln.count);
+  });
 
   // Grand total — only shown when BOM section is included in the proposal.
   // Y-cursor finishes at SCALE CALIBRATED's bottom + ROW_GAP × extra AC
@@ -8766,6 +8802,33 @@ function computeRiserModel(){
   });
   var acCount = readerCount + controllerCount;
 
+  // Pass N+1 M9: project-wide smart-apartment counts (multiplied across
+  // typical floors). Each ride the AC rail per D4 — counts surface in the
+  // cover summary INTERCOMS / PARCEL LOCKERS / MAILBOX BANKS lines and the
+  // BOM drawer header tiles.
+  var intercomCount = 0, parcelCount = 0, mailboxCount = 0;
+  smartApartment.forEach(function(d){
+    var mult = pageMultiplier(d.page);
+    if(d.type === 'intercom')     intercomCount += mult;
+    else if(d.type === 'parcel')  parcelCount   += mult;
+    else if(d.type === 'mailbox') mailboxCount  += mult;
+  });
+
+  // Pass N+1 M9: per-unit-type suite counts. Drives the per-bedroom-type
+  // lines on the cover summary and the per-unit-type tiles in the BOM
+  // drawer header. Counts multiplied across typical floors. Iteration
+  // order matches projectInfo.unitTypes ordering so cover/drawer lines
+  // appear in the user's defined order.
+  var suiteCountsByUnitType = {};
+  (projectInfo.unitTypes || []).forEach(function(ut){
+    suiteCountsByUnitType[ut.id] = 0;
+  });
+  (typeof suites !== 'undefined' && Array.isArray(suites) ? suites : []).forEach(function(s){
+    if(s && s.unitType && suiteCountsByUnitType.hasOwnProperty(s.unitType)){
+      suiteCountsByUnitType[s.unitType] += pageMultiplier(s.page);
+    }
+  });
+
   // Pass A.7: zone per PAGE (not per cam.floor). Every page gets a band, even
   // empty ones. Render order is top-to-bottom by elevation (highest first),
   // sourced from getRiserOrder() which honors manual tabOrder when set and
@@ -8785,6 +8848,12 @@ function computeRiserModel(){
       var cb = acCategoryOf(b) === 'Controllers' ? 1 : 0;
       return ca - cb;
     });
+    // Pass N+1 M9: per-zone smart-apartment slices. Each device family is
+    // a separate array so the band renderer can ordering: readers →
+    // controllers → intercoms → parcel → mailbox on the AC rail.
+    var intercoms = smartApartment.filter(function(d){ return d.type === 'intercom' && d.page === pageIdx; });
+    var parcels   = smartApartment.filter(function(d){ return d.type === 'parcel'   && d.page === pageIdx; });
+    var mailboxes = smartApartment.filter(function(d){ return d.type === 'mailbox'  && d.page === pageIdx; });
     var mult = pageMultiplier(pageIdx);
     var range = pageFloorRange(pageIdx);
     var displayName = name;
@@ -8795,6 +8864,9 @@ function computeRiserModel(){
       displayName:displayName,
       cams:       cams,
       acDevices:  ac,
+      intercoms:  intercoms,
+      parcels:    parcels,
+      mailboxes:  mailboxes,
       hasHeadend: !!headends[pageIdx]
     };
   });
@@ -8823,7 +8895,15 @@ function computeRiserModel(){
     // BOM credentials row M3). Each is multiplied across typical floors.
     readerCount:     readerCount,
     controllerCount: controllerCount,
-    acCount:         acCount
+    acCount:         acCount,
+    // Pass N+1 M9: smart-apartment counts (multiplied) for cover summary
+    // + BOM drawer header tiles. Per-unit-type suite counts as a map keyed
+    // by unitType id; downstream consumers iterate projectInfo.unitTypes
+    // in declared order to preserve user-defined sequencing.
+    intercomCount:        intercomCount,
+    parcelCount:          parcelCount,
+    mailboxCount:         mailboxCount,
+    suiteCountsByUnitType: suiteCountsByUnitType
   };
 }
 
@@ -9098,7 +9178,13 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
   // is irrelevant for cams-only / AC-only bands; we fall through to the
   // single-rail center.
   var hasCams = zone.cams.length > 0;
-  var hasAc   = zone.acDevices.length > 0;
+  // Pass N+1 M9: AC rail hosts AC devices AND smart-apartment devices
+  // (intercom/parcel/mailbox). `hasAc` keeps its name (used widely below)
+  // but now means "any non-camera device riding the AC rail".
+  var smartAptN = (zone.intercoms ? zone.intercoms.length : 0)
+                + (zone.parcels   ? zone.parcels.length   : 0)
+                + (zone.mailboxes ? zone.mailboxes.length : 0);
+  var hasAc   = zone.acDevices.length > 0 || smartAptN > 0;
   var isMixed = hasCams && hasAc;
   var mixedSplit = 0.55;
   var separatorY     = isMixed ? (y0 + h * mixedSplit) : null;
@@ -9218,14 +9304,35 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
 
   }  // end cams-rail else block (Pass N M2)
 
-  // Pass N M2: AC rail. Renders below the camera rail in mixed bands
-  // (acRailY shifted), or centered in the band for AC-only zones. Readers
-  // first, controllers second (sort applied in computeRiserModel M1). No
-  // cable lines — reader→controller wiring is deferred per D3 / CLAUDE.md
-  // "Reader-to-controller cable lines are deferred" pitfall.
+  // Pass N M2 / Pass N+1 M9: AC rail. Hosts readers, controllers,
+  // intercoms, parcel lockers, and mailbox banks in that order. Rail
+  // is rendered below the camera rail in mixed bands (acRailY shifted),
+  // or centered for AC-only zones.
+  // Cable line behavior per Pass N+1 M9 brief:
+  //   - readers / controllers / intercoms — vertical stub icon-to-rail
+  //     (intercoms ride the rail like cameras since their wiring runs
+  //     PoE/IP back to the head-end).
+  //   - parcel lockers / mailbox banks   — physical-only, NO stub.
+  //
+  // No reader→controller cable lines (Pass N D3 / CLAUDE.md "Reader-to-
+  // controller cable lines are deferred").
   if(hasAc){
-    var acDevs   = zone.acDevices;
-    var acN      = acDevs.length;
+    // Combined render list ordered per M9 brief.
+    var railDevs = [];
+    zone.acDevices.forEach(function(d){
+      railDevs.push({ dev: d, kind: 'ac' });
+    });
+    (zone.intercoms || []).forEach(function(d){
+      railDevs.push({ dev: d, kind: 'intercom' });
+    });
+    (zone.parcels || []).forEach(function(d){
+      railDevs.push({ dev: d, kind: 'parcel' });
+    });
+    (zone.mailboxes || []).forEach(function(d){
+      railDevs.push({ dev: d, kind: 'mailbox' });
+    });
+
+    var acN      = railDevs.length;
     var acRailL  = trunkX + 4;
     var acRailR  = x0 + w - 6;
     doc.setDrawColor(29, 78, 216); doc.setLineWidth(0.5);   // Brivo blue
@@ -9237,11 +9344,20 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
     var acBandBot = isMixed ? (y0 + h) : (y0 + h);
     var acIconY   = Math.min(acRailY + 14, acBandBot - acIconSize/2 - 8);
 
-    acDevs.forEach(function(dev, i){
-      var cx = acRailL + 4 + acSpacing * (i + 1);
-      doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
-      doc.line(cx, acRailY, cx, acIconY - acIconSize/2 - 1);
-      drawRiserAcIcon(doc, dev, cx, acIconY, acIconSize);
+    railDevs.forEach(function(entry, i){
+      var dev  = entry.dev;
+      var kind = entry.kind;
+      var cx   = acRailL + 4 + acSpacing * (i + 1);
+      // Cable stub: only for AC (readers + controllers) and intercom.
+      // Parcel and mailbox are physical-only — no vertical connector.
+      if(kind === 'ac' || kind === 'intercom'){
+        doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
+        doc.line(cx, acRailY, cx, acIconY - acIconSize/2 - 1);
+      }
+      if(kind === 'ac')            drawRiserAcIcon(doc, dev, cx, acIconY, acIconSize);
+      else if(kind === 'intercom') drawRiserIntercomIcon(doc, dev, cx, acIconY, acIconSize);
+      else if(kind === 'parcel')   drawRiserParcelIcon(doc, dev, cx, acIconY, acIconSize);
+      else if(kind === 'mailbox')  drawRiserMailboxIcon(doc, dev, cx, acIconY, acIconSize);
       var labelBaseline = acIconY + acIconSize/2 + 6;
       doc.setFont('courier','bold'); doc.setFontSize(5.5);
       doc.setTextColor(40, 40, 60);
@@ -9288,6 +9404,67 @@ function drawRiserAcIcon(doc, dev, cx, cy, size){
     doc.setFillColor(255, 255, 255);
     doc.rect(cx - rw * 0.35, cy - rh * 0.30, rw * 0.7, rh * 0.08, 'F');
   }
+}
+
+// Pass N+1 M9: Riser-scale smart-apartment icons. Each function takes the
+// same args as drawRiserAcIcon (doc, dev, cx, cy, size) and renders a flat
+// shape distinct from cams/readers/controllers at small scale (~11 px).
+// Icon-color constants are reused from the canvas-side drawing so the BOM
+// drawer tiles, canvas markers, and riser icons all stay in sync.
+function drawRiserIntercomIcon(doc, dev, cx, cy, size){
+  // Teal rounded rectangle with white "screen" inset across the top half —
+  // mirrors the canvas drawIntercom shape, simplified for riser legibility.
+  var rgb = hexToRgbArr(INTERCOM_COLOR);
+  var s  = size;
+  var rw = s * 0.70;
+  var rh = s * 0.95;
+  doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+  doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(cx - rw/2, cy - rh/2, rw, rh, 0.6, 0.6, 'FD');
+  doc.setFillColor(255, 255, 255);
+  doc.rect(cx - rw * 0.4, cy - rh * 0.30, rw * 0.8, rh * 0.30, 'F');
+}
+
+function drawRiserParcelIcon(doc, dev, cx, cy, size){
+  // Orange rectangle with 3×2 grid divider lines — landscape aspect ratio
+  // sets it apart from intercom (portrait) and mailbox (also rectangular
+  // but with more cells / different aspect).
+  var rgb = hexToRgbArr(PARCEL_COLOR);
+  var s  = size;
+  var rw = s * 1.05;
+  var rh = s * 0.65;
+  doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+  doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(cx - rw/2, cy - rh/2, rw, rh, 0.5, 0.5, 'FD');
+  // 2 vertical + 1 horizontal divider → 3×2 grid
+  doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.3);
+  doc.line(cx - rw/6,  cy - rh/2 + 0.5, cx - rw/6,  cy + rh/2 - 0.5);
+  doc.line(cx + rw/6,  cy - rh/2 + 0.5, cx + rw/6,  cy + rh/2 - 0.5);
+  doc.line(cx - rw/2 + 0.5, cy, cx + rw/2 - 0.5, cy);
+}
+
+function drawRiserMailboxIcon(doc, dev, cx, cy, size){
+  // Rose rectangle with 4×2 grid divider lines — more cells than parcel +
+  // shallower aspect ratio per D6 brief. cols/rows defaulted to 4×4 in the
+  // v17 shape but the riser icon stays generic 4×2 so legend visibility
+  // doesn't compete with the diagram scale (real bank size is visible in
+  // the equipment schedule, not at riser-icon scale).
+  var rgb = hexToRgbArr(MAILBOX_COLOR);
+  var s  = size;
+  var rw = s * 1.05;
+  var rh = s * 0.55;
+  doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+  doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(cx - rw/2, cy - rh/2, rw, rh, 0.5, 0.5, 'FD');
+  // 3 vertical + 1 horizontal divider → 4×2 grid
+  doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.3);
+  doc.line(cx - rw/4, cy - rh/2 + 0.5, cx - rw/4, cy + rh/2 - 0.5);
+  doc.line(cx,        cy - rh/2 + 0.5, cx,        cy + rh/2 - 0.5);
+  doc.line(cx + rw/4, cy - rh/2 + 0.5, cx + rw/4, cy + rh/2 - 0.5);
+  doc.line(cx - rw/2 + 0.5, cy, cx + rw/2 - 0.5, cy);
 }
 
 function drawRiserNvrBox(doc, x, y, w, h, channels){
@@ -9423,6 +9600,11 @@ function buildRiserScheduleRows(model){
         model: acRiserDisplayModel(dev)
       });
     });
+    // Pass N+1 M9: smart-apartment schedule rows. Grouped by SKU/config to
+    // match the BOM grouping logic — one row per unique intercom SKU,
+    // parcel SKU, or mailbox brand+cols×rows. ID column uses the first
+    // device's label; MODEL column includes `× N` suffix when grouped.
+    pushSmartAptScheduleRows(rows, zone);
     if(zone.hasHeadend){
       rows.push({type:'equip', id:'NVR-1', model: model.nvrChannels + '-Ch NVR'});
       for(var i = 0; i < model.switchCount; i++){
@@ -9474,6 +9656,78 @@ function acRiserDisplayModel(dev){
   }
   if(!sub) return 'Custom AC device';
   return 'Brivo ' + sub + (vv ? ' ' + vv : '');
+}
+
+// Pass N+1 M9: emit grouped intercom / parcel / mailbox rows for one zone
+// after its AC rows. Mirrors the BOM grouping logic from computeAutoRows:
+// intercom & parcel group by SKU (dev.model); mailbox groups by brand +
+// cols×rows. ID column uses the first device's label so the row stays
+// referenceable; MODEL prefixes "(N×) " when N > 1 so the count survives
+// the 18-char column truncation. Schedule qty counts per-floor placements
+// (NOT multiplied by typical-floor — the schedule represents per-floor
+// inventory, matching the per-floor convention used elsewhere).
+function pushSmartAptScheduleRows(rows, zone){
+  // 1. Intercoms by SKU.
+  var iGroups = {};
+  var iOrder  = [];
+  (zone.intercoms || []).forEach(function(d){
+    var sku = d.model || 'CUSTOM-INTERCOM';
+    if(!iGroups[sku]){
+      iGroups[sku] = { count: 0, firstLabel: d.label || '' };
+      iOrder.push(sku);
+    }
+    iGroups[sku].count++;
+  });
+  iOrder.forEach(function(sku){
+    var g = iGroups[sku];
+    var cat = INTERCOM_DB[sku];
+    var modelStr = cat ? ((cat.brand.split(' ')[0]) + ' ' + (cat.model || 'Custom')) : 'Custom Intercom';
+    if(g.count > 1) modelStr = '(' + g.count + '×) ' + modelStr;
+    rows.push({ type: 'intercom', id: g.firstLabel, model: modelStr });
+  });
+  // 2. Parcel lockers by SKU.
+  var pGroups = {};
+  var pOrder  = [];
+  (zone.parcels || []).forEach(function(d){
+    var sku = d.model || 'CUSTOM-PARCEL';
+    if(!pGroups[sku]){
+      pGroups[sku] = { count: 0, firstLabel: d.label || '' };
+      pOrder.push(sku);
+    }
+    pGroups[sku].count++;
+  });
+  pOrder.forEach(function(sku){
+    var g = pGroups[sku];
+    var cat = PARCEL_DB[sku];
+    var modelStr = cat ? ((cat.brand.split(' ')[0]) + ' ' + (cat.model || 'Custom')) : 'Custom Parcel';
+    if(g.count > 1) modelStr = '(' + g.count + '×) ' + modelStr;
+    rows.push({ type: 'parcel', id: g.firstLabel, model: modelStr });
+  });
+  // 3. Mailbox banks by brand + cols×rows.
+  var mGroups = {};
+  var mOrder  = [];
+  (zone.mailboxes || []).forEach(function(d){
+    var brand = d.brand || 'Custom';
+    var cols  = (typeof d.cols === 'number') ? d.cols : 4;
+    var rowsCount = (typeof d.rows === 'number') ? d.rows : 4;
+    var key = brand + '-' + cols + 'x' + rowsCount;
+    if(!mGroups[key]){
+      mGroups[key] = { count: 0, firstLabel: d.label || '', brand: brand, cols: cols, rows: rowsCount };
+      mOrder.push(key);
+    }
+    mGroups[key].count++;
+  });
+  mOrder.forEach(function(key){
+    var g = mGroups[key];
+    // Brand can include spaces ("Canada Post") — match the cam helper
+    // pattern of brand.split(' ')[0] to keep MODEL short for the 18-char
+    // column. "Canada" rather than "Canada Post" preserves the cols×rows
+    // descriptor where the count is more useful.
+    var brandShort = g.brand.split(' ')[0];
+    var modelStr = brandShort + ' ' + g.cols + '×' + g.rows + ' MBX';
+    if(g.count > 1) modelStr = '(' + g.count + '×) ' + modelStr;
+    rows.push({ type: 'mailbox', id: g.firstLabel, model: modelStr });
+  });
 }
 
 function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
@@ -9555,6 +9809,17 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
       // inventory list. AC vs cam distinction is textual (ID prefix
       // "AC-" and MODEL "Brivo ..." vs "Eagle Eye DD08") — no color
       // tint per the schedule's monochrome inventory aesthetic.
+      doc.setFont('courier','normal'); doc.setFontSize(9);
+      doc.setTextColor(40, 40, 60);
+      doc.text((row.id    || '').slice(0, 8),  x0 + cols[0].x + pad, y + rowH - 3);
+      doc.text((row.model || '').slice(0, 18), x0 + cols[1].x + pad, y + rowH - 3);
+      y += rowH;
+    } else if(row.type === 'intercom' || row.type === 'parcel' || row.type === 'mailbox'){
+      // Pass N+1 M9: smart-apartment schedule row. Identical formatting
+      // to 'ac' / 'cam' / 'equip' — single monochrome inventory list.
+      // MODEL already includes the "(N×)" qty prefix when grouped (from
+      // pushSmartAptScheduleRows) so truncation at 18 chars preserves
+      // the count even if the brand/model gets clipped.
       doc.setFont('courier','normal'); doc.setFontSize(9);
       doc.setTextColor(40, 40, 60);
       doc.text((row.id    || '').slice(0, 8),  x0 + cols[0].x + pad, y + rowH - 3);
@@ -10064,10 +10329,10 @@ function recalcBom(){
   document.getElementById('bom-tax-amt').textContent = '$' + formatMoney(taxAmt);
   document.getElementById('bom-grand-total').textContent = '$' + formatMoney(grand);
 
-  // Pass N M5: AC counts mirror the cover summary AC lines. Same source
-  // (computeRiserModel → readerCount / controllerCount, both multiplied
-  // across typical floors). Each stat row is hidden when its count is 0;
-  // the surrounding grid layout collapses cleanly.
+  // Pass N M5 / Pass N+1 M9: AC + smart-apartment counts mirror the cover
+  // summary lines. Same source (computeRiserModel → *Count fields, all
+  // multiplied across typical floors). Each stat row is hidden when its
+  // count is 0; the surrounding grid layout collapses cleanly.
   var bomModel = computeRiserModel();
   var rEl = document.getElementById('bom-ac-readers-stat');
   var cEl = document.getElementById('bom-ac-controllers-stat');
@@ -10078,6 +10343,39 @@ function recalcBom(){
   if(cEl){
     cEl.style.display = bomModel.controllerCount > 0 ? '' : 'none';
     document.getElementById('bom-ac-controllers').textContent = String(bomModel.controllerCount);
+  }
+  // Pass N+1 M9: smart-apartment tiles. Same hide-when-zero pattern as AC.
+  var iEl  = document.getElementById('bom-intercom-stat');
+  var pEl  = document.getElementById('bom-parcel-stat');
+  var mEl  = document.getElementById('bom-mailbox-stat');
+  if(iEl){
+    iEl.style.display = bomModel.intercomCount > 0 ? '' : 'none';
+    document.getElementById('bom-intercom-count').textContent = String(bomModel.intercomCount);
+  }
+  if(pEl){
+    pEl.style.display = bomModel.parcelCount > 0 ? '' : 'none';
+    document.getElementById('bom-parcel-count').textContent = String(bomModel.parcelCount);
+  }
+  if(mEl){
+    mEl.style.display = bomModel.mailboxCount > 0 ? '' : 'none';
+    document.getElementById('bom-mailbox-count').textContent = String(bomModel.mailboxCount);
+  }
+  // Pass N+1 M9: per-unit-type tiles. Container is repainted each recalc
+  // since unit types are project-level state that changes via Modal #1.
+  // Tiles for zero-suite types are omitted; order follows declared
+  // projectInfo.unitTypes sequence so cover, drawer, and brief stay in sync.
+  var sttContainer = document.getElementById('bom-suite-types-container');
+  if(sttContainer){
+    var typeHtml = '';
+    (projectInfo.unitTypes || []).forEach(function(ut){
+      var cnt = bomModel.suiteCountsByUnitType[ut.id] || 0;
+      if(cnt > 0){
+        typeHtml += '<div class="bom-stat"><span class="lbl">'
+                 + escapeHtml(ut.label || '(unlabeled)')
+                 + '</span><span class="val">' + cnt + '</span></div>';
+      }
+    });
+    sttContainer.innerHTML = typeHtml;
   }
 
   // Persist current auto-row unit prices keyed for next render
