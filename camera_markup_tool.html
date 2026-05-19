@@ -6187,10 +6187,11 @@ function _renderSuiteDrillDown(){
 // 1001. Confirm pushes to suites[] and selects; the right-panel open
 // hook lands in M7 (selectSuite has a TODO marker for it).
 //
-// Canvas marker = label text in SUITE_COLOR pill (green-tinted bg, green
-// border), draggable via the pill bounds. Selection ring = yellow
-// #fbbf24 outline + amber-tinted bg, matching the per-family selection
-// convention from M3.
+// Canvas marker = neutral-grey pill (#f3f4f6 bg / #9ca3af border /
+// #374151 text) showing only the label's trailing digit suffix when
+// present ("Unit 101" → "101"), full label otherwise. Draggable via
+// the pill bounds. Selection = yellow #fbbf24 ring only; SUITE_COLOR
+// is retained for the left-pane list dot (updateSuiteList).
 
 // Stashed mousedown coords while Modal #2 is open. Cleared on close.
 var _pendingSuitePlacement = null;
@@ -6321,24 +6322,35 @@ function updateSuiteList(){
   }).join('');
 }
 
-// Canvas marker — a small pill with the label text in SUITE_COLOR.
-// Selected state: yellow #fbbf24 outline + amber-tinted bg (matches
-// the family selection convention). Drag bounds = the pill bounds.
+// Display label = trailing digit-run when separated from a word prefix
+// by whitespace ("Unit 101" → "101"). Labels with no whitespace-bounded
+// numeric suffix render in full ("PH-A1" stays "PH-A1"). The stored
+// suite.label is untouched everywhere else (right panel, list, save).
+function _suiteDisplayLabel(suite){
+  var raw = suite.label || '(unit)';
+  var m = raw.match(/\s(\d+)$/);
+  return m ? m[1] : raw;
+}
+
+// Canvas marker — a small neutral-grey pill with the display label.
+// Selected state: yellow #fbbf24 selection ring (background + text
+// colors unchanged from the resting grey scheme; the ring alone
+// signals selection). Drag bounds = the pill bounds.
 function drawSuite(c, suite, vs, isSelected){
   var x = suite.x*vs, y = suite.y*vs;
   c.save();
   c.font = 'bold 12px Courier New';
-  var label = suite.label || '(unit)';
+  var label = _suiteDisplayLabel(suite);
   var tw = c.measureText(label).width;
   var padX = 6, pillH = 18;
   var pillW = tw + padX*2;
   var px = x - pillW/2, py = y - pillH/2;
-  c.fillStyle   = isSelected ? '#fef3c7' : '#dcfce7';
-  c.strokeStyle = isSelected ? '#fbbf24' : SUITE_COLOR;
+  c.fillStyle   = '#f3f4f6';
+  c.strokeStyle = isSelected ? '#fbbf24' : '#9ca3af';
   c.lineWidth   = isSelected ? 2.0 : 1.2;
   acRoundRect(c, px, py, pillW, pillH, 4);
   c.fill(); c.stroke();
-  c.fillStyle = SUITE_COLOR;
+  c.fillStyle = '#374151';
   c.textAlign = 'center';
   c.textBaseline = 'middle';
   c.fillText(label, x, y);
@@ -6347,9 +6359,9 @@ function drawSuite(c, suite, vs, isSelected){
   c.restore();
 }
 
-// Hit-test: bounding-box around the pill. Measure text width via the
-// live canvas context (matches drawSuite's font setup). Iterate newest
-// first so an overlapping later-placed suite wins.
+// Hit-test: bounding-box around the pill. Measure the DISPLAY label so
+// bounds match the rendered pill width (not the stored label). Iterate
+// newest first so an overlapping later-placed suite wins.
 function suiteAt(cssX, cssY){
   if(!suites.length) return null;
   var pageSuites = suites.filter(function(s){return s.page === currentPage;});
@@ -6358,7 +6370,7 @@ function suiteAt(cssX, cssY){
   ctx.font = 'bold 12px Courier New';
   for(var i = pageSuites.length - 1; i >= 0; i--){
     var s = pageSuites[i];
-    var tw = ctx.measureText(s.label || '(unit)').width;
+    var tw = ctx.measureText(_suiteDisplayLabel(s)).width;
     var pillW = tw + 12, pillH = 18;
     var dx = cssX - s.x*viewScale;
     var dy = cssY - s.y*viewScale;
