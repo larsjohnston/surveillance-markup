@@ -179,6 +179,37 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 }
 .save-indicator:hover { color:var(--primary); }
 .save-indicator.dirty { color:var(--text); font-weight:600; }
+
+/* Pricing Data Foundation M1: menubar status indicator. Two states:
+   loaded (gray, subtle) and not-loaded (amber, attention-getting but
+   not alarming). Click → opens the Load Pricing flow (M2 wires this). */
+.pricing-status {
+  font:500 9px var(--font-ui); color:var(--text-muted);
+  cursor:pointer; padding:0 12px; user-select:none; white-space:nowrap;
+  transition:color .15s;
+}
+.pricing-status:hover { color:var(--primary); }
+.pricing-status.loaded { color:var(--text-muted); }
+.pricing-status.not-loaded { color:#d97706; }   /* amber */
+
+/* Pricing Data Foundation M1: banner inside the BOM drawer (above
+   bom-summary). Shows when no pricing is loaded. Light amber tint with
+   a "Load Now" button. Banner reserves no space when display:none. */
+.pricing-banner {
+  display:none;   /* JS toggles to 'flex' when pricing absent */
+  align-items:center; justify-content:space-between; gap:12px;
+  padding:8px 12px; margin:0 12px 8px;
+  background:#fef3c7; border:1px solid #fde68a; border-radius:5px;
+  font:500 11px var(--font-ui); color:#78350f;
+}
+.pricing-banner span { flex:1; line-height:1.35; }
+.pricing-banner-btn {
+  padding:5px 10px; border:1px solid #d97706; border-radius:4px;
+  background:#fff; color:#78350f; font:700 10px var(--font-ui); cursor:pointer;
+  letter-spacing:.02em; white-space:nowrap;
+  transition:background .12s, color .12s;
+}
+.pricing-banner-btn:hover { background:#d97706; color:#fff; }
 .btn { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font:600 12px var(--font-ui); letter-spacing:.01em; transition:background-color .15s, opacity .15s, box-shadow .15s, transform .1s; white-space:nowrap; }
 .btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 2px 4px rgba(0,0,0,.08); }
 .btn:disabled { opacity:.4; cursor:default; }
@@ -1062,6 +1093,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </nav>
   <!-- Pass D: auto-save status. updateSaveIndicator() controls visibility/text. -->
   <span id="save-indicator" class="save-indicator" style="display:none" onclick="saveJSON()" title="Click to save (Ctrl+S)"></span>
+  <!-- Pricing Data Foundation M1: pricing-status indicator. M2 wires the
+       click to the file picker; for now it logs a placeholder message. -->
+  <span id="pricing-status" class="pricing-status not-loaded" onclick="console.log('Pricing load flow — coming in M2')" title="Pricing data status (click to load — M2)">Pricing · not loaded</span>
   <div class="topbar-spacer"></div>
   <!-- Visibility Toggles UX pass: eye icon + dropdown. Mirrors the View menu's
        five toggles in a click-anywhere surface. setViewToggle() drives both
@@ -1997,6 +2031,13 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </header>
 
   <div id="bom-scroll-wrap">
+  <!-- Pricing Data Foundation M1: banner shown when no pricing book is
+       loaded (isPricingLoaded() === false). M2 wires the Load Now button
+       to the file picker; for now it logs a placeholder message. -->
+  <div id="pricing-banner" class="pricing-banner">
+    <span>Pricing data not loaded. Load a pricing file (File → Load Pricing) to enable quote totals on BOM and Take-Off pages.</span>
+    <button id="pricing-banner-load-btn" class="pricing-banner-btn" onclick="console.log('Load pricing flow not yet implemented (M2).')">Load Now</button>
+  </div>
   <div id="bom-summary">
     <div class="bom-stat"><span class="lbl">Camera Count</span><span class="val" id="bom-cam-count">0</span></div>
     <div class="bom-stat"><span class="lbl">Subtotal</span><span class="val" id="bom-subtotal">$0.00</span></div>
@@ -2367,6 +2408,170 @@ function firstSkuForBrand(db, brand){
     if(db[keys[i]].brand === brand) return keys[i];
   }
   return null;
+}
+
+// ─── Pricing Data Foundation (M1) ────────────────────────────────────────────
+// Pricing lives in a user-loaded JSON file, cached in localStorage under
+// PRICING_STORAGE_KEY. Source of truth = the JSON file; localStorage is
+// transient cache. M1 ships the schema, helpers, and visibility hooks
+// (banner + status indicator). M2 adds the file picker + menu entries.
+// M3+ wires pricing into BOM / Take-Off / Quote rendering (separate pass).
+//
+// No new dependencies — pure native localStorage + JSON.parse.
+
+var PRICING_STORAGE_KEY = 'pricingBook';
+var PRICING_SCHEMA_VERSION = 1;
+
+/**
+ * Pricing Book schema (v1)
+ * -------------------------
+ * Top-level object loaded from a user-supplied JSON file via
+ * File → Load Pricing (M2 menu entry). Stored in browser localStorage
+ * under the key 'pricingBook'.
+ *
+ * Schema:
+ * {
+ *   schema_version: 1,                  // required, must equal PRICING_SCHEMA_VERSION
+ *   currency: "CAD",                    // required, ISO 4217 code
+ *   updated: "2026-05-19",              // required, ISO date string
+ *   notes: "...",                       // optional free-text
+ *   labor_rate_per_hour: 95.00,         // required, positive number
+ *   items: {                            // required, object keyed by SKU
+ *     "<SKU>": {
+ *       unit_cost: <number>,            // optional but at least one of
+ *       msrp: <number>,                 // these two must be present
+ *       notes: "<string>"               // optional
+ *     }
+ *   }
+ * }
+ *
+ * Pricing data is treated as transient — the JSON file is the source
+ * of truth, localStorage is a cache. Re-loads replace the entire object.
+ */
+
+// Reads the pricing book from localStorage. Returns the parsed object,
+// or null if missing / parse fails. On parse failure, clears the corrupt
+// entry to avoid getting stuck.
+function getPricingBook(){
+  var raw = null;
+  try { raw = localStorage.getItem(PRICING_STORAGE_KEY); } catch(_){ return null; }
+  if(!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch(e){
+    try { console.warn('[pricing] localStorage entry corrupt; clearing.', e); } catch(_){}
+    clearPricingBook();
+    return null;
+  }
+}
+
+// Validates + writes a pricing book to localStorage. Returns true on
+// success, false on validation failure (no write happens). Existing
+// localStorage entry is preserved on failure.
+function setPricingBook(book){
+  var result = validatePricingBook(book);
+  if(!result.valid) return false;
+  try {
+    localStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(book));
+  } catch(_){ return false; }
+  return true;
+}
+
+// Removes the pricing book from localStorage.
+function clearPricingBook(){
+  try { localStorage.removeItem(PRICING_STORAGE_KEY); } catch(_){}
+}
+
+// Returns true if a valid pricing book is currently in localStorage.
+// "Valid" = passes validatePricingBook(). This is the canonical check;
+// downstream consumers (banner, status indicator, future Quote render)
+// should call this rather than re-implementing schema gating.
+//
+// Performance: walks the items object once during validation. Called
+// from updatePricingUI (banner/status refresh) at low frequency — not
+// from per-row BOM hot paths.
+function isPricingLoaded(){
+  var book = getPricingBook();
+  if(!book) return false;
+  return validatePricingBook(book).valid;
+}
+
+// Returns the unit cost (or msrp) for the given SKU, or null when the
+// pricing isn't loaded or the SKU isn't in the catalog. Lightweight —
+// structural check only, no full validation. Safe to call at high
+// frequency (per BOM row).
+//
+// Acceptable field values: 'unit_cost' (default), 'msrp'.
+function getUnitPrice(sku, field){
+  if(!field) field = 'unit_cost';
+  var book = getPricingBook();
+  if(!book || !book.items || typeof book.items !== 'object') return null;
+  var item = book.items[sku];
+  if(!item || typeof item !== 'object') return null;
+  var val = item[field];
+  return (typeof val === 'number' && isFinite(val)) ? val : null;
+}
+
+// Schema validation. Returns { valid: bool, errors: [string] }.
+// Collects all errors (doesn't short-circuit) so the user fixing a
+// pricing JSON file sees every issue at once.
+function validatePricingBook(obj){
+  var errors = [];
+  if(!obj || typeof obj !== 'object'){
+    return { valid: false, errors: ['Pricing book must be a non-null object.'] };
+  }
+  if(obj.schema_version !== PRICING_SCHEMA_VERSION){
+    errors.push("Field 'schema_version' must equal " + PRICING_SCHEMA_VERSION + " (got: " + obj.schema_version + ")");
+  }
+  if(typeof obj.currency !== 'string' || obj.currency.length === 0){
+    errors.push("Field 'currency' must be a non-empty string.");
+  }
+  if(typeof obj.updated !== 'string' || obj.updated.length === 0){
+    errors.push("Field 'updated' must be a non-empty string (ISO date format expected).");
+  }
+  if(typeof obj.labor_rate_per_hour !== 'number' || !isFinite(obj.labor_rate_per_hour) || obj.labor_rate_per_hour <= 0){
+    errors.push("Field 'labor_rate_per_hour' must be a positive number.");
+  }
+  if(!obj.items || typeof obj.items !== 'object'){
+    errors.push("Field 'items' must be a non-null object (can be empty).");
+  } else {
+    Object.keys(obj.items).forEach(function(sku){
+      var item = obj.items[sku];
+      if(!item || typeof item !== 'object'){
+        errors.push("Item '" + sku + "' must be a non-null object.");
+        return;
+      }
+      var hasCost = (typeof item.unit_cost === 'number' && isFinite(item.unit_cost) && item.unit_cost >= 0);
+      var hasMsrp = (typeof item.msrp      === 'number' && isFinite(item.msrp)      && item.msrp      >= 0);
+      if(!hasCost && !hasMsrp){
+        errors.push("Item '" + sku + "' must have at least one of unit_cost or msrp as a non-negative number.");
+      }
+    });
+  }
+  return { valid: errors.length === 0, errors: errors };
+}
+
+// Refreshes the pricing banner (in the BOM drawer) and the pricing
+// status indicator (in the menubar) based on isPricingLoaded(). Call
+// after any load/clear or at page-load init. Returns the loaded boolean.
+function updatePricingUI(){
+  var loaded = isPricingLoaded();
+  var banner = document.getElementById('pricing-banner');
+  if(banner) banner.style.display = loaded ? 'none' : 'flex';
+  var status = document.getElementById('pricing-status');
+  if(status){
+    if(loaded){
+      var book = getPricingBook();
+      status.textContent = 'Pricing · ' + (book && book.currency ? book.currency : '—') + ' · ' + (book && book.updated ? book.updated : '—');
+      status.classList.remove('not-loaded');
+      status.classList.add('loaded');
+    } else {
+      status.textContent = 'Pricing · not loaded';
+      status.classList.remove('loaded');
+      status.classList.add('not-loaded');
+    }
+  }
+  return loaded;
 }
 
 // Pass Left-Pane: project-wide variant defaults per subcategory. Used by
@@ -9646,11 +9851,17 @@ var RISER_MAX_BAND_PT   = 120;  // cap so a small project doesn't sprawl
 // When a zone band's camera rail or AC rail contains more devices than
 // fit in one horizontal row at readable size, the layout wraps to a
 // second (and third, etc.) row. Each additional row adds vertical space
-// to the band so the rows don't crash into each other. M2 may tune these
-// after real-PDF eyeballing.
+// to the band so the rows don't crash into each other.
+//
+// RISER_ROW_HEIGHT_EXTRA must be large enough to clear the prior row's
+// content footprint (icon + label + leading) before the next row's rail.
+// Math: rail Y to icon center = 18pt, icon radius ~6.5pt, label
+// baseline +6pt below icon bottom, text descent ~2pt → ~32pt minimum
+// between rail lines. M2 bumped from 16pt to 32pt after static analysis
+// caught the prior overlap; further eyeball polish can adjust.
 var RISER_MAX_DEVICES_PER_ROW = 15;
 var RISER_RAIL_PADDING        = 24;   // pt of horizontal margin inside each rail
-var RISER_ROW_HEIGHT_EXTRA    = 16;   // pt added per row beyond the first
+var RISER_ROW_HEIGHT_EXTRA    = 32;   // pt added per row beyond the first
 var RISER_LABEL_W       = 64;   // left column reserved for the floor name
 var RISER_HEAD_W        = 130;  // horizontal span the head-end cluster occupies
 // Pass N M2 — AC rail dimensions (D2 same-band-two-rails).
@@ -11683,6 +11894,9 @@ try {
 })();
 
 syncLabels(); updateList(); updateScaleIndicator(); updateDoriInfo();
+// Pricing Data Foundation M1: paint banner + status indicator based on
+// the current localStorage state.
+updatePricingUI();
 // Pass D: drive the auto-save loop and indicator clock. The 60 s indicator
 // tick is mostly redundant with autoSaveTick (which also refreshes), but
 // keeps the relative timestamp moving even if autoSaveTick is gated off
