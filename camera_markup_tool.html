@@ -2260,6 +2260,24 @@ var MAILBOX_DB = {
   'CUSTOM-MBX': { brand:'Custom', model:'', desc:'Custom Mailbox Bank — user-defined' }
 };
 
+// LABOR_RATES — hours per device-install category.
+//
+// PLACEHOLDER VALUES. Integrator should tune over time based on real
+// job-cost data. Future Rules Page editor pass will migrate this to a
+// per-project projectInfo.laborRates persisted object.
+var LABOR_RATES = {
+  cameraInstall:     1.5,   // hours per camera
+  readerInstall:     2.0,   // hours per reader
+  controllerInstall: 1.0,   // hours per controller
+  intercomInstall:   2.0,   // hours per intercom
+  parcelInstall:     4.0,   // hours per parcel locker
+  mailboxInstall:    1.0,   // hours per mailbox bank
+  iotPerSuite:       0.25,  // hours per IoT device per suite
+  headEndBase:       4.0,   // hours flat for NVR/switch/UPS bench-up
+  cablingPerMeter:   0.1,   // hours per meter of pulled cable
+  commissioning:     4.0    // hours flat
+};
+
 // Helpers for Tier-1 brand enumeration. Mailbox has 'Canada Post' even
 // though that brand has no catalog SKUs — the Tier 1 brand list is the
 // source of truth, not the DB keys.
@@ -10236,6 +10254,288 @@ function computeAutoCableRows(){
     });
   }
   return rows;
+}
+
+// ─── Take-Off Page: data extraction (M1) ─────────────────────────────────────
+// buildTakeOffData() returns a structured object covering the 7 take-off
+// sections (3a + 3b counted as separate code-level lists; render combines
+// them visually). Pure data layer — no rendering, no DOM, no DOM-derived
+// inputs. Read-only over cameras / acDevices / smartApartment / suites /
+// headends / projectInfo. M2 consumes this for PDF drawing; M3 wires the
+// export-modal toggle.
+//
+// All multi-floor accounting uses pageMultiplier so quantities match the
+// BOM and cover-summary totals exactly.
+function buildTakeOffData(){
+  // Floor label resolver — matches computeRiserModel's zone.displayName so
+  // the take-off and the riser stay in sync on per-page labels (including
+  // the typical-floor "F3-17 (×N)" badge).
+  function _floorLabel(pageIdx){
+    var pg = pages[pageIdx];
+    if(!pg) return '';
+    var name = pg.name || pg.label || ('Floor ' + (pageIdx + 1));
+    var range = pageFloorRange(pageIdx);
+    var mult  = pageMultiplier(pageIdx);
+    if(range && mult > 1) name = name + ' · ' + range + ' (×' + mult + ')';
+    return name;
+  }
+  function _byPageThenLabel(a, b){
+    if(a.page !== b.page) return a.page - b.page;
+    var la = (a.label || '').toString();
+    var lb = (b.label || '').toString();
+    return la < lb ? -1 : (la > lb ? 1 : 0);
+  }
+
+  // Section 1 — Cameras.
+  var cameraRows = cameras.slice().sort(_byPageThenLabel).map(function(cam){
+    var brand = 'Custom', model = '';
+    if(cam.model && CAMERA_DB[cam.model]){
+      brand = CAMERA_DB[cam.model].brand;
+      model = CAMERA_DB[cam.model].model;
+    }
+    return {
+      floor:      _floorLabel(cam.page),
+      label:      cam.label || '',
+      brand:      brand,
+      model:      model,
+      type:       cam.type || 'dome',
+      mount:      cam.mountType || '',
+      resolution: cam.resolution || 2560,
+      fov:        cam.fov || 0,
+      reach:      (typeof cam.reachM === 'number') ? cam.reachM : 12
+    };
+  });
+
+  // Section 2 — Access Control. Reader + Controller only (Tier-1 "Other"
+  // devices with null category are still included with their raw fields).
+  var acRows = acDevices.slice().sort(_byPageThenLabel).map(function(d){
+    var cat = acCategoryOf(d);
+    // Subcategory + variant: prefer per-device override (v15 shape), fall
+    // back to BRIVO_CATALOG lookup. Mirrors acRiserDisplayModel logic.
+    var sub = d.subcategory || null;
+    var vv  = d.variantValue || null;
+    if(!sub){
+      var key = d.sku || d.model;
+      for(var i = 0; i < BRIVO_CATALOG.length; i++){
+        if(BRIVO_CATALOG[i].sku === key){
+          sub = BRIVO_CATALOG[i].subcategory;
+          if(!vv) vv = BRIVO_CATALOG[i].variant_value;
+          break;
+        }
+      }
+    }
+    return {
+      floor:       _floorLabel(d.page),
+      label:       d.label || '',
+      brand:       'Brivo',
+      model:       d.sku || d.model || '',
+      type:        cat || 'AC',
+      subcategory: sub || '',
+      variant:     vv || ''
+    };
+  });
+
+  // Section 3a — Smart Apartment placed devices (intercom / parcel /
+  // mailbox).
+  var smartAptPlaced = smartApartment.slice().sort(_byPageThenLabel).map(function(d){
+    var brand = '', model = '', config = '';
+    if(d.type === 'intercom'){
+      var icat = INTERCOM_DB[d.model];
+      brand = icat ? icat.brand : 'Custom';
+      model = icat ? icat.model : '';
+      if(icat){
+        if(icat.seriesType === 'indoor-station'){
+          config = 'Indoor station';
+        } else {
+          // door-station — show unit capacity if it's a real number.
+          var cap = icat.unitCapacity;
+          config = (typeof cap === 'number' && cap > 0)
+            ? ('Door · ' + cap + 'u')
+            : 'Door station';
+        }
+      }
+    } else if(d.type === 'parcel'){
+      var pcat = PARCEL_DB[d.model];
+      brand = pcat ? pcat.brand : 'Custom';
+      model = pcat ? pcat.model : '';
+      if(pcat && typeof pcat.bays === 'number' && pcat.bays > 0){
+        config = pcat.bays + ' bays';
+      }
+    } else if(d.type === 'mailbox'){
+      brand = d.brand || 'Custom';
+      // Catalog-Tier1 v17: mailbox has no model field; brand + cols×rows
+      // carry the identity.
+      var cols = (typeof d.cols === 'number') ? d.cols : 4;
+      var rows = (typeof d.rows === 'number') ? d.rows : 4;
+      config = cols + '×' + rows;
+    }
+    return {
+      floor:  _floorLabel(d.page),
+      label:  d.label || '',
+      type:   d.type === 'intercom' ? 'Intercom'
+            : d.type === 'parcel'   ? 'Parcel'
+            : d.type === 'mailbox'  ? 'Mailbox' : (d.type || ''),
+      brand:  brand,
+      model:  model,
+      config: config
+    };
+  });
+
+  // Section 3b — In-unit IoT.
+  var iot = projectInfo.iotDevices || {};
+  var suiteArr = (typeof suites !== 'undefined' && Array.isArray(suites)) ? suites : [];
+  var suiteMultCount = suiteArr.reduce(function(s, d){ return s + pageMultiplier(d.page); }, 0);
+  var iotMap = [
+    { key:'smartLock',   label:'Smart Lock' },
+    { key:'thermostat',  label:'Thermostat' },
+    { key:'waterSensor', label:'Water Sensor' }
+  ];
+  var smartAptIot = [];
+  iotMap.forEach(function(entry){
+    if(iot[entry.key]){
+      smartAptIot.push({
+        device:       entry.label,
+        perSuiteQty:  1,
+        totalQty:     suiteMultCount
+      });
+    }
+  });
+
+  // Section 4 — Suites.
+  var unitTypeById = {};
+  (projectInfo.unitTypes || []).forEach(function(ut){ unitTypeById[ut.id] = ut; });
+  var suiteRows = suiteArr.slice().sort(_byPageThenLabel).map(function(s){
+    var ut = unitTypeById[s.unitType] || null;
+    return {
+      floor:         _floorLabel(s.page),
+      label:         s.label || '',
+      unitTypeLabel: ut ? (ut.label || '(unlabeled)') : '(unknown type)',
+      bedrooms:      ut ? (typeof ut.bedrooms === 'number' ? ut.bedrooms : null) : null,
+      bathrooms:     ut ? (typeof ut.bathrooms === 'number' ? ut.bathrooms : null) : null
+    };
+  });
+
+  // Section 5 — Head-End equipment. Matches BOM auto-row convention: one
+  // NVR + switchCount switches + one UPS, sized to the project's total
+  // camera count. Multi-head-end is out of scope per the brief, so per-
+  // head-end duplication is not tracked here. Rows only emitted when at
+  // least one head-end is placed OR cameras exist (parity with BOM gating).
+  var headendCount = Object.keys(headends).length;
+  var camCount = multipliedTotal(cameras);
+  var ports     = camCount <= 4 ? 8 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 24 ? 24 : 48;
+  var switchCount = Math.max(1, Math.ceil(camCount / ports));
+  var nvrChannels = camCount <= 4 ? 4 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 32 ? 32 : camCount <= 64 ? 64 : 128;
+  var headEndRows = [];
+  if(headendCount > 0 || camCount > 0){
+    headEndRows.push({ label:'NVR-1',  type:'NVR',    brand:'', model: nvrChannels + '-Ch NVR',  qty: 1 });
+    headEndRows.push({ label:'SW-1',   type:'Switch', brand:'', model: ports       + '-pt PoE+', qty: switchCount });
+    headEndRows.push({ label:'UPS-1',  type:'UPS',    brand:'', model: 'Rack UPS',                qty: 1 });
+  }
+
+  // Section 6 — Cabling Summary. Mirrors computeAutoCableRows' accounting
+  // but exposes runs / lengths / overhead multiplier as separate fields
+  // rather than wrapping them in a single qty. Display unit = first
+  // calibrated page's unit, fallback meters (matches the per-page reach
+  // display convention).
+  var overheadMultiplier = 1.10;
+  var totalRuns = 0;
+  var totalLengthMRaw = 0;   // meters, pre-overhead
+  Object.keys(headends).forEach(function(p){
+    var pageIdx = parseInt(p, 10);
+    var ppm = getPPM(pageIdx);
+    if(!ppm) return;
+    var mult = pageMultiplier(pageIdx);
+    cameras.filter(function(c){ return c.page === pageIdx; }).forEach(function(cam){
+      var m = cableLengthM(cam, pageIdx);
+      if(m != null){
+        totalLengthMRaw += m * mult;
+        totalRuns       += mult;
+      }
+    });
+  });
+  var totalLengthM = totalLengthMRaw * overheadMultiplier;
+  // Pick the project's primary cabling display unit.
+  var cablingUnits = 'm';
+  for(var pi = 0; pi < pages.length; pi++){
+    if(calibrations[pi]){
+      cablingUnits = getCalibUnit(pi) || 'm';
+      break;
+    }
+  }
+  var totalLengthDisplay = cablingUnits === 'ft' ? totalLengthM * FT_PER_METER : totalLengthM;
+  var avgRunLengthDisplay = totalRuns > 0 ? totalLengthDisplay / totalRuns : 0;
+  var cabling = {
+    totalRuns:           totalRuns,
+    totalLength:         Math.round(totalLengthDisplay),
+    avgRunLength:        Math.round(avgRunLengthDisplay * 10) / 10,
+    overheadMultiplier:  overheadMultiplier,
+    units:               cablingUnits
+  };
+
+  // Section 7 — Labor Summary. One row per non-zero category. qty for
+  // device categories uses pageMultiplier-aware totals (matches BOM
+  // labor conventions). Cabling qty stays in meters regardless of display
+  // unit since LABOR_RATES.cablingPerMeter is per-meter.
+  var readerCountForLabor = 0, controllerCountForLabor = 0;
+  acDevices.forEach(function(d){
+    var cat = acCategoryOf(d);
+    var mult = pageMultiplier(d.page);
+    if(cat === 'Readers')          readerCountForLabor     += mult;
+    else if(cat === 'Controllers') controllerCountForLabor += mult;
+  });
+  var intercomMult = 0, parcelMult = 0, mailboxMult = 0;
+  smartApartment.forEach(function(d){
+    var m = pageMultiplier(d.page);
+    if(d.type === 'intercom')     intercomMult += m;
+    else if(d.type === 'parcel')  parcelMult   += m;
+    else if(d.type === 'mailbox') mailboxMult  += m;
+  });
+  // IoT install total qty = (number of IoT flags checked) × (suite count).
+  // Sum across smartAptIot rows produces that product naturally.
+  var iotInstallQty = 0;
+  smartAptIot.forEach(function(r){ iotInstallQty += r.totalQty; });
+  // Head-end + commissioning are flat-per-project, but only emit them when
+  // there's actually equipment to commission (parity with the head-end
+  // gating above).
+  var hasInstallScope = headEndRows.length > 0;
+
+  function _pushLaborRow(rows, category, qty, rate){
+    if(!qty) return;
+    rows.push({
+      category: category,
+      qty:      qty,
+      rate:     rate,
+      hours:    qty * rate
+    });
+  }
+  var laborRows = [];
+  _pushLaborRow(laborRows, 'Camera install',     camCount,               LABOR_RATES.cameraInstall);
+  _pushLaborRow(laborRows, 'Reader install',     readerCountForLabor,    LABOR_RATES.readerInstall);
+  _pushLaborRow(laborRows, 'Controller install', controllerCountForLabor,LABOR_RATES.controllerInstall);
+  _pushLaborRow(laborRows, 'Intercom install',   intercomMult,           LABOR_RATES.intercomInstall);
+  _pushLaborRow(laborRows, 'Parcel install',     parcelMult,             LABOR_RATES.parcelInstall);
+  _pushLaborRow(laborRows, 'Mailbox install',    mailboxMult,            LABOR_RATES.mailboxInstall);
+  _pushLaborRow(laborRows, 'IoT per suite',      iotInstallQty,          LABOR_RATES.iotPerSuite);
+  if(hasInstallScope){
+    _pushLaborRow(laborRows, 'Head-end base',    1,                       LABOR_RATES.headEndBase);
+  }
+  // Cabling labor uses raw meters regardless of display unit choice.
+  _pushLaborRow(laborRows, 'Cabling per meter',  Math.round(totalLengthM * 10) / 10, LABOR_RATES.cablingPerMeter);
+  if(hasInstallScope){
+    _pushLaborRow(laborRows, 'Commissioning',    1,                       LABOR_RATES.commissioning);
+  }
+  var totalHours = laborRows.reduce(function(s, r){ return s + r.hours; }, 0);
+
+  return {
+    cameras:         cameraRows,
+    accessControl:   acRows,
+    smartAptPlaced:  smartAptPlaced,
+    smartAptIot:     smartAptIot,
+    suites:          suiteRows,
+    headEnd:         headEndRows,
+    cabling:         cabling,
+    labor:           { rows: laborRows, totalHours: totalHours }
+  };
 }
 
 // Pass D: user-driven BOM config inputs route through this so we can mark
