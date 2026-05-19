@@ -483,15 +483,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .modal-close-x:hover { color:var(--text); background:var(--surface-soft); }
 
 /* Pass N+1 M5: Unit Types modal — row layout. Header + flex row per
-   unit type with label, bedrooms, bathrooms, and a delete button. The
+   unit type with bedrooms, bathrooms, label, and a delete button. The
    header row uses the same column structure so labels align. */
 .ut-row-header {
-  display:grid; grid-template-columns:1fr 70px 70px 32px; gap:8px;
+  display:grid; grid-template-columns:70px 70px 1fr 32px; gap:8px;
   font:700 9px var(--font-ui); color:var(--text-muted); letter-spacing:.05em;
   text-transform:uppercase; padding:0 4px 4px;
 }
 .ut-row {
-  display:grid; grid-template-columns:1fr 70px 70px 32px; gap:8px;
+  display:grid; grid-template-columns:70px 70px 1fr 32px; gap:8px;
   margin-bottom:6px; align-items:center;
 }
 .ut-row input[type="text"],
@@ -1342,7 +1342,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
              to View menu + eye dropdown (top bar). The suitesHidden state
              is unchanged; setViewToggle('suiteLabels') drives the swap. -->
         <div id="suite-unit-types-list"></div>
-        <p class="reader-hint" id="suite-hint">Define unit types, then place suites on the floor plan (placement lands in M6).</p>
+        <p class="reader-hint" id="suite-hint">Define unit types, then place suites on the floor plan.</p>
       </div>
       <div class="phdr">Suites on this page &nbsp;<span id="suite-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="suite-list"></div>
@@ -1766,7 +1766,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   <div class="modal-box" style="min-width:520px; max-width:640px; position:relative;">
     <button class="modal-close-x" onclick="closeUnitTypesModal()" title="Close" aria-label="Close">&times;</button>
     <h3>&#127968; Unit Types</h3>
-    <p style="margin-bottom:10px;">Define the unit-type catalog for this project. Each row is a unit type that will appear in the per-suite placement modal (M6) and drive in-unit IoT device counts in the BOM (M8). You can revisit this list at any time via the <b>Manage Unit Types</b> button in Suites mode.</p>
+    <p style="margin-bottom:10px;">Add the unit types found in your building (e.g. 1BR/1BA, 2BR/2BA). You'll use these when assigning a type to each suite, and we'll use them to calculate how many smart devices you'll need. You can update this list anytime from Suites.</p>
     <div id="unit-types-rows-container"></div>
     <div style="display:flex; gap:8px; margin-top:8px;">
       <button class="btn btn-blue" id="btn-add-unit-type-row" onclick="addUnitTypeRow()">+ Add Unit Type</button>
@@ -6182,20 +6182,37 @@ function _newUnitTypeId(){
   return 'ut-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
 }
 
+// Auto-fill label format: "${bedrooms}BR / ${bathrooms}BA".
+// Used by addUnitTypeRow + the seed row + the BR/BA edit handler. The
+// `labelUserEdited` flag on each draft row gates whether this regenerates.
+function _formatUnitTypeLabel(br, ba){
+  return br + 'BR / ' + ba + 'BA';
+}
+
 function openUnitTypesModal(){
   // Seed draft from the current persisted list. Clone so cancel works.
+  // Existing rows load with labelUserEdited=true: we don't know their edit
+  // history, so treat the saved label as user-set (don't clobber labels
+  // like "Penthouse" if the user later toggles BR/BA).
   _unitTypesDraft = (projectInfo.unitTypes || []).map(function(ut){
     return {
       id:        ut.id || _newUnitTypeId(),
       label:     ut.label || '',
       bedrooms:  (typeof ut.bedrooms === 'number')  ? ut.bedrooms  : 1,
-      bathrooms: (typeof ut.bathrooms === 'number') ? ut.bathrooms : 1
+      bathrooms: (typeof ut.bathrooms === 'number') ? ut.bathrooms : 1,
+      labelUserEdited: true
     };
   });
   if(_unitTypesDraft.length === 0){
-    // First-time / empty-catalog open — seed with one blank row so the
-    // user has something to fill in.
-    _unitTypesDraft.push({ id: _newUnitTypeId(), label: '', bedrooms: 1, bathrooms: 1 });
+    // First-time / empty-catalog open — seed with one blank row pre-filled
+    // via the auto-label format so the user sees the convention.
+    _unitTypesDraft.push({
+      id: _newUnitTypeId(),
+      label: _formatUnitTypeLabel(1, 1),
+      bedrooms: 1,
+      bathrooms: 1,
+      labelUserEdited: false
+    });
   }
   _renderUnitTypesRows();
   document.getElementById('unit-types-err').style.display = 'none';
@@ -6217,16 +6234,16 @@ function _renderUnitTypesRows(){
     return;
   }
   var html = '<div class="ut-row-header">' +
-              '<div>Label</div>' +
               '<div>Bedrooms</div>' +
               '<div>Bathrooms</div>' +
+              '<div>Label</div>' +
               '<div></div>' +
              '</div>';
   _unitTypesDraft.forEach(function(ut, idx){
     html += '<div class="ut-row" data-ut-idx="' + idx + '">' +
-              '<input type="text" data-field="label"     value="' + escapeHtml(ut.label) + '" placeholder="e.g. 1BR/1BA Standard" oninput="onUnitTypeRowEdit(' + idx + ', \'label\', this)">' +
               '<input type="number" data-field="bedrooms"  value="' + ut.bedrooms + '"  min="0"   max="10" step="1"   oninput="onUnitTypeRowEdit(' + idx + ', \'bedrooms\', this)">' +
               '<input type="number" data-field="bathrooms" value="' + ut.bathrooms + '" min="0.5" max="10" step="0.5" oninput="onUnitTypeRowEdit(' + idx + ', \'bathrooms\', this)">' +
+              '<input type="text" data-field="label"     value="' + escapeHtml(ut.label) + '" placeholder="e.g. 1BR / 1BA Standard" oninput="onUnitTypeRowEdit(' + idx + ', \'label\', this)">' +
               '<button class="ut-row-del" onclick="removeUnitTypeRow(' + idx + ')" title="Remove this unit type">&times;</button>' +
             '</div>';
   });
@@ -6236,18 +6253,45 @@ function _renderUnitTypesRows(){
 function onUnitTypeRowEdit(idx, field, inp){
   if(!_unitTypesDraft[idx]) return;
   if(field === 'label'){
+    // Any user typing in the label field — including clearing it — locks
+    // auto-fill off for this row for the rest of the modal session.
     _unitTypesDraft[idx].label = inp.value;
+    _unitTypesDraft[idx].labelUserEdited = true;
   } else {
     // Number field — parse, allow temporarily-empty during typing.
     var v = parseFloat(inp.value);
-    if(isFinite(v)) _unitTypesDraft[idx][field] = v;
+    if(isFinite(v)){
+      _unitTypesDraft[idx][field] = v;
+      // Auto-regenerate the label only when the user hasn't taken it over.
+      if(!_unitTypesDraft[idx].labelUserEdited){
+        var newLabel = _formatUnitTypeLabel(_unitTypesDraft[idx].bedrooms, _unitTypesDraft[idx].bathrooms);
+        _unitTypesDraft[idx].label = newLabel;
+        // Push the change to the visible label input without re-rendering
+        // the whole list (re-render would blur the BR/BA field mid-type).
+        // Setting .value programmatically does NOT fire oninput, so the
+        // labelUserEdited flag stays correctly false.
+        var row = document.querySelector('.ut-row[data-ut-idx="' + idx + '"]');
+        if(row){
+          var labelInp = row.querySelector('[data-field="label"]');
+          if(labelInp) labelInp.value = newLabel;
+        }
+      }
+    }
   }
   // Clear invalid class on edit; final validation runs on Save.
   inp.classList.remove('invalid');
 }
 
 function addUnitTypeRow(){
-  _unitTypesDraft.push({ id: _newUnitTypeId(), label: '', bedrooms: 1, bathrooms: 1 });
+  // New rows start unedited so BR/BA changes drive the label until the
+  // user types in the label input.
+  _unitTypesDraft.push({
+    id: _newUnitTypeId(),
+    label: _formatUnitTypeLabel(1, 1),
+    bedrooms: 1,
+    bathrooms: 1,
+    labelUserEdited: false
+  });
   _renderUnitTypesRows();
 }
 
