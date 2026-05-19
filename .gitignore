@@ -20,3 +20,9 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# Doc build deps (lockfile + modules are environment-local; package.json is tracked)
+docs/node_modules/
+docs/package-lock.json
+# Override the project-wide *.json ignore so the docs build manifest tracks
+!docs/package.json

@@ -11,6 +11,15 @@ This folder produces the customer-facing **Surveillance Markup Tool — User Gui
 
 ## Workflow
 
+### First-time setup
+
+```bash
+cd docs && npm install
+```
+
+Installs the `docx` build dependency into `docs/node_modules/` (gitignored).
+Only needed once per clone.
+
 ### To rebuild after editing the markdown
 
 ```bash

@@ -18,6 +18,20 @@
   /* Camera type colors — semantic, do not change */
   --dome:#c8202c; --bullet:#2563eb; --ptz:#7c3aed; --lpr:#d97706;
   --turret:#0891b2; --fisheye:#16a34a;
+  /* Tile-unification mini-pass: mode color identity for tier-1 picker
+     tiles and the top-rail mode-tab active underline. Two-tone palette
+     per mode (primary + light tint). Canvas markers, riser icons, BOM
+     color swatches, and list dot-indicators keep their own type-
+     distinguishing colors — these variables only paint left-pane tiles
+     and the top-rail tab. Note intercom uses GREEN here (#15803d) even
+     though canvas/riser/dot keep the M9 teal-700 (#0f766e); the green
+     vs. teal split distinguishes mode-identity from device-identity. */
+  --mode-cam:#dc2626;       --mode-cam-soft:#fee2e2;
+  --mode-ac:#2563eb;        --mode-ac-soft:#dbeafe;
+  --mode-intercom:#15803d;  --mode-intercom-soft:#dcfce7;
+  --mode-parcel:#ea580c;    --mode-parcel-soft:#ffedd5;
+  --mode-mailbox:#e11d48;   --mode-mailbox-soft:#ffe4e6;
+  --mode-suite:#7c3aed;     --mode-suite-soft:#ede9fe;
   /* Type stacks */
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -550,7 +564,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   min-height:76px; box-sizing:border-box; min-width:0;
   transition:all .15s;
 }
-.suite-mode-tile:hover { border-color:#9ca3af; background:#f9fafb; transform:translateY(-1px); }
+/* Tile-unification mini-pass: suite-mode tile hover picks up the mode-
+   suite purple palette. Suite tiles have no "selected" state (they're
+   modal-trigger tiles, not pickers) so only hover carries the mode color. */
+.suite-mode-tile:hover { border-color:var(--mode-suite); background:var(--mode-suite-soft); transform:translateY(-1px); }
 .suite-mode-tile.subdued { opacity:0.6; }
 .suite-mode-tile .sm-icon  { font-size:22px; line-height:1; }
 .suite-mode-tile .sm-label { font:700 9px var(--font-ui); color:#111; letter-spacing:.02em; line-height:1.15; text-transform:uppercase; }
@@ -737,6 +754,16 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.15;
 }
 .brand-tile.active .brand-name { color:var(--primary); }
+/* Tile-unification mini-pass: mode-scoped hover + selected states for
+   tier-1 .brand-tile. The generic rules above stay as a fallback; the
+   mode-scoped rules below override based on parent panel-body data-mode-
+   section. Cameras = red, AC = blue (matches the brief palette). */
+[data-mode-section="cameras"] .brand-tile:hover { border-color:var(--mode-cam); background:var(--mode-cam-soft); }
+[data-mode-section="cameras"] .brand-tile.active { border-color:var(--mode-cam); background:var(--mode-cam-soft); box-shadow:0 0 0 2px rgba(220,38,38,.12); }
+[data-mode-section="cameras"] .brand-tile.active .brand-name { color:var(--mode-cam); }
+[data-mode-section="access"] .brand-tile:hover { border-color:var(--mode-ac); background:var(--mode-ac-soft); }
+[data-mode-section="access"] .brand-tile.active { border-color:var(--mode-ac); background:var(--mode-ac-soft); box-shadow:0 0 0 2px rgba(37,99,235,.12); }
+[data-mode-section="access"] .brand-tile.active .brand-name { color:var(--mode-ac); }
 .brand-logo {
   width:34px; height:34px; border-radius:5px; display:flex; align-items:center; justify-content:center;
   font:800 12px var(--font-ui); letter-spacing:.04em; color:#fff;
@@ -837,15 +864,25 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
 .smart-apt-tile .sa-cap   { font:700 7px var(--font-ui); color:#9ca3af; text-transform:uppercase; letter-spacing:.04em; line-height:1.15;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
-.smart-apt-tile.active-intercom { border-color:#0f766e; background:#ccfbf1; color:#0f766e; }
+/* Tile-unification mini-pass: smart-apt-tile active state now uses the
+   mode palette (--mode-intercom etc.). Intercom shifted from canvas
+   teal-700 (#0f766e) to mode-green (#15803d) — only the TILE state moves;
+   the canvas marker, riser icon, and .dot-intercom badge stay teal so
+   device-identity stays distinct from mode-identity. */
+.smart-apt-tile.active-intercom { border-color:var(--mode-intercom); background:var(--mode-intercom-soft); color:var(--mode-intercom); }
 .smart-apt-tile.active-intercom .sa-brand,
-.smart-apt-tile.active-intercom .sa-cap { color:#0f766e; }
-.smart-apt-tile.active-parcel   { border-color:#ea580c; background:#ffedd5; color:#ea580c; }
+.smart-apt-tile.active-intercom .sa-cap { color:var(--mode-intercom); }
+.smart-apt-tile.active-parcel   { border-color:var(--mode-parcel); background:var(--mode-parcel-soft); color:var(--mode-parcel); }
 .smart-apt-tile.active-parcel .sa-brand,
-.smart-apt-tile.active-parcel .sa-cap { color:#ea580c; }
-.smart-apt-tile.active-mailbox  { border-color:#e11d48; background:#ffe4e6; color:#e11d48; }
+.smart-apt-tile.active-parcel .sa-cap { color:var(--mode-parcel); }
+.smart-apt-tile.active-mailbox  { border-color:var(--mode-mailbox); background:var(--mode-mailbox-soft); color:var(--mode-mailbox); }
 .smart-apt-tile.active-mailbox .sa-brand,
-.smart-apt-tile.active-mailbox .sa-cap { color:#e11d48; }
+.smart-apt-tile.active-mailbox .sa-cap { color:var(--mode-mailbox); }
+/* Mode-scoped hover for smart-apt-tile so unarmed tiles still pick up
+   the mode color identity on hover. Border + light tint. */
+[data-mode-section="intercom"] .smart-apt-tile:hover { border-color:var(--mode-intercom); background:var(--mode-intercom-soft); }
+[data-mode-section="parcel"]   .smart-apt-tile:hover { border-color:var(--mode-parcel);   background:var(--mode-parcel-soft); }
+[data-mode-section="mailbox"]  .smart-apt-tile:hover { border-color:var(--mode-mailbox);  background:var(--mode-mailbox-soft); }
 /* Catalog-Tier1: right-panel mailbox cols×rows row. Two compact number
    inputs flanking a × glyph plus a unit hint string. */
 .rp-mailbox-size-row { display:flex; align-items:center; gap:6px; }
@@ -933,12 +970,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .pmt-btn { flex:1; padding:9px 6px; background:transparent; border:none; color:#9ca3af; font:700 9px var(--font-ui); letter-spacing:.07em; text-transform:uppercase; cursor:pointer; transition:all .12s; border-bottom:2px solid transparent; margin-bottom:-2px; }
 .pmt-btn:hover { color:#e5e7eb; background:#111827; }
 .pmt-btn.active { color:#fff; background:#111827; border-bottom-color:var(--primary); }
-.pmt-btn[data-mode="access"].active   { border-bottom-color:#1d4ed8; }
-/* Pass N+1 M1 (D6): per-mode accent colors for the 4 new device families. */
-.pmt-btn[data-mode="intercom"].active { border-bottom-color:#0f766e; }
-.pmt-btn[data-mode="parcel"].active   { border-bottom-color:#ea580c; }
-.pmt-btn[data-mode="mailbox"].active  { border-bottom-color:#e11d48; }
-.pmt-btn[data-mode="suite"].active    { border-bottom-color:#15803d; }
+/* Tile-unification mini-pass: top-rail mode-tab active underline picks up
+   the mode color palette. Each rule overrides the default --primary
+   underline above with the mode's signature color. */
+.pmt-btn[data-mode="cameras"].active  { border-bottom-color:var(--mode-cam); }
+.pmt-btn[data-mode="access"].active   { border-bottom-color:var(--mode-ac); }
+.pmt-btn[data-mode="intercom"].active { border-bottom-color:var(--mode-intercom); }
+.pmt-btn[data-mode="parcel"].active   { border-bottom-color:var(--mode-parcel); }
+.pmt-btn[data-mode="mailbox"].active  { border-bottom-color:var(--mode-mailbox); }
+.pmt-btn[data-mode="suite"].active    { border-bottom-color:var(--mode-suite); }
 .panel-body { display:flex; flex-direction:column; flex:1; overflow:hidden; }
 /* Pass N+1 M1: 6-mode panel-body filter. Each mode shows only its matching
    data-mode-section block; all others hide. Modes intercom / parcel / mailbox
@@ -1989,16 +2029,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </div>
   </div>
 
+  <!-- BOM Restructure follow-up: Labor Rate and Default Hrs/Cam inputs
+       removed. Labor lives on the Take-Off page now (LABOR_RATES constant
+       drives hours; pricing layers in on Quote page later). -->
   <div id="bom-config">
-    <div class="bom-cfg">
-      <label>Labor Rate</label>
-      $<input type="number" id="bom-labor-rate" value="0" step="0.01" min="0" oninput="bomConfigChanged()">
-      <span style="color:#78350f">/hr</span>
-    </div>
-    <div class="bom-cfg">
-      <label>Default Hrs/Cam</label>
-      <input type="number" id="bom-labor-hrs" value="2" step="0.25" min="0" oninput="bomConfigChanged()">
-    </div>
     <div class="bom-cfg">
       <label>Margin %</label>
       <input type="number" id="bom-margin-pct" value="0" step="1" min="0" max="100" oninput="bomConfigChanged()">
@@ -2485,19 +2519,21 @@ var panelMode = 'cameras';    // 'cameras' | 'access' | 'intercom' | 'parcel' | 
 
 // ─── BOM State ────────────────────────────────────────────────────────────────
 // Custom (manually-added) line items by section. Auto rows are derived live.
+// BOM Restructure pass: dropped `cabling` and `labor` keys. The BOM is now
+// procurement-only (equipment). Cabling totals and labor hours moved to the
+// Take-Off page (consumed via computeNonBomRows()). Legacy saves with
+// custom lines under cabling/labor get migrated into `other` with a
+// "(was: Cabling)" / "(was: Labor)" prefix on load — see applyProjectState.
 var bomCustomLines = {
   cameras: [],
   recording: [],
   network: [],
-  cabling: [],
-  // Pass N M3: ACCESS CONTROL section sits between Cabling and Labor (D1).
-  // Holds reader, controller, credential custom lines.
+  // Pass N M3: ACCESS CONTROL section. Holds reader, controller,
+  // credential custom lines.
   accessControl: [],
-  // Pass N+1 M8: SMART APARTMENT section sits between Access Control and
-  // Labor. Holds custom lines for intercoms, parcel lockers, mailbox banks,
-  // and in-unit IoT devices.
+  // Pass N+1 M8: SMART APARTMENT section. Holds custom lines for intercoms,
+  // parcel lockers, mailbox banks, and in-unit IoT devices.
   smartApartment: [],
-  labor: [],
   other: []
 };
 var bomOpen = false;
@@ -7915,9 +7951,9 @@ function updateSaveIndicator(){
 // update both. The autosave wrapper (version, timestamp, pdfMeta) is added
 // in autoSaveTick — this returns just the inner `data` field.
 function buildLiteSaveData(){
+  // BOM Restructure follow-up: laborRate / laborHrs no longer persisted —
+  // the inputs were removed and the labor compute lives in computeNonBomRows().
   var bomConfig = {
-    laborRate: parseFloat(document.getElementById('bom-labor-rate').value)||0,
-    laborHrs:  parseFloat(document.getElementById('bom-labor-hrs').value)||0,
     marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
     taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
     storDays:  parseFloat(document.getElementById('stor-days').value)||30,
@@ -8139,9 +8175,8 @@ async function saveJSON(){
   // Yield once so the overlay paints before the encode work blocks the thread.
   await new Promise(function(r){ setTimeout(r, 0); });
 
+  // BOM Restructure follow-up: laborRate / laborHrs no longer persisted.
   var bomConfig = {
-    laborRate: parseFloat(document.getElementById('bom-labor-rate').value)||0,
-    laborHrs:  parseFloat(document.getElementById('bom-labor-hrs').value)||0,
     marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
     taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
     storDays:  parseFloat(document.getElementById('stor-days').value)||30,
@@ -8409,10 +8444,32 @@ function applyProjectState(data){
     // Pass N+1 M8: same backfill for the SMART APARTMENT key — pre-M8
     // saves won't have it.
     if(!Array.isArray(bomCustomLines.smartApartment)) bomCustomLines.smartApartment = [];
+    // BOM Restructure pass: cabling and labor sections were removed.
+    // Migrate any custom lines from pre-pass saves into `other` with a
+    // "(was: <Section>)" prefix so the user can re-categorize without
+    // losing entered descriptions / qtys / unit prices. Then drop the
+    // now-orphan keys so the section-rendering code doesn't see them.
+    if(!Array.isArray(bomCustomLines.other)) bomCustomLines.other = [];
+    function _migrateLegacySection(srcKey, tag){
+      var src = bomCustomLines[srcKey];
+      if(Array.isArray(src) && src.length > 0){
+        src.forEach(function(row){
+          var newDesc = '(was: ' + tag + ') ' + (row.desc || '');
+          bomCustomLines.other.unshift({
+            desc: newDesc,
+            qty:  row.qty  || 0,
+            unit: row.unit || 0
+          });
+        });
+      }
+      delete bomCustomLines[srcKey];
+    }
+    _migrateLegacySection('cabling', 'Cabling');
+    _migrateLegacySection('labor',   'Labor');
     if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
     if(data.bom.config){
-      if(data.bom.config.laborRate !== undefined) document.getElementById('bom-labor-rate').value = data.bom.config.laborRate;
-      if(data.bom.config.laborHrs  !== undefined) document.getElementById('bom-labor-hrs').value  = data.bom.config.laborHrs;
+      // BOM Restructure follow-up: laborRate / laborHrs entries in pre-pass
+      // saves are silently ignored on load — the inputs they fed are gone.
       if(data.bom.config.marginPct !== undefined) document.getElementById('bom-margin-pct').value = data.bom.config.marginPct;
       if(data.bom.config.taxPct    !== undefined) document.getElementById('bom-tax-pct').value    = data.bom.config.taxPct;
       if(data.bom.config.storDays  !== undefined) document.getElementById('stor-days').value      = data.bom.config.storDays;
@@ -8864,7 +8921,9 @@ function drawProposalCover(doc, W, H){
     doc.text('GRAND TOTAL', 65, summaryY);
     var auto = computeAutoRows();
     var subtotal = 0;
-    ['cameras','recording','network','cabling','accessControl','smartApartment','labor','other'].forEach(function(k){
+    // BOM Restructure pass: GRAND TOTAL is equipment-only. Cabling and
+    // labor totals live on Take-Off / Quote pages, not on the cover.
+    ['cameras','recording','network','accessControl','smartApartment','other'].forEach(function(k){
       auto[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
       bomCustomLines[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
     });
@@ -8893,10 +8952,8 @@ function drawProposalBOM(doc, W, H){
     { title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
     { title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
     { title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
-    { title:'Cabling',               items: auto.cabling.concat(bomCustomLines.cabling) },
     { title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
     { title:'Smart Apartment',       items: auto.smartApartment.concat(bomCustomLines.smartApartment) },
-    { title:'Labor',                 items: auto.labor.concat(bomCustomLines.labor) },
     { title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
   ];
 
@@ -10167,8 +10224,10 @@ var CREDENTIAL_MULTIPLIER = 1.0;
 
 // Compute auto-derived rows from current cameras
 function computeAutoRows(){
-  var laborRate = parseFloat(document.getElementById('bom-labor-rate').value) || 0;
-  var defaultHrs = parseFloat(document.getElementById('bom-labor-hrs').value) || 0;
+  // BOM Restructure pass: laborRate / defaultHrs were read from the BOM
+  // drawer's labor inputs and used by the (now-removed) camera-install
+  // labor block. The DOM inputs are still present but no longer read;
+  // labor lives on the Take-Off page via computeNonBomRows().
 
   // Filter cameras by tier (used by the BOM only — does not affect placements)
   var filteredCams = cameras.filter(function(c){
@@ -10251,29 +10310,9 @@ function computeAutoRows(){
     });
   }
 
-  // Auto-labor: install hours per camera by type.
-  // Pass A.5: typeCounts accumulate pageMultiplier per camera.
-  var laborRows = [];
-  if(filteredCams.length > 0){
-    var typeCounts = { dome:0, bullet:0, turret:0, fisheye:0, ptz:0, lpr:0 };
-    filteredCams.forEach(function(c){
-      var t = c.type || 'dome';
-      if(typeCounts[t] === undefined) typeCounts[t] = 0;
-      typeCounts[t] += pageMultiplier(c.page);
-    });
-    Object.keys(typeCounts).forEach(function(t){
-      if(typeCounts[t] > 0){
-        var hrs = DEFAULT_HOURS_BY_TYPE[t] || 2.0;
-        var totalHrs = typeCounts[t] * hrs;
-        laborRows.push({
-          auto:true, src:'labor', key:'auto-labor-'+t,
-          desc: 'Install Labor — ' + t.charAt(0).toUpperCase()+t.slice(1) + ' camera ('+hrs+' hr × '+typeCounts[t]+')',
-          qty: totalHrs, unit: laborRate, sectionAuto:true,
-          unitLabel:'hr'
-        });
-      }
-    });
-  }
+  // BOM Restructure pass: the legacy camera-install labor block (BOM
+  // Labor section auto-rows) was removed. Labor lives on the Take-Off
+  // page via computeNonBomRows() now; see Take-Off Section 7.
 
   // Pass N M3: ACCESS CONTROL auto-rows. Three groups:
   //   1. Readers, grouped by SKU (qty multiplied across typical floors)
@@ -10455,14 +10494,14 @@ function computeAutoRows(){
     }
   });
 
+  // BOM Restructure pass: 6 sections (was 8). Cabling and labor moved
+  // out to computeNonBomRows() for Take-Off consumption.
   return {
     cameras: camRows,
     recording: recordingRows,
     network: networkRows,
-    cabling: computeAutoCableRows(),
     accessControl: acRows,
     smartApartment: smartAptRows,
-    labor: laborRows,
     other: []
   };
 }
@@ -10501,6 +10540,125 @@ function computeAutoCableRows(){
     });
   }
   return rows;
+}
+
+// ─── BOM Restructure: Non-BOM (Take-Off) compute ─────────────────────────────
+// computeNonBomRows() returns the cabling summary + 10-category labor model
+// that the BOM no longer carries (BOM = procurement parts list, equipment
+// only). Consumers: buildTakeOffData (Take-Off Section 6 cabling + Section 7
+// labor), eventual Quote page. Returned shape:
+//   cabling: { totalRuns, totalLength, avgRunLength, overheadMultiplier, units }
+//   labor:   { rows: [{category, qty, rate, hours}, ...], totalHours }
+function computeNonBomRows(){
+  // ── Cabling summary ────────────────────────────────────────────────
+  // Mirrors what buildTakeOffData previously computed inline. Uses the
+  // per-camera straight-line × pageMultiplier model, then applies the 10%
+  // routing-overhead multiplier. Display unit follows the project's first
+  // calibrated page (matches the per-page reach display convention).
+  var overheadMultiplier = 1.10;
+  var totalRuns = 0;
+  var totalLengthMRaw = 0;
+  Object.keys(headends).forEach(function(p){
+    var pageIdx = parseInt(p, 10);
+    var ppm = getPPM(pageIdx);
+    if(!ppm) return;
+    var mult = pageMultiplier(pageIdx);
+    cameras.filter(function(c){ return c.page === pageIdx; }).forEach(function(cam){
+      var m = cableLengthM(cam, pageIdx);
+      if(m != null){
+        totalLengthMRaw += m * mult;
+        totalRuns       += mult;
+      }
+    });
+  });
+  var totalLengthM = totalLengthMRaw * overheadMultiplier;
+  var cablingUnits = 'm';
+  for(var pi = 0; pi < pages.length; pi++){
+    if(calibrations[pi]){
+      cablingUnits = getCalibUnit(pi) || 'm';
+      break;
+    }
+  }
+  var totalLengthDisplay  = cablingUnits === 'ft' ? totalLengthM * FT_PER_METER : totalLengthM;
+  var avgRunLengthDisplay = totalRuns > 0 ? totalLengthDisplay / totalRuns : 0;
+  var cabling = {
+    totalRuns:          totalRuns,
+    totalLength:        Math.round(totalLengthDisplay),
+    avgRunLength:       Math.round(avgRunLengthDisplay * 10) / 10,
+    overheadMultiplier: overheadMultiplier,
+    units:              cablingUnits
+  };
+
+  // ── Labor summary ─────────────────────────────────────────────────
+  // 10-category model. Zero-qty rows omitted. Per-unit-type IoT counts
+  // drive the "IoT per suite" qty (matches the per-unit-type math in
+  // computeAutoRows' smart-apartment IoT block).
+  var camCount = multipliedTotal(cameras);
+  var headendCount = Object.keys(headends).length;
+  var hasInstallScope = (headendCount > 0 || camCount > 0);
+
+  var readerCountForLabor = 0, controllerCountForLabor = 0;
+  acDevices.forEach(function(d){
+    var cat = acCategoryOf(d);
+    var mult = pageMultiplier(d.page);
+    if(cat === 'Readers')          readerCountForLabor     += mult;
+    else if(cat === 'Controllers') controllerCountForLabor += mult;
+  });
+  var intercomMult = 0, parcelMult = 0, mailboxMult = 0;
+  smartApartment.forEach(function(d){
+    var m = pageMultiplier(d.page);
+    if(d.type === 'intercom')     intercomMult += m;
+    else if(d.type === 'parcel')  parcelMult   += m;
+    else if(d.type === 'mailbox') mailboxMult  += m;
+  });
+  // IoT install qty = Σ (suite count of each unit type × iotCounts[device])
+  // across all checked flags.
+  var iotFlags = projectInfo.iotDevices || {};
+  var unitTypesArr = projectInfo.unitTypes || [];
+  var suiteArr = (typeof suites !== 'undefined' && Array.isArray(suites)) ? suites : [];
+  var suitesByType = {};
+  unitTypesArr.forEach(function(ut){ suitesByType[ut.id] = 0; });
+  suiteArr.forEach(function(s){
+    if(s && s.unitType && suitesByType.hasOwnProperty(s.unitType)){
+      suitesByType[s.unitType] += pageMultiplier(s.page);
+    }
+  });
+  var iotInstallQty = 0;
+  ['smartLock', 'thermostat', 'waterSensor'].forEach(function(key){
+    if(!iotFlags[key]) return;
+    unitTypesArr.forEach(function(ut){
+      var perType = suitesByType[ut.id] || 0;
+      var iotCount = (ut.iotCounts && typeof ut.iotCounts[key] === 'number')
+        ? ut.iotCounts[key] : 0;
+      iotInstallQty += perType * iotCount;
+    });
+  });
+
+  function _pushLaborRow(rows, category, qty, rate){
+    if(!qty) return;
+    rows.push({ category: category, qty: qty, rate: rate, hours: qty * rate });
+  }
+  var laborRows = [];
+  _pushLaborRow(laborRows, 'Camera install',     camCount,                LABOR_RATES.cameraInstall);
+  _pushLaborRow(laborRows, 'Reader install',     readerCountForLabor,     LABOR_RATES.readerInstall);
+  _pushLaborRow(laborRows, 'Controller install', controllerCountForLabor, LABOR_RATES.controllerInstall);
+  _pushLaborRow(laborRows, 'Intercom install',   intercomMult,            LABOR_RATES.intercomInstall);
+  _pushLaborRow(laborRows, 'Parcel install',     parcelMult,              LABOR_RATES.parcelInstall);
+  _pushLaborRow(laborRows, 'Mailbox install',    mailboxMult,             LABOR_RATES.mailboxInstall);
+  _pushLaborRow(laborRows, 'IoT per suite',      iotInstallQty,           LABOR_RATES.iotPerSuite);
+  if(hasInstallScope){
+    _pushLaborRow(laborRows, 'Head-end base',    1,                        LABOR_RATES.headEndBase);
+  }
+  _pushLaborRow(laborRows, 'Cabling per meter', Math.round(totalLengthM * 10) / 10, LABOR_RATES.cablingPerMeter);
+  if(hasInstallScope){
+    _pushLaborRow(laborRows, 'Commissioning',    1,                        LABOR_RATES.commissioning);
+  }
+  var totalHours = laborRows.reduce(function(s, r){ return s + r.hours; }, 0);
+
+  return {
+    cabling: cabling,
+    labor:   { rows: laborRows, totalHours: totalHours }
+  };
 }
 
 // ─── Take-Off Page: data extraction (M1) ─────────────────────────────────────
@@ -10707,99 +10865,11 @@ function buildTakeOffData(){
     headEndRows.push({ label:'UPS-1',  type:'UPS',    brand:'', model: 'Rack UPS',                qty: 1 });
   }
 
-  // Section 6 — Cabling Summary. Mirrors computeAutoCableRows' accounting
-  // but exposes runs / lengths / overhead multiplier as separate fields
-  // rather than wrapping them in a single qty. Display unit = first
-  // calibrated page's unit, fallback meters (matches the per-page reach
-  // display convention).
-  var overheadMultiplier = 1.10;
-  var totalRuns = 0;
-  var totalLengthMRaw = 0;   // meters, pre-overhead
-  Object.keys(headends).forEach(function(p){
-    var pageIdx = parseInt(p, 10);
-    var ppm = getPPM(pageIdx);
-    if(!ppm) return;
-    var mult = pageMultiplier(pageIdx);
-    cameras.filter(function(c){ return c.page === pageIdx; }).forEach(function(cam){
-      var m = cableLengthM(cam, pageIdx);
-      if(m != null){
-        totalLengthMRaw += m * mult;
-        totalRuns       += mult;
-      }
-    });
-  });
-  var totalLengthM = totalLengthMRaw * overheadMultiplier;
-  // Pick the project's primary cabling display unit.
-  var cablingUnits = 'm';
-  for(var pi = 0; pi < pages.length; pi++){
-    if(calibrations[pi]){
-      cablingUnits = getCalibUnit(pi) || 'm';
-      break;
-    }
-  }
-  var totalLengthDisplay = cablingUnits === 'ft' ? totalLengthM * FT_PER_METER : totalLengthM;
-  var avgRunLengthDisplay = totalRuns > 0 ? totalLengthDisplay / totalRuns : 0;
-  var cabling = {
-    totalRuns:           totalRuns,
-    totalLength:         Math.round(totalLengthDisplay),
-    avgRunLength:        Math.round(avgRunLengthDisplay * 10) / 10,
-    overheadMultiplier:  overheadMultiplier,
-    units:               cablingUnits
-  };
-
-  // Section 7 — Labor Summary. One row per non-zero category. qty for
-  // device categories uses pageMultiplier-aware totals (matches BOM
-  // labor conventions). Cabling qty stays in meters regardless of display
-  // unit since LABOR_RATES.cablingPerMeter is per-meter.
-  var readerCountForLabor = 0, controllerCountForLabor = 0;
-  acDevices.forEach(function(d){
-    var cat = acCategoryOf(d);
-    var mult = pageMultiplier(d.page);
-    if(cat === 'Readers')          readerCountForLabor     += mult;
-    else if(cat === 'Controllers') controllerCountForLabor += mult;
-  });
-  var intercomMult = 0, parcelMult = 0, mailboxMult = 0;
-  smartApartment.forEach(function(d){
-    var m = pageMultiplier(d.page);
-    if(d.type === 'intercom')     intercomMult += m;
-    else if(d.type === 'parcel')  parcelMult   += m;
-    else if(d.type === 'mailbox') mailboxMult  += m;
-  });
-  // IoT install total qty = (number of IoT flags checked) × (suite count).
-  // Sum across smartAptIot rows produces that product naturally.
-  var iotInstallQty = 0;
-  smartAptIot.forEach(function(r){ iotInstallQty += r.totalQty; });
-  // Head-end + commissioning are flat-per-project, but only emit them when
-  // there's actually equipment to commission (parity with the head-end
-  // gating above).
-  var hasInstallScope = headEndRows.length > 0;
-
-  function _pushLaborRow(rows, category, qty, rate){
-    if(!qty) return;
-    rows.push({
-      category: category,
-      qty:      qty,
-      rate:     rate,
-      hours:    qty * rate
-    });
-  }
-  var laborRows = [];
-  _pushLaborRow(laborRows, 'Camera install',     camCount,               LABOR_RATES.cameraInstall);
-  _pushLaborRow(laborRows, 'Reader install',     readerCountForLabor,    LABOR_RATES.readerInstall);
-  _pushLaborRow(laborRows, 'Controller install', controllerCountForLabor,LABOR_RATES.controllerInstall);
-  _pushLaborRow(laborRows, 'Intercom install',   intercomMult,           LABOR_RATES.intercomInstall);
-  _pushLaborRow(laborRows, 'Parcel install',     parcelMult,             LABOR_RATES.parcelInstall);
-  _pushLaborRow(laborRows, 'Mailbox install',    mailboxMult,            LABOR_RATES.mailboxInstall);
-  _pushLaborRow(laborRows, 'IoT per suite',      iotInstallQty,          LABOR_RATES.iotPerSuite);
-  if(hasInstallScope){
-    _pushLaborRow(laborRows, 'Head-end base',    1,                       LABOR_RATES.headEndBase);
-  }
-  // Cabling labor uses raw meters regardless of display unit choice.
-  _pushLaborRow(laborRows, 'Cabling per meter',  Math.round(totalLengthM * 10) / 10, LABOR_RATES.cablingPerMeter);
-  if(hasInstallScope){
-    _pushLaborRow(laborRows, 'Commissioning',    1,                       LABOR_RATES.commissioning);
-  }
-  var totalHours = laborRows.reduce(function(s, r){ return s + r.hours; }, 0);
+  // Sections 6 + 7 — Cabling Summary and Labor Summary. BOM Restructure
+  // pass moved both computes into computeNonBomRows() so the BOM (now
+  // procurement-only) and Take-Off (analytical document) read from the
+  // same source of truth.
+  var nonBom = computeNonBomRows();
 
   return {
     cameras:         cameraRows,
@@ -10808,8 +10878,8 @@ function buildTakeOffData(){
     smartAptIot:     smartAptIot,
     suites:          suiteRows,
     headEnd:         headEndRows,
-    cabling:         cabling,
-    labor:           { rows: laborRows, totalHours: totalHours }
+    cabling:         nonBom.cabling,
+    labor:           nonBom.labor
   };
 }
 
@@ -10834,10 +10904,8 @@ function recalcBom(){
     { key:'cameras',        title:'Cameras &amp; Imaging',     auto: auto.cameras,        custom: bomCustomLines.cameras },
     { key:'recording',      title:'Recording &amp; Storage',   auto: auto.recording,      custom: bomCustomLines.recording },
     { key:'network',        title:'Network &amp; Power',       auto: auto.network,        custom: bomCustomLines.network },
-    { key:'cabling',        title:'Cabling',                   auto: auto.cabling,        custom: bomCustomLines.cabling },
     { key:'accessControl',  title:'Access Control',            auto: auto.accessControl,  custom: bomCustomLines.accessControl },
     { key:'smartApartment', title:'Smart Apartment',           auto: auto.smartApartment, custom: bomCustomLines.smartApartment },
-    { key:'labor',          title:'Labor',                     auto: auto.labor,          custom: bomCustomLines.labor },
     { key:'other',          title:'Other / Accessories',       auto: auto.other,          custom: bomCustomLines.other }
   ];
 
@@ -11146,10 +11214,8 @@ function exportBomCSV(){
     { key:'cameras',        title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
     { key:'recording',      title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
     { key:'network',        title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
-    { key:'cabling',        title:'Cabling',               items: auto.cabling.concat(bomCustomLines.cabling) },
     { key:'accessControl',  title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
     { key:'smartApartment', title:'Smart Apartment',       items: auto.smartApartment.concat(bomCustomLines.smartApartment) },
-    { key:'labor',          title:'Labor',                 items: auto.labor.concat(bomCustomLines.labor) },
     { key:'other',          title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
   ];
 

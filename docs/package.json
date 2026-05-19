@@ -1,0 +1,12 @@
+{
+  "name": "surveillance-markup-docs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build script for the Surveillance Markup Tool user guide. Generates docx + PDF from docs/user-guide.md.",
+  "scripts": {
+    "build": "node build-guide.js"
+  },
+  "dependencies": {
+    "docx": "^8.5.0"
+  }
+}

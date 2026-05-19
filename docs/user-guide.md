@@ -4,7 +4,7 @@
 title: Surveillance Markup Tool
 subtitle: User Guide
 tagline: Plan, mark up, and quote security and smart-apartment systems
-version: 1.1
+version: 1.3
 date: May 2026
 org: Calgary Lock and Safe — Smart MF
 %ENDMETA
@@ -140,7 +140,7 @@ Click a placed camera to open the right panel. You can set:
 
 %H2 Cable runs
 
-Once a head-end location is set on the page (typically the NVR/IT room), the tool measures each camera's cable run distance from the camera to the head-end and applies a routing-overhead multiplier. The result feeds the BOM cable line items.
+Once a head-end location is set on the page (typically the NVR/IT room), the tool measures each camera's cable run distance from the camera to the head-end and applies a routing-overhead multiplier. The result feeds the riser diagram and the Take-Off page; cabling is not on the BOM (the BOM is equipment-only as of v1.3).
 
 *Cable runs are recalculated automatically when you move a camera.*
 
@@ -182,7 +182,7 @@ Suites mode tracks the dwelling units in the building. Each suite is a marker pl
 
 %H2 Step 1 — Define unit types
 
-Before placing suites, define the unit types that exist in the building. Click **Manage Unit Types…** in the Suites left pane.
+Before placing suites, define the unit types that exist in the building. Click the **Unit Types** tile in the Suites left pane.
 
 Each unit type has three fields:
 
@@ -191,6 +191,10 @@ Each unit type has three fields:
 - **Label** — the display name. Auto-fills as you type bedrooms and bathrooms (e.g., "2BR / 1.5BA"), but you can override with whatever name you prefer ("Penthouse", "Corner Unit", "1BR/1BA Standard").
 
 *Once you type your own label, the tool stops auto-filling that row — your custom label is preserved even if you change bedrooms or bathrooms later.*
+
+*Each unit type label must be unique within the project. Saving a duplicate label produces an inline error that identifies the conflicting rows.*
+
+When IoT devices are selected in the IoT Devices modal, additional columns appear in the Unit Types modal — one per selected device. Enter the per-suite count for each unit type (e.g., a Penthouse might have 2 smart locks; a Studio might have 1). The BOM and Take-Off page automatically apply these counts when calculating totals across the building.
 
 %H2 Step 2 — Place suites
 
@@ -226,17 +230,7 @@ For **in-unit IoT**, you don't place anything on the floor plan. Instead, you te
 
 %H2 IoT Devices modal
 
-In Suites mode, click **IoT Devices…** in the left pane. A modal opens with three checkboxes:
-
-- ☐ **Smart Lock**
-- ☐ **Thermostat**
-- ☐ **Water Sensor**
-
-Check the devices that ship to every suite. Save. The BOM **SMART APARTMENT** section now includes one auto-row per checked device, with quantity equal to your project's total suite count (multiplied across typical floors where applicable).
-
-%CALLOUT Per-unit-type rules — coming later
-For now, the IoT devices apply uniformly to every suite. A future release will add per-bedroom-type rules ("Penthouses get 3 locks, 1BRs get 1 lock") via a Rules Page editor. If you need that today, add the differences as custom BOM lines.
-%ENDCALLOUT
+In Suites mode, click the **IoT Devices** tile in the left pane. A modal opens with three checkboxes — Smart Lock, Thermostat, and Water Sensor — for selecting which IoT devices are available in this project. Check the devices you want to configure per unit type. The selected devices appear as columns on the Unit Types modal, where you set the per-suite count for each unit type.
 
 %H2 What appears on the cover page
 
@@ -264,16 +258,16 @@ The BOM updates automatically as you place, move, and edit devices on the floor 
 
 %H2 Sections
 
-The BOM is organized into sections, in the order they appear on the proposal:
+The BOM is organized into six sections, in the order they appear on the proposal:
 
-- **CAMERAS** — every placed camera plus its cable run line item
+- **CAMERAS** — every placed camera
 - **RECORDING** — NVR and storage
 - **NETWORK** — switches and head-end network gear
-- **CABLING** — Cat6 runs, terminations
 - **ACCESS CONTROL** — readers, controllers, and related hardware
 - **SMART APARTMENT** — intercoms, parcel lockers, mailbox banks, and in-unit IoT devices
-- **LABOR** — labor lines for installation, programming, and commissioning
 - **OTHER** — catch-all for anything that doesn't fit a named section
+
+The BOM is an equipment-only procurement list. Cabling and labor are tracked separately on the Take-Off page (estimator's document) and the Quote page when pricing is loaded — these don't appear on the BOM.
 
 %H2 Auto-rows vs. custom lines
 
@@ -383,7 +377,7 @@ The page that camera is on hasn't been calibrated. Run the scale calibration too
 
 %H3 Can different unit types get different IoT devices?
 
-Not currently — the IoT checkboxes apply uniformly to every suite in the project. A future release will add per-bedroom-type rules. For now, add the differences as custom BOM lines in the SMART APARTMENT section.
+Yes — as of v1.2. Check the devices you want in the IoT Devices modal, then go to the Unit Types modal. Each selected device appears as a column. Enter the per-suite count for each unit type (e.g., 2 locks for a Penthouse, 1 for a Studio). The BOM and Take-Off automatically use those counts when computing totals across the building.
 
 %H3 Can two people work on the same project at once?
 
@@ -398,6 +392,27 @@ Not currently. Custom lines have to be entered through the BOM editor.
 %H1 Version History
 
 This guide is updated with each major release of the tool.
+
+%H2 Version 1.3 — May 2026
+
+BOM Restructure pass. BOM is now an equipment-only procurement list.
+
+- Cabling and Labor sections removed from the BOM
+- GRAND TOTAL on the cover page now reflects equipment-only totals
+- Cabling and labor data computed separately; will surface on the Take-Off page (next pass) and the Quote page (future pass) when pricing is loaded
+- BOM drawer labor-rate / labor-hours inputs removed (no longer had any compute effect after the restructure)
+- Custom lines previously in the Cabling or Labor sections of older saves are now preserved in the OTHER section with a "(was: Cabling)" or "(was: Labor)" prefix on load
+
+%H2 Version 1.2 — May 2026
+
+Suites Polish pass. The IoT Devices modal now selects which devices are available for per-unit-type configuration. Unit types gain dynamic columns for setting per-suite IoT counts. BOM and Take-Off automatically apply these counts when computing totals across the building.
+
+- IoT Devices modal: 3 checkboxes now mean "available for per-unit-type configuration" rather than "every suite gets this"
+- Unit Types modal: dynamic columns appear per selected IoT device, letting integrators set per-suite counts per unit type
+- Duplicate unit-type labels now flagged with an inline error
+- Suites mode left pane: Unit Types and IoT Devices entry tiles redesigned to match the Tier-1 tile aesthetic used in other modes
+- Mode color identity: every top-rail mode tab and Tier-1 tile in all modes now uses a consistent mode-color palette (Cameras=red, Access=blue, Intercoms=green, Parcel=orange, Mailbox=pink, Suites=purple) for selected and hover states
+- Intercom tile color shifted from teal to green (canvas marker teal preserved); Suite mode color shifted from green to purple
 
 %H2 Version 1.1 — May 2026
 
