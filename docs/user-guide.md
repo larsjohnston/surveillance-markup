@@ -4,7 +4,7 @@
 title: Surveillance Markup Tool
 subtitle: User Guide
 tagline: Plan, mark up, and quote security and smart-apartment systems
-version: 1.3
+version: 1.4
 date: May 2026
 org: Calgary Lock and Safe — Smart MF
 %ENDMETA
@@ -20,9 +20,10 @@ org: Calgary Lock and Safe — Smart MF
 7. Smart Apartment Setup
 8. Bill of Materials
 9. Exporting the Proposal
-10. Saving and Reloading Projects
-11. Tips, Shortcuts, and Troubleshooting
-12. Version History
+10. The Take-Off Page
+11. Saving and Reloading Projects
+12. Tips, Shortcuts, and Troubleshooting
+13. Version History
 %ENDTOC
 
 %H1 Welcome
@@ -319,6 +320,45 @@ The riser is generated automatically from your floor-plan markups. It shows:
 
 %PAGEBREAK
 
+%H1 The Take-Off Page
+
+The take-off page is the estimator's working document — a tabular "schedule of quantities" that lists every device on the floor plans, plus cabling and labor summaries. It's distinct from the BOM (which is procurement-focused, equipment-only) and from the floor plan markups (which show device placement, not detail).
+
+The take-off automatically appears in the exported proposal PDF between the BOM and the Riser, when there's content to show. It can be toggled off in the Export modal under Proposal Sections.
+
+%H2 What the take-off shows
+
+The take-off is organized into seven subsections:
+
+- **Cameras** — one row per placed camera with model, brand, mount height, FOV, reach
+- **Access Control** — one row per placed reader / controller with subcategory and variant
+- **Smart Apartment: Placed Devices** — intercoms, parcel lockers, mailbox banks
+- **Smart Apartment: In-Unit (IoT)** — Smart Lock / Thermostat / Water Sensor with per-suite count and total
+- **Suites** — one row per dwelling unit with type and BR/BA
+- **Head-End Equipment** — NVR, switches, UPS rolled up by model
+- **Cabling Summary** — total runs, total length, average run, and the routing overhead multiplier in use
+- **Labor Summary** — install hours by category (camera, reader, intercom, etc.) plus head-end bench-up, cabling, and commissioning
+
+All quantities reflect typical-floor multipliers — a camera on a page configured as "3 typical floors" contributes 3× to the cabling and labor totals (the placed-device rows still show one marker per placement, since rows are markers, not units).
+
+%H2 What the take-off does NOT show
+
+- Prices or costs (those come from the Quote, when pricing is loaded — a future release)
+- Profit margin, tax, or grand total
+- Customer-facing prose
+
+The take-off is for the estimator's bidding workflow. The BOM is for procurement once the job is awarded.
+
+%H2 Section 3b: IoT Per-Suite Quantities
+
+The IoT subsection shows the per-suite count for each selected IoT device. When all unit types specify the same count for a device, the column reads the integer (e.g., "1"). When unit types differ — for example, Penthouses get 2 smart locks but 1BRs get 1 — the column shows the weighted average (e.g., "1.2 (avg)") so the estimator can see at a glance that the count varies. The "Total Qty" column always shows the true total across all suites.
+
+%H2 Toggling the page off
+
+In the export modal under Proposal Sections, uncheck "Take-Off Page" to skip it. The PDF goes directly from BOM to Riser. Useful when you only need a quick BOM-only export for procurement review.
+
+%PAGEBREAK
+
 %H1 Saving and Reloading Projects
 
 %H2 Auto-save
@@ -392,6 +432,17 @@ Not currently. Custom lines have to be entered through the BOM editor.
 %H1 Version History
 
 This guide is updated with each major release of the tool.
+
+%H2 Version 1.4 — May 2026
+
+Take-Off Page pass. New tabular schedule-of-quantities page in the proposal PDF between BOM and Riser. Equipment per-device detail, cabling totals, labor hours by category. Toggleable from the export modal.
+
+- New Take-Off Page rendered in the proposal PDF between BOM and Riser
+- Seven subsections: cameras, AC, smart apartment placed, smart apartment IoT, suites, head-end equipment, cabling summary, labor summary
+- Section 3b shows IoT per-suite counts; weighted-average suffix "(avg)" appears when unit types specify different counts
+- Page is toggleable from the Export modal (Proposal Sections → Take-Off Page)
+- Auto-paginates with continuation headers + footers for large projects
+- LABOR_RATES table in the codebase is consumed by the Take-Off; future Pricing pass adds dollar values
 
 %H2 Version 1.3 — May 2026
 
