@@ -536,6 +536,26 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   margin-bottom:8px;
 }
 
+/* Suites Polish M3: left-pane mode-entry tiles. Replace the previous two
+   blue rectangular buttons with two Tier-1-style tiles. Outer chrome
+   matches .smart-apt-tile / .tier2-tile / .brand-tile (padding 7/4/5,
+   2px border, min-height 76, justify-content:center). Inner content is
+   icon + label + count footer. `.subdued` opacity-fades the tile when its
+   count is 0 — the tile stays clickable; the fade is just a state hint. */
+.suite-mode-tile-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
+.suite-mode-tile {
+  padding:7px 4px 5px; border:2px solid var(--border); border-radius:5px; background:#fff;
+  cursor:pointer; text-align:center;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  min-height:76px; box-sizing:border-box; min-width:0;
+  transition:all .15s;
+}
+.suite-mode-tile:hover { border-color:#9ca3af; background:#f9fafb; transform:translateY(-1px); }
+.suite-mode-tile.subdued { opacity:0.6; }
+.suite-mode-tile .sm-icon  { font-size:22px; line-height:1; }
+.suite-mode-tile .sm-label { font:700 9px var(--font-ui); color:#111; letter-spacing:.02em; line-height:1.15; text-transform:uppercase; }
+.suite-mode-tile .sm-count { font:700 7px var(--font-ui); color:#9ca3af; text-transform:uppercase; letter-spacing:.04em; line-height:1.15; }
+
 /* Pass N+1 M6: suite-placement modal form fields. Simpler layout
    than the unit-types modal — two stacked fields + actions. */
 .sp-field { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
@@ -1335,14 +1355,23 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="panel-body" data-mode-section="suite">
       <div class="phdr">Unit Types</div>
       <div id="ac-controls">
-        <button class="btn btn-blue" id="btn-manage-unit-types" style="width:100%; margin-bottom:8px;" onclick="openUnitTypesModal()">
-          Manage Unit Types&hellip;
-        </button>
-        <!-- Pass N+1 M8: opens Modal #3 to toggle in-unit IoT devices applied
-             across every suite. Drives the SMART APARTMENT BOM IoT rows. -->
-        <button class="btn btn-blue" id="btn-iot-devices" style="width:100%; margin-bottom:8px;" onclick="openIotDevicesModal()">
-          IoT Devices&hellip;
-        </button>
+        <!-- Suites Polish M3: Tier-1-style tiles replace the two blue
+             rectangular buttons used in M5/M8. Tile count footers
+             ("N defined" / "N selected") + subdued state when count=0
+             are repainted by _renderSuiteDrillDown on save / mode entry /
+             project load. -->
+        <div class="suite-mode-tile-grid">
+          <div class="suite-mode-tile" id="suite-tile-unit-types" onclick="openUnitTypesModal()">
+            <div class="sm-icon">&#127968;</div>
+            <div class="sm-label">Unit Types</div>
+            <div class="sm-count" id="suite-tile-unit-types-count">0 defined</div>
+          </div>
+          <div class="suite-mode-tile" id="suite-tile-iot-devices" onclick="openIotDevicesModal()">
+            <div class="sm-icon">&#128268;</div>
+            <div class="sm-label">IoT Devices</div>
+            <div class="sm-count" id="suite-tile-iot-devices-count">0 selected</div>
+          </div>
+        </div>
         <!-- Visibility Toggles UX pass: the "Hide unit labels" button moved
              to View menu + eye dropdown (top bar). The suitesHidden state
              is unchanged; setViewToggle('suiteLabels') drives the swap. -->
@@ -1773,10 +1802,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <h3>&#127968; Unit Types</h3>
     <p style="margin-bottom:10px;">Add the unit types found in your building (e.g. 1BR/1BA, 2BR/2BA). You'll use these when assigning a type to each suite, and we'll use them to calculate how many smart devices you'll need. You can update this list anytime from Suites.</p>
     <div id="unit-types-rows-container"></div>
+    <p id="unit-types-err" class="calib-error" style="display:none; margin-top:10px;"></p>
     <div style="display:flex; gap:8px; margin-top:8px;">
       <button class="btn btn-blue" id="btn-add-unit-type-row" onclick="addUnitTypeRow()">+ Add Unit Type</button>
     </div>
-    <p id="unit-types-err" class="calib-error" style="display:none; margin-top:10px;"></p>
     <div class="modal-actions" style="margin-top:16px;">
       <button class="btn btn-dark"  onclick="skipUnitTypes()">Skip</button>
       <button class="btn btn-green" onclick="saveUnitTypes()">Save</button>
@@ -6646,24 +6675,50 @@ function saveIotDevices(){
   // to update the underlying state, but the section visibility refreshes
   // either way).
   recalcBom();
+  // Suites Polish M3: repaint the Suites left-pane so the IoT Devices
+  // tile's count footer + subdued state reflect the new flag set.
+  _renderSuiteDrillDown();
 }
 
-// Suites left-pane drill-down render. Lists the project's unit types
-// read-only with a count badge. The Manage button (in HTML) reopens
-// Modal #1; this just paints the current catalog state.
+// Suites left-pane drill-down render. Paints both the unit-types
+// read-only list AND the Tier-1-style mode-entry tiles. Called from
+// saveUnitTypes / saveIotDevices commit paths, mode-switch into Suites,
+// project load, and page switch. Safe to call any time — every output
+// element is idempotent.
 function _renderSuiteDrillDown(){
+  var uts = projectInfo.unitTypes || [];
+
+  // Suites Polish M3: tile count footers + subdued state. Both tiles
+  // stay clickable regardless of count; subdued is a visual hint, not
+  // a disable.
+  var unitTypeCount = uts.length;
+  var iotFlags = projectInfo.iotDevices || {};
+  var iotCount = (iotFlags.smartLock ? 1 : 0)
+               + (iotFlags.thermostat ? 1 : 0)
+               + (iotFlags.waterSensor ? 1 : 0);
+  var utTile = document.getElementById('suite-tile-unit-types');
+  if(utTile){
+    utTile.classList.toggle('subdued', unitTypeCount === 0);
+    var utCountEl = document.getElementById('suite-tile-unit-types-count');
+    if(utCountEl) utCountEl.textContent = unitTypeCount + ' defined';
+  }
+  var iotTile = document.getElementById('suite-tile-iot-devices');
+  if(iotTile){
+    iotTile.classList.toggle('subdued', iotCount === 0);
+    var iotCountEl = document.getElementById('suite-tile-iot-devices-count');
+    if(iotCountEl) iotCountEl.textContent = iotCount + ' selected';
+  }
+
+  // Existing read-only unit-types list. Paints below the tiles.
   var listEl = document.getElementById('suite-unit-types-list');
   if(!listEl) return;
-  var uts = projectInfo.unitTypes || [];
-  if(uts.length === 0){
-    listEl.innerHTML = '<div class="suite-ut-empty">No unit types defined yet. Click <b>Manage Unit Types</b> above to add.</div>';
+  if(unitTypeCount === 0){
+    listEl.innerHTML = '<div class="suite-ut-empty">No unit types defined yet. Click <b>Unit Types</b> above to add.</div>';
     return;
   }
   listEl.innerHTML = uts.map(function(ut){
     var bed  = (typeof ut.bedrooms === 'number')  ? ut.bedrooms  : '?';
     var bath = (typeof ut.bathrooms === 'number') ? ut.bathrooms : '?';
-    // 1.5 → "1.5 BA", 2 → "2 BA"; same for bedrooms (always integer).
-    var bathTxt = (bath === parseInt(bath, 10)) ? (bath + ' BA') : (bath + ' BA');
     return '<div class="suite-ut-item">' +
              '<div class="dot"></div>' +
              '<div class="ut-label">' + escapeHtml(ut.label || '(unlabeled)') + '</div>' +
