@@ -4,7 +4,7 @@
 title: Surveillance Markup Tool
 subtitle: User Guide
 tagline: Plan, mark up, and quote security and smart-apartment systems
-version: 1.4
+version: 1.5
 date: May 2026
 org: Calgary Lock and Safe — Smart MF
 %ENDMETA
@@ -316,6 +316,8 @@ The riser is generated automatically from your floor-plan markups. It shows:
 - Cable IDs (C-01, C-02, ...) and dual-unit lengths next to each cable line
 - An equipment schedule on the right side of the page listing every device per floor (grouped by SKU where applicable) with model, zone, and qty
 
+Devices in each zone band are sorted left-to-right by their floor-plan position and distributed evenly across the rail. In high-density zones (15+ devices per rail), the layout wraps to a second row to keep icons readable.
+
 *You can't edit the riser directly — it's generated from your floor plans. To change what's on it, edit the camera (or other device) on the floor plan and the riser updates automatically.*
 
 %PAGEBREAK
@@ -432,6 +434,16 @@ Not currently. Custom lines have to be entered through the BOM editor.
 %H1 Version History
 
 This guide is updated with each major release of the tool.
+
+%H2 Version 1.5 — May 2026
+
+Riser Layout pass. Devices on the riser now auto-spread evenly within each zone band, with multi-row wrap for high-density zones (15+ devices per rail).
+
+- Devices in each rail are sorted left-to-right by floor-plan position
+- Rails wrap to multiple rows when device count exceeds 15
+- Camera rail and AC rail wrap independently
+- AC category ordering preserved across rows (readers → controllers → intercoms → parcels → mailboxes)
+- Cable lines re-route automatically with new device positions
 
 %H2 Version 1.4 — May 2026
 
