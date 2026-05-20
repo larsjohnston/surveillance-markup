@@ -1074,6 +1074,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <div class="menu-divider"></div>
         <button class="menu-item" id="btn-pricing-load" onclick="openPricingFilePicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Pricing&hellip;</span></button>
         <button class="menu-item" id="btn-pricing-clear" onclick="confirmClearPricing()"><span class="menu-check">&#10003;</span><span class="menu-label">Clear Pricing</span></button>
+        <!-- Door Hardware M2: import/export hardware data. -->
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="btn-dhw-takeoff"  onclick="openHardwareTakeoffPicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Import Hardware Takeoff (CSV)&hellip;</span></button>
+        <button class="menu-item" id="btn-dhw-quote"    onclick="openHardwareQuotePicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Import Hardware Quote (CSV)&hellip;</span></button>
+        <button class="menu-item" id="btn-dhw-rfq"      onclick="exportHardwareRfq()"><span class="menu-check">&#10003;</span><span class="menu-label">Export RFQ (CSV)</span></button>
+        <button class="menu-item" id="btn-dhw-schedule" onclick="openDoorSchedulePicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Attach Door Schedule (PDF)&hellip;</span></button>
       </div>
     </div>
     <div class="menu" data-menu="view">
@@ -2020,6 +2026,21 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
 </div>
 
+<!-- Door Hardware M2: parallel error modal for hardware CSV/PDF import
+     failures. Body populated dynamically by showHardwareError(); module
+     state is NOT mutated on failure. -->
+<div id="hardware-error-modal" class="big-modal" onclick="if(event.target===this) closeHardwareErrorModal()">
+  <div class="modal-box" style="min-width:480px;">
+    <h3 id="hardware-error-title">Couldn't import hardware file</h3>
+    <p id="hardware-error-summary" style="margin:0 0 10px 0;"></p>
+    <ul id="hardware-error-list" style="margin:0 0 14px 18px; font:11px var(--font-ui); color:var(--text); line-height:1.5;"></ul>
+    <p style="margin:0 0 14px 0; font:11px var(--font-ui); color:var(--text-muted);">Existing hardware data (takeoff, quotes, award, pricing) is unchanged. Fix the file and try again.</p>
+    <div class="modal-actions">
+      <button class="btn btn-dark" onclick="closeHardwareErrorModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Tab Modal (Pass A.5) -->
 <div id="tab-edit-modal" class="big-modal">
   <div class="modal-box" style="min-width:420px;">
@@ -2869,17 +2890,26 @@ function _dhwQuoteCsvField(s){
   return str;
 }
 
-// Parse a manufacturer-group header row. A row is a manufacturer header if
-// (a) exactly one field has content, AND (b) that content is a short token
-// (≤6 chars, all-caps/alphanumeric, no spaces) OR equals the literal
-// "NO MANUFACTURER LISTED". Returns the group code or null.
+// Parse a manufacturer-group header row. A row is a manufacturer header iff
+// field[0] is a manufacturer token (≤6-char all-caps/alphanumeric short code,
+// OR the literal "NO MANUFACTURER LISTED" → 'OTHER') AND fields[1..5] are
+// all blank. Fields beyond index 5 MAY contain content — the Allegion priced
+// template offsets the one-time "LIST,COST,TOTAL" header labels onto the
+// FIRST priced group header (e.g. "FAL,,,,,,LIST,COST,TOTAL"), so the
+// detector must accept those labels in cols 6-8 without rejecting the row.
+// Data rows are distinguished by having a numeric qty in field[0] (caught
+// downstream by parseFloat), so they don't collide with this detector.
 function _dhwDetectMfrHeader(fields){
-  var nonEmpty = fields.filter(function(f){ return f && f.length > 0; });
-  if(nonEmpty.length !== 1) return null;
-  var token = nonEmpty[0];
-  if(/^NO\s+MANUFACTURER\s+LISTED$/i.test(token)) return 'OTHER';
-  if(/^[A-Z0-9]{2,6}$/.test(token)) return token.toUpperCase();
-  return null;
+  var first = (fields[0] || '').replace(/^\s+|\s+$/g, '');
+  if(!first) return null;
+  var token = null;
+  if(/^NO\s+MANUFACTURER\s+LISTED$/i.test(first)) token = 'OTHER';
+  else if(/^[A-Z0-9]{2,6}$/.test(first)) token = first.toUpperCase();
+  else return null;
+  for(var i = 1; i <= 5; i++){
+    if(fields[i] && fields[i].length > 0) return null;
+  }
+  return token;
 }
 
 // Detect the repeated column-header row(s). Allegion templates write the
@@ -2907,6 +2937,20 @@ function _dhwMatchHeaderLabel(label){
   return null;
 }
 
+// Currency-string parser for the LIST/COST/TOTAL price columns. Excel
+// "Save As CSV" emits cells like "$49.11" or "\"$2,562.00\"" (quoted to
+// protect the embedded thousands comma). parseFloat chokes on the $ and
+// returns NaN; this helper strips $, commas, and whitespace before parsing.
+// Returns undefined for empty / missing / unparseable input (NOT 0 — the
+// caller distinguishes "no price" from "$0").
+function _dhwParseMoney(raw){
+  if(raw === undefined || raw === null) return undefined;
+  var s = String(raw).replace(/[$,\s]/g, '');
+  if(s === '') return undefined;
+  var n = parseFloat(s);
+  return isNaN(n) ? undefined : n;
+}
+
 // Parse the Allegion CSV template (unpriced takeoff OR priced quote — one
 // parser, isPriced=true iff any line has a unit cost). Returns:
 //   { header: {projectName, architectName, projectId, allegionId, version, reportDate},
@@ -2918,10 +2962,6 @@ function parseHardwareCSV(csvText){
   var header = { projectName:'', architectName:'', projectId:'', allegionId:'', version:'', reportDate:'' };
   var lines = [];
   var isPriced = false;
-  // Column indices for the priced section, set from the first column-header
-  // row that contains the price columns. Stays null while we haven't seen
-  // them yet — keeps unpriced takeoffs correctly unpriced.
-  var colListIdx = null, colCostIdx = null, colTotalIdx = null;
   var currentMfr = 'OTHER';
   // Split on CRLF or LF, drop final empty line from trailing newline.
   var rawLines = csvText.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
@@ -2938,25 +2978,24 @@ function parseHardwareCSV(csvText){
     if(hdrKey){ header[hdrKey] = fields[1] || ''; continue; }
     // Trailing instruction note: skip the rest of the file.
     if(_dhwIsTrailingNote(fields)) break;
-    // Repeated column-header row: detect LIST/COST/TOTAL indices here.
-    if(_dhwIsColumnHeader(fields)){
-      colListIdx = colCostIdx = colTotalIdx = null;
-      for(var ci = 0; ci < fields.length; ci++){
-        var cellLc = (fields[ci] || '').toLowerCase();
-        if(cellLc === 'list') colListIdx = ci;
-        else if(cellLc === 'cost' || cellLc === 'unit cost') colCostIdx = ci;
-        else if(cellLc === 'total') colTotalIdx = ci;
-      }
-      continue;
-    }
-    // Manufacturer group header: a lone short token row.
+    // Repeated column-header row (the per-block "Extended Qty | UoM | …"
+    // line). Skip — the Allegion priced template does NOT put COST on these
+    // rows; the price columns are detected by fixed position below.
+    if(_dhwIsColumnHeader(fields)) continue;
+    // Manufacturer group header: field[0] is a manufacturer token; fields
+    // 1-5 are blank. The FIRST priced group header may also carry the
+    // one-time "LIST,COST,TOTAL" labels at indices 6-8 — accepted.
     var mfr = _dhwDetectMfrHeader(fields);
     if(mfr){ currentMfr = mfr; continue; }
-    // Otherwise: data row. Allegion column order: Extended Qty | UoM |
-    // Description | Catalog Number | Cut Sheet | Finish (| LIST | COST | TOTAL).
-    var qtyRaw = fields[0];
-    var qty = parseFloat(qtyRaw);
-    if(!isFinite(qty)) continue;  // skip rows whose first cell isn't a number
+    // Otherwise: data row. Allegion column layout (fixed positions):
+    //   0=Extended Qty  1=UoM  2=Description  3=Catalog #  4=Cut Sheet
+    //   5=Finish  6=LIST  7=COST  8=TOTAL
+    // Position-based parsing of cols 6/7/8 (M2 follow-up): the priced
+    // template doesn't label COST on column-header rows, but the per-row
+    // layout is consistent. Trailing-empty rows (fewer than 9 fields)
+    // simply parseFloat-to-NaN for the missing cols and stay unpriced.
+    var qty = parseFloat(fields[0]);
+    if(!isFinite(qty)) continue;  // not a data row
     var line = {
       manufacturer:  currentMfr,
       qty:           qty,
@@ -2966,16 +3005,15 @@ function parseHardwareCSV(csvText){
       finish:        fields[5] || '',
       hasCutSheet:   !!(fields[4] && fields[4].length > 0)
     };
-    // If the column-header row set LIST/COST/TOTAL indices, pull those too.
-    if(colListIdx != null){
-      var v = parseFloat(fields[colListIdx]); if(isFinite(v)) line.list = v;
-    }
-    if(colCostIdx != null){
-      var vc = parseFloat(fields[colCostIdx]); if(isFinite(vc)){ line.unitCost = vc; isPriced = true; }
-    }
-    if(colTotalIdx != null){
-      var vt = parseFloat(fields[colTotalIdx]); if(isFinite(vt)) line.supplierTotal = vt;
-    }
+    // M2 follow-up #2: Excel "Save As CSV" puts $ and thousands commas in
+    // price cells (e.g. "$49.11", "\"$2,562.00\""). _dhwParseMoney strips
+    // them. Bare numbers (the M1 synthetic shape) pass through unchanged.
+    var listVal  = _dhwParseMoney(fields[6]);
+    var costVal  = _dhwParseMoney(fields[7]);
+    var totalVal = _dhwParseMoney(fields[8]);
+    if(listVal  !== undefined) line.list          = listVal;
+    if(costVal  !== undefined){ line.unitCost      = costVal; isPriced = true; }
+    if(totalVal !== undefined) line.supplierTotal = totalVal;
     lines.push(line);
   }
   return { header: header, lines: lines, isPriced: isPriced };
@@ -3271,6 +3309,319 @@ function buildRfqCsv(takeoff){
 }
 
 // ─── End Door Hardware data engine ──────────────────────────────────────────
+
+// ─── Door Hardware (Import / Quote / Price) — File pickers (M2) ─────────────
+// Wires File menu actions to the M1 data engine. Same patterns as Pricing
+// Foundation M2: fresh hidden <input> per click, FileReader text/binary,
+// hardware-error modal on parse/guard failures (module state untouched),
+// showToast() for success notifications.
+
+// Strip the heavy PDF payload from a doorHardware state for lite (autosave)
+// serialization. Mirrors how sourceDocument is excluded from buildLiteSaveData.
+// Returns a SHALLOW clone with doorScheduleRef.data removed if present;
+// metadata (name, mime, size, attached marker) is preserved so an autosave
+// recovery knows a PDF was attached even though the bytes aren't available
+// from autosave alone.
+function _dhwLiteSerialize(state){
+  if(!state || typeof state !== 'object') return state;
+  var ref = state.doorScheduleRef;
+  if(!ref || typeof ref !== 'object' || !ref.data){
+    // Nothing heavy to strip — return the state as-is.
+    return state;
+  }
+  var liteRef = { name: ref.name || '', mime: ref.mime || '', size: ref.size || 0, attached: true };
+  return {
+    importedTakeoff:  state.importedTakeoff,
+    hardwareQuotes:   state.hardwareQuotes,
+    hardwareAward:    state.hardwareAward,
+    hardwarePricing:  state.hardwarePricing,
+    doorScheduleRef:  liteRef
+  };
+}
+
+// Sanitize a project / filename for download attachment. Lower-cases and
+// reduces to alnum+underscore; empty input → 'project'.
+function _dhwSanitizeFilename(s){
+  var clean = String(s || '').replace(/[^a-z0-9]+/gi, '_').toLowerCase().replace(/^_+|_+$/g, '');
+  return clean || 'project';
+}
+
+// Show / hide the hardware error modal. Body is populated imperatively.
+function showHardwareError(title, summary, errors){
+  var modal = document.getElementById('hardware-error-modal');
+  var titleEl = document.getElementById('hardware-error-title');
+  var sumEl = document.getElementById('hardware-error-summary');
+  var listEl = document.getElementById('hardware-error-list');
+  if(titleEl) titleEl.textContent = title || "Couldn't import hardware file";
+  if(sumEl) sumEl.textContent = summary || '';
+  if(listEl){
+    listEl.innerHTML = '';
+    (errors || []).forEach(function(err){
+      var li = document.createElement('li');
+      li.textContent = err;
+      listEl.appendChild(li);
+    });
+  }
+  if(modal) modal.classList.add('show');
+}
+function closeHardwareErrorModal(){
+  var modal = document.getElementById('hardware-error-modal');
+  if(modal) modal.classList.remove('show');
+}
+
+// Generic transient-input file picker. Creates a fresh hidden <input>,
+// triggers it, calls onFile(file) on change, removes the input. Same
+// pattern Pricing M2 uses; factored here so the four hardware entries
+// don't each open-code it.
+function _dhwOpenFilePicker(accept, onFile){
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = accept;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    if(f) onFile(f);
+    if(input.parentNode) input.parentNode.removeChild(input);
+  });
+  input.click();
+}
+
+// File → Import Hardware Takeoff (CSV)
+function openHardwareTakeoffPicker(){
+  _dhwOpenFilePicker('.csv,text/csv', _handleHardwareTakeoffFile);
+}
+function _handleHardwareTakeoffFile(file){
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var text = ev.target && ev.target.result;
+    var parsed;
+    try { parsed = parseHardwareCSV(String(text || '')); }
+    catch(parseErr){
+      showHardwareError(
+        "Couldn't import hardware takeoff",
+        'Parser failed.',
+        [String(parseErr && parseErr.message || parseErr)]
+      );
+      return;
+    }
+    if(!parsed.lines || parsed.lines.length === 0){
+      showHardwareError(
+        "Couldn't read this as an Allegion takeoff CSV",
+        "The file parsed but no line rows were found.",
+        ['Expected: a header block (Project Name, Architect Name, etc.) followed by manufacturer group headers (FAL, IVE, SCH, …) and line rows starting with an Extended Qty number.',
+         'Tip: open the file in a text editor and confirm it looks like the Allegion CSV shape — not a supplier ERP export or a different report format.']
+      );
+      return;
+    }
+    // If a takeoff already exists with downstream content, warn before
+    // replacing. Quote rows match against takeoff matchKeys; re-importing
+    // can invalidate them.
+    var existing = doorHardware.importedTakeoff;
+    var quoteCount = (doorHardware.hardwareQuotes || []).length;
+    var hasAward = !!doorHardware.hardwareAward;
+    if(existing && (quoteCount > 0 || hasAward)){
+      var msg = 'Re-importing the takeoff will clear ' + quoteCount + ' existing quote' + (quoteCount === 1 ? '' : 's') +
+                (hasAward ? ' and the current award' : '') +
+                ', plus any per-line markup overrides and install-hours entries (their matchKeys may no longer be valid).\n\nContinue?';
+      if(!confirm(msg)) return;
+      doorHardware.hardwareQuotes = [];
+      doorHardware.hardwareAward = null;
+      doorHardware.hardwarePricing.lineMarkupOverrides = {};
+      doorHardware.hardwarePricing.lineInstallHours    = {};
+    }
+    doorHardware.importedTakeoff = { header: parsed.header, lines: parsed.lines };
+    markDirty();
+    var projName = (parsed.header && parsed.header.projectName) || 'unnamed';
+    showToast('Takeoff imported: ' + parsed.lines.length + ' lines, ' + projName + '.');
+  };
+  reader.onerror = function(){
+    showHardwareError(
+      "Couldn't read the file",
+      'File read error.',
+      [(reader.error && reader.error.message) || 'unknown']
+    );
+  };
+  reader.readAsText(file);
+}
+
+// File → Import Hardware Quote (CSV)
+function openHardwareQuotePicker(){
+  // Guard: no takeoff yet.
+  if(!doorHardware.importedTakeoff || !doorHardware.importedTakeoff.lines){
+    showHardwareError(
+      'Import a takeoff first',
+      'Quotes match against the imported takeoff lines.',
+      ['Use File → Import Hardware Takeoff (CSV) to load the unpriced Allegion template, then import supplier quotes.']
+    );
+    return;
+  }
+  _dhwOpenFilePicker('.csv,text/csv', _handleHardwareQuoteFile);
+}
+function _handleHardwareQuoteFile(file){
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var text = ev.target && ev.target.result;
+    var parsed;
+    try { parsed = parseHardwareCSV(String(text || '')); }
+    catch(parseErr){
+      showHardwareError(
+        "Couldn't import hardware quote",
+        'Parser failed.',
+        [String(parseErr && parseErr.message || parseErr)]
+      );
+      return;
+    }
+    if(!parsed.lines || parsed.lines.length === 0){
+      showHardwareError(
+        "Couldn't read this as a hardware quote CSV",
+        "The file parsed but no line rows were found.",
+        ['Expected the same Allegion template shape as the takeoff, plus filled-in COST (and optionally LIST / TOTAL) columns on the priced lines.']
+      );
+      return;
+    }
+    if(!parsed.isPriced){
+      showHardwareError(
+        'No prices found in this CSV',
+        'The file parsed but no line has a COST column value.',
+        ['It looks like an unpriced takeoff, not a supplier quote.',
+         'If this is the takeoff, use File → Import Hardware Takeoff instead.',
+         'If this is meant to be a quote, ask the supplier to fill the COST column and re-export.']
+      );
+      return;
+    }
+    // Prompt for supplier name. Cancel/blank → abort silently.
+    var supplierName = window.prompt('Supplier name for this quote:', '');
+    if(supplierName == null) return;
+    supplierName = supplierName.replace(/^\s+|\s+$/g, '');
+    if(supplierName.length === 0) return;
+    recomputeQuoteLines(parsed.lines);
+    var rec = buildQuoteRecord(supplierName, parsed);
+    doorHardware.hardwareQuotes.push(rec);
+    markDirty();
+    var pricedCount = parsed.lines.filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
+    var flaggedCount = parsed.lines.filter(function(l){ return l.flagged; }).length;
+    showToast('Quote imported: ' + supplierName + ', ' + pricedCount + ' priced line' + (pricedCount === 1 ? '' : 's') +
+              (flaggedCount > 0 ? ', ' + flaggedCount + ' flagged' : '') + '.');
+  };
+  reader.onerror = function(){
+    showHardwareError(
+      "Couldn't read the file",
+      'File read error.',
+      [(reader.error && reader.error.message) || 'unknown']
+    );
+  };
+  reader.readAsText(file);
+}
+
+// File → Export RFQ (CSV)
+function exportHardwareRfq(){
+  // Guard: no takeoff yet — toast (not modal, since this is a single-action
+  // entry rather than a multi-step file-import flow).
+  if(!doorHardware.importedTakeoff || !doorHardware.importedTakeoff.lines){
+    showToast('Import a takeoff first — the RFQ is built from the takeoff lines.');
+    return;
+  }
+  var csv;
+  try { csv = buildRfqCsv(doorHardware.importedTakeoff); }
+  catch(err){
+    showHardwareError(
+      "Couldn't export RFQ",
+      'RFQ builder failed.',
+      [String(err && err.message || err)]
+    );
+    return;
+  }
+  // Filename: RFQ_<project>_<YYYY-MM-DD>.csv
+  var hdr = doorHardware.importedTakeoff.header || {};
+  var projTag = _dhwSanitizeFilename(hdr.projectName || projectInfo.name || 'project');
+  var dateTag = new Date().toISOString().slice(0, 10);
+  var fname = 'RFQ_' + projTag + '_' + dateTag + '.csv';
+  // Blob + object URL pattern (handles ≥10 MB cleanly; matches saveJSON).
+  try {
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.download = fname;
+    a.href = url;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 0);
+  } catch(dlErr){
+    showHardwareError(
+      "Couldn't export RFQ",
+      'Download failed.',
+      [String(dlErr && dlErr.message || dlErr)]
+    );
+    return;
+  }
+  showToast('RFQ exported: ' + fname + ' (' + doorHardware.importedTakeoff.lines.length + ' lines).');
+}
+
+// File → Attach Door Schedule (PDF)
+function openDoorSchedulePicker(){
+  _dhwOpenFilePicker('.pdf,application/pdf', _handleDoorScheduleFile);
+}
+function _handleDoorScheduleFile(file){
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var buf = ev.target && ev.target.result;
+    if(!buf){
+      showHardwareError(
+        "Couldn't attach door schedule",
+        'The file read returned no data.',
+        ['Try selecting the file again. If it still fails, confirm the PDF opens normally in another viewer first.']
+      );
+      return;
+    }
+    // Mirror sourceDocument's storage convention: keep base64 in the
+    // persisted state. Rasterization for the proposal Door Schedule page
+    // is deferred to M4, which can pull the bytes back out via
+    // base64ToArrayBuffer + pdf.js (already loaded in the tool for the
+    // floor-plan PDF). This keeps M2 a pure attach-and-store step.
+    var bytes;
+    try { bytes = new Uint8Array(buf); }
+    catch(_){ bytes = null; }
+    if(!bytes){
+      showHardwareError(
+        "Couldn't attach door schedule",
+        "The file's bytes couldn't be inspected.",
+        ['Unsupported buffer type from FileReader. Browser issue — try a different browser or re-save the PDF.']
+      );
+      return;
+    }
+    var b64;
+    try { b64 = bytesToBase64(bytes.buffer || bytes); }
+    catch(encErr){
+      showHardwareError(
+        "Couldn't attach door schedule",
+        "The PDF couldn't be encoded for storage.",
+        [String(encErr && encErr.message || encErr)]
+      );
+      return;
+    }
+    doorHardware.doorScheduleRef = {
+      name: file.name || 'door-schedule.pdf',
+      mime: file.type || 'application/pdf',
+      size: bytes.byteLength || (bytes.length || 0),
+      data: b64,
+      attached: true
+    };
+    markDirty();
+    showToast('Door schedule attached: ' + (file.name || 'door-schedule.pdf') + '.');
+  };
+  reader.onerror = function(){
+    showHardwareError(
+      "Couldn't read the file",
+      'File read error.',
+      [(reader.error && reader.error.message) || 'unknown']
+    );
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ─── End Door Hardware file pickers ─────────────────────────────────────────
 
 // Pass Left-Pane: project-wide variant defaults per subcategory. Used by
 // the inline Tier 3 dropdown (M3) and the right-panel override (M4).
@@ -8991,10 +9342,13 @@ function buildLiteSaveData(){
     suites:           suites,
     suiteCounters:    suiteCounters,
     tabOrder: tabOrder,   // Pass A.7: manual riser order (null = auto-parse)
-    // Door Hardware M1 (v18): full module state. doorScheduleRef is null
-    // at M1; M2 will attach the actual PDF and may need to split this into
-    // a full-save-only field if PDF bytes turn out too large for autosave.
-    doorHardware: doorHardware
+    // Door Hardware M1 (v18) / M2 split: serialize the small JSON state in
+    // full, but strip the heavy PDF payload from doorScheduleRef — the
+    // bytes only ride along in the full saveJSON (mirrors how
+    // sourceDocument is excluded from buildLiteSaveData). The lightweight
+    // marker {name, mime, attached:true, size} survives so an autosave
+    // recovery knows a PDF was attached, even though the bytes are gone.
+    doorHardware: _dhwLiteSerialize(doorHardware)
   };
 }
 
