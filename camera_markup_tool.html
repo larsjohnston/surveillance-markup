@@ -170,6 +170,16 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 }
 .eye-item.active .eye-check { visibility:visible; }
 .eye-item .eye-label { flex:1; }
+/* Cleanup M5: Equipment Labels group. Master uses bolder weight and a separator above;
+   children indent so the hierarchy reads at a glance. The master's check span can be
+   set imperatively to '–' (en-dash) for tri-state indeterminate via JS. */
+.eye-item.eye-label-master { font-weight:700; border-top:1px solid var(--border); margin-top:2px; padding-top:7px; }
+.eye-item.eye-label-master.indeterminate .eye-check { visibility:visible; }
+.eye-item.eye-label-child { padding-left:32px; }
+.menu-item.label-master { font-weight:700; border-top:1px solid var(--border); margin-top:2px; padding-top:9px; }
+.menu-item.label-master.indeterminate .menu-check { visibility:visible; }
+.menu[data-menu="view"] .menu-item.label-master.active .menu-check { visibility:visible; }
+.menu-item.label-child { padding-left:32px; }
 /* Pass D: save status indicator. Hidden until pdfLoaded; muted while clean,
    slightly bolder + darker while dirty. Click → saveJSON. */
 .save-indicator {
@@ -1066,7 +1076,16 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <button class="menu-trigger">View</button>
       <div class="menu-dropdown">
         <button class="menu-item" id="btn-fov" onclick="setViewToggle('fov')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Camera FOV</span></button>
-        <button class="menu-item" id="btn-suite-labels" onclick="setViewToggle('suiteLabels')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Unit Labels</span></button>
+        <!-- Cleanup M5: Equipment Labels tri-state master + 6 family children. Replaces the
+             single "Unit Labels" toggle that previously only covered suites. Master click
+             cycles all-on ↔ all-off; child clicks toggle just that family. -->
+        <button class="menu-item label-master" id="btn-labels-master" onclick="setAllLabelVisibility()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Equipment Labels</span></button>
+        <button class="menu-item label-child" id="btn-label-camera"        onclick="setLabelVisibility('camera')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Camera Labels</span></button>
+        <button class="menu-item label-child" id="btn-label-accessControl" onclick="setLabelVisibility('accessControl')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Access Control Labels</span></button>
+        <button class="menu-item label-child" id="btn-label-intercom"      onclick="setLabelVisibility('intercom')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Intercom Labels</span></button>
+        <button class="menu-item label-child" id="btn-label-parcel"        onclick="setLabelVisibility('parcel')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Parcel Labels</span></button>
+        <button class="menu-item label-child" id="btn-label-mailbox"       onclick="setLabelVisibility('mailbox')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Mailbox Labels</span></button>
+        <button class="menu-item label-child" id="btn-label-suite"         onclick="setLabelVisibility('suite')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Suite Labels</span></button>
         <button class="menu-item" id="btn-cables" onclick="setViewToggle('cables')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Cables</span></button>
         <button class="menu-item" id="btn-dori" onclick="setViewToggle('dori')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">DORI Zones</span></button>
         <button class="menu-item" id="btn-blind" onclick="setViewToggle('blind')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Blind Spots</span></button>
@@ -1109,7 +1128,14 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </button>
     <div class="eye-dropdown" id="eye-dropdown">
       <button class="eye-item" data-toggle="fov"         onclick="setViewToggle('fov')"><span class="eye-check">&#10003;</span><span class="eye-label">Camera FOV</span></button>
-      <button class="eye-item" data-toggle="suiteLabels" onclick="setViewToggle('suiteLabels')"><span class="eye-check">&#10003;</span><span class="eye-label">Unit Labels</span></button>
+      <!-- Cleanup M5: Equipment Labels tri-state master + 6 family children (mirrors the View menu group). -->
+      <button class="eye-item eye-label-master" id="eye-labels-master" onclick="setAllLabelVisibility()"><span class="eye-check">&#10003;</span><span class="eye-label">Equipment Labels</span></button>
+      <button class="eye-item eye-label-child" data-label="camera"        onclick="setLabelVisibility('camera')"><span class="eye-check">&#10003;</span><span class="eye-label">Camera Labels</span></button>
+      <button class="eye-item eye-label-child" data-label="accessControl" onclick="setLabelVisibility('accessControl')"><span class="eye-check">&#10003;</span><span class="eye-label">Access Control Labels</span></button>
+      <button class="eye-item eye-label-child" data-label="intercom"      onclick="setLabelVisibility('intercom')"><span class="eye-check">&#10003;</span><span class="eye-label">Intercom Labels</span></button>
+      <button class="eye-item eye-label-child" data-label="parcel"        onclick="setLabelVisibility('parcel')"><span class="eye-check">&#10003;</span><span class="eye-label">Parcel Labels</span></button>
+      <button class="eye-item eye-label-child" data-label="mailbox"       onclick="setLabelVisibility('mailbox')"><span class="eye-check">&#10003;</span><span class="eye-label">Mailbox Labels</span></button>
+      <button class="eye-item eye-label-child" data-label="suite"         onclick="setLabelVisibility('suite')"><span class="eye-check">&#10003;</span><span class="eye-label">Suite Labels</span></button>
       <button class="eye-item" data-toggle="cables"      onclick="setViewToggle('cables')"><span class="eye-check">&#10003;</span><span class="eye-label">Cables</span></button>
       <button class="eye-item" data-toggle="dori"        onclick="setViewToggle('dori')"><span class="eye-check">&#10003;</span><span class="eye-label">DORI Zones</span></button>
       <button class="eye-item" data-toggle="blind"       onclick="setViewToggle('blind')"><span class="eye-check">&#10003;</span><span class="eye-label">Blind Spots</span></button>
@@ -2701,7 +2727,9 @@ var smartAptCounters = { intercom: {}, parcel: {}, mailbox: {} };
 //   {id, page, x, y, label, unitType, notes}
 var suites = [];
 var suiteCounters = {};       // pageIdx -> next per-floor suite number (M6)
-var suitesHidden = false;     // per-session view toggle (not persisted) — M7
+// Cleanup M5: suitesHidden was a per-session per-tab boolean controlling the
+// "Hide unit labels" toggle. Replaced by projectInfo.labelVisibility.suite
+// (persisted, per-family, gated through Equipment Labels in the View menu).
 // Pass N+1 M1 (D1): four new selection-state variables. Mutual exclusion
 // rules live in selectCamera / selectReader / select* (M3+) and
 // closeRightPanel — each setter clears the other five so only one device is
@@ -2776,7 +2804,12 @@ var projectInfo = {
   // BOM computation. Each flag drives one row in the SMART APARTMENT section
   // with qty = suites.length. Modal #3 (Suites left pane → IoT Devices…)
   // toggles these values.
-  iotDevices: { smartLock: false, thermostat: false, waterSensor: false }
+  iotDevices: { smartLock: false, thermostat: false, waterSensor: false },
+  // Cleanup M5: per-family label-visibility flags. All default to true (labels
+  // visible). Persisted in the project JSON; on load, applyProjectState
+  // backfills missing keys to true. Replaces the per-session suitesHidden
+  // boolean and the standalone "Hide unit labels" control.
+  labelVisibility: { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true }
 };
 
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -3362,7 +3395,7 @@ async function loadImage(file){
   // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
   // selection states on fresh import.
   smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
-  suites=[]; suiteCounters={}; suitesHidden=false;
+  suites=[]; suiteCounters={};
   intercomSelectedId=null; parcelSelectedId=null; mailboxSelectedId=null; suiteSelectedId=null;
   _unitTypesModalShown=false;   // Pass N+1 M5: fresh import re-prompts on first Suites entry
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
@@ -3414,7 +3447,7 @@ async function loadImage(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-suite-labels','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -3430,7 +3463,7 @@ async function loadPDF(file){
   // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
   // selection states on fresh PDF import.
   smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
-  suites=[]; suiteCounters={}; suitesHidden=false;
+  suites=[]; suiteCounters={};
   intercomSelectedId=null; parcelSelectedId=null; mailboxSelectedId=null; suiteSelectedId=null;
   _unitTypesModalShown=false;   // Pass N+1 M5: fresh import re-prompts on first Suites entry
   blindMode=false; doriMode=false; calibrations={}; calibMode=false; calibPoints=[];
@@ -3467,7 +3500,7 @@ async function loadPDF(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-suite-labels','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -3848,7 +3881,7 @@ function rewindToNoPdf(){
   pdfLoaded = false;
   pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {};
   smartApartment = []; smartAptCounters = { intercom: {}, parcel: {}, mailbox: {} };
-  suites = []; suiteCounters = {}; suitesHidden = false;
+  suites = []; suiteCounters = {};
   tabOrder = null;            // Pass A.7: clear manual order with the rest of state
   _inpLabelSource = 'auto';   // Pass A.7: reset label provenance
   blindMode = false; doriMode = false; heatmapMode = false;
@@ -3890,7 +3923,7 @@ function rewindToNoPdf(){
   document.getElementById('dropzone').classList.remove('hidden');
   document.getElementById('tabs').innerHTML = '';
   // Disable menu items + corner icons
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-suite-labels','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.disabled = true;
   });
   document.body.classList.add('no-pdf');
@@ -4886,8 +4919,6 @@ function setViewToggle(name){
     if(heatmapMode) blindMode = false;
   } else if(name === 'fov'){
     fovVisible = !fovVisible;
-  } else if(name === 'suiteLabels'){
-    suitesHidden = !suitesHidden;
   } else if(name === 'cables'){
     cablesMode = !cablesMode;
   } else {
@@ -4907,7 +4938,6 @@ function setViewToggle(name){
 function _syncViewToggleUI(){
   var map = {
     fov:         fovVisible,        // checked when cones are visible
-    suiteLabels: !suitesHidden,     // inverted: checked when labels show
     cables:      cablesMode,        // checked when cable runs are visible
     dori:        doriMode,
     blind:       blindMode,
@@ -4915,7 +4945,6 @@ function _syncViewToggleUI(){
   };
   var menuIds = {
     fov: 'btn-fov',
-    suiteLabels: 'btn-suite-labels',
     cables: 'btn-cables',
     dori: 'btn-dori',
     blind: 'btn-blind',
@@ -4928,11 +4957,83 @@ function _syncViewToggleUI(){
     var ei = document.querySelector('.eye-item[data-toggle="' + key + '"]');
     if(ei) ei.classList.toggle('active', checked);
   });
+  // Cleanup M5: repaint Equipment Labels master + 6 children too. Bundled
+  // here so the eye-icon "has-active" indicator below sees the label state.
+  _syncLabelToggleUI();
   // Non-default = any toggle in a state opposite its cold-load default.
-  // Defaults: FOV/Unit Labels/Cables visible; DORI/Blind/Heatmap off.
-  var anyNonDefault = doriMode || blindMode || heatmapMode || !fovVisible || suitesHidden || !cablesMode;
+  // Defaults: FOV/Cables visible; DORI/Blind/Heatmap off; all six label
+  // flags true. Any label off contributes to has-active.
+  var lv = projectInfo.labelVisibility || {};
+  // Explicit-false check: undefined defaults to true, so a missing key is
+  // not counted as "hidden" for the has-active dot.
+  var anyLabelsHidden = lv.camera === false || lv.accessControl === false || lv.intercom === false || lv.parcel === false || lv.mailbox === false || lv.suite === false;
+  var anyNonDefault = doriMode || blindMode || heatmapMode || !fovVisible || !cablesMode || anyLabelsHidden;
   var eye = document.getElementById('btn-eye');
   if(eye) eye.classList.toggle('has-active', anyNonDefault);
+}
+
+// Cleanup M5: per-family label-visibility toggle. Child click handler.
+// Flips one flag, redraws, markDirty, repaints master + children.
+function setLabelVisibility(family){
+  if(!projectInfo.labelVisibility) projectInfo.labelVisibility = { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true };
+  if(projectInfo.labelVisibility[family] === undefined) return;
+  projectInfo.labelVisibility[family] = !projectInfo.labelVisibility[family];
+  markDirty();
+  _syncViewToggleUI();
+  redraw();
+}
+
+// Cleanup M5: master click handler. Tri-state cycle — if currently all-on,
+// turn all off. If all-off or indeterminate, turn all on. Always lands on
+// a definite state (never indeterminate as a click result).
+function setAllLabelVisibility(){
+  if(!projectInfo.labelVisibility) projectInfo.labelVisibility = { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true };
+  var lv = projectInfo.labelVisibility;
+  var allOn = lv.camera && lv.accessControl && lv.intercom && lv.parcel && lv.mailbox && lv.suite;
+  var nextState = !allOn; // all-on → off; otherwise → on
+  ['camera','accessControl','intercom','parcel','mailbox','suite'].forEach(function(k){
+    lv[k] = nextState;
+  });
+  markDirty();
+  _syncViewToggleUI();
+  redraw();
+}
+
+// Cleanup M5: paint the master + 6 children active/indeterminate states in
+// BOTH the View menu and the eye-dropdown. Master: active when all-on,
+// indeterminate when mixed, neither when all-off. Master's check span is
+// imperatively set to ✓ / – / (empty) so the tri-state is one glyph swap.
+function _syncLabelToggleUI(){
+  var lv = (projectInfo && projectInfo.labelVisibility) || {};
+  var families = ['camera','accessControl','intercom','parcel','mailbox','suite'];
+  var onCount = 0;
+  families.forEach(function(k){
+    var on = lv[k] !== false;
+    if(on) onCount++;
+    // View-menu child
+    var mi = document.getElementById('btn-label-' + k);
+    if(mi) mi.classList.toggle('active', on);
+    // Eye-dropdown child
+    var ei = document.querySelector('.eye-label-child[data-label="' + k + '"]');
+    if(ei) ei.classList.toggle('active', on);
+  });
+  var allOn  = onCount === families.length;
+  var allOff = onCount === 0;
+  var mixed  = !allOn && !allOff;
+  var mm = document.getElementById('btn-labels-master');
+  var em = document.getElementById('eye-labels-master');
+  [mm, em].forEach(function(el){
+    if(!el) return;
+    el.classList.toggle('active', allOn);
+    el.classList.toggle('indeterminate', mixed);
+    var checkSpan = el.querySelector('.menu-check, .eye-check');
+    if(checkSpan){
+      // ✓ for all-on, – (en-dash) for mixed, empty for all-off
+      checkSpan.innerHTML = allOn ? '&#10003;' : (mixed ? '&#8211;' : '&#10003;');
+      // visibility is CSS-controlled by .active / .indeterminate classes;
+      // for all-off the check is hidden by the base .eye-check / .menu-check rule.
+    }
+  });
 }
 
 // Eye-dropdown open/close. Lives outside the menubar's closeAllMenus
@@ -5039,10 +5140,10 @@ function redraw(){
   });
 
   // Pass N+1 M6: suites render last among placeable families (top-most
-  // z-order, matches the universal hit-test priority). M7's hide-toggle
-  // routes the pill ↔ dot swap through drawSuite itself (reads
-  // suitesHidden), so this loop runs unconditionally — hidden mode just
-  // produces dots instead of pills.
+  // z-order, matches the universal hit-test priority). Cleanup M5: label
+  // visibility routes through projectInfo.labelVisibility.suite inside
+  // drawSuite itself — this loop is unconditional. Pill is always drawn;
+  // the text label inside the pill is what suppresses.
   suites.filter(function(s){return s.page===currentPage;}).forEach(function(s){
     drawSuite(ctx, s, viewScale, s.id===suiteSelectedId);
   });
@@ -5175,14 +5276,18 @@ function drawCamBody(tc,cam,vs,isSel){
     tc.textAlign='left'; tc.textBaseline='alphabetic';
   }
 
-  tc.font='bold 12px Courier New';
-  var tw=tc.measureText(cam.label).width;
-  var lx=sx+CAM_R+4, ly=sy-10;
-  tc.fillStyle='rgba(255,248,185,.95)';
-  tc.fillRect(lx-2,ly-12,tw+8,16);
-  tc.strokeStyle='#b45309'; tc.lineWidth=0.7;
-  tc.strokeRect(lx-2,ly-12,tw+8,16);
-  tc.fillStyle='#111'; tc.fillText(cam.label,lx+2,ly);
+  // Cleanup M5: per-family label-visibility flag gates the yellow-pill label.
+  // Marker + cone unaffected — only the text label suppresses.
+  if(projectInfo.labelVisibility && projectInfo.labelVisibility.camera !== false){
+    tc.font='bold 12px Courier New';
+    var tw=tc.measureText(cam.label).width;
+    var lx=sx+CAM_R+4, ly=sy-10;
+    tc.fillStyle='rgba(255,248,185,.95)';
+    tc.fillRect(lx-2,ly-12,tw+8,16);
+    tc.strokeStyle='#b45309'; tc.lineWidth=0.7;
+    tc.strokeRect(lx-2,ly-12,tw+8,16);
+    tc.fillStyle='#111'; tc.fillText(cam.label,lx+2,ly);
+  }
 }
 
 function drawCalibrationOverlay(){
@@ -5933,12 +6038,14 @@ function drawReader(c, dev, vs, isSelected){
     var stripeY = spec.mount === 'mullion' ? y - 4 : y - 1;
     c.fillRect(x - (spec.mount==='mullion'?2.5:4), stripeY, spec.mount==='mullion'?5:8, 1.6);
   }
-  // Label below
-  c.fillStyle = '#1d4ed8';
-  c.font = 'bold 9px Courier New';
-  c.textAlign = 'center';
-  c.fillText(dev.label, x, y + h/2 + 11);
-  c.textAlign = 'left';
+  // Cleanup M5: label below (gated by per-family flag — marker stays visible).
+  if(projectInfo.labelVisibility && projectInfo.labelVisibility.accessControl !== false){
+    c.fillStyle = '#1d4ed8';
+    c.font = 'bold 9px Courier New';
+    c.textAlign = 'center';
+    c.fillText(dev.label, x, y + h/2 + 11);
+    c.textAlign = 'left';
+  }
   c.restore();
 }
 
@@ -6422,12 +6529,14 @@ function drawIntercom(c, dev, vs, isSelected){
   c.arc(x, y + h/2 - 3.5, 1.3, 0, Math.PI*2);
   c.fillStyle = '#fff';
   c.fill();
-  // Label below
-  c.fillStyle = INTERCOM_COLOR;
-  c.font = 'bold 9px Courier New';
-  c.textAlign = 'center';
-  c.fillText(dev.label, x, y + h/2 + 11);
-  c.textAlign = 'left';
+  // Cleanup M5: label below (gated by per-family flag — marker stays visible).
+  if(projectInfo.labelVisibility && projectInfo.labelVisibility.intercom !== false){
+    c.fillStyle = INTERCOM_COLOR;
+    c.font = 'bold 9px Courier New';
+    c.textAlign = 'center';
+    c.fillText(dev.label, x, y + h/2 + 11);
+    c.textAlign = 'left';
+  }
   c.restore();
 }
 function drawParcelLocker(c, dev, vs, isSelected){
@@ -6449,12 +6558,14 @@ function drawParcelLocker(c, dev, vs, isSelected){
   c.moveTo(col2x, y - h/2 + 1.5); c.lineTo(col2x, y + h/2 - 1.5);
   c.moveTo(x - w/2 + 1.5, y);     c.lineTo(x + w/2 - 1.5, y);
   c.stroke();
-  // Label below
-  c.fillStyle = PARCEL_COLOR;
-  c.font = 'bold 9px Courier New';
-  c.textAlign = 'center';
-  c.fillText(dev.label, x, y + h/2 + 11);
-  c.textAlign = 'left';
+  // Cleanup M5: label below (gated by per-family flag — marker stays visible).
+  if(projectInfo.labelVisibility && projectInfo.labelVisibility.parcel !== false){
+    c.fillStyle = PARCEL_COLOR;
+    c.font = 'bold 9px Courier New';
+    c.textAlign = 'center';
+    c.fillText(dev.label, x, y + h/2 + 11);
+    c.textAlign = 'left';
+  }
   c.restore();
 }
 function drawMailboxBank(c, dev, vs, isSelected){
@@ -6488,12 +6599,14 @@ function drawMailboxBank(c, dev, vs, isSelected){
     c.moveTo(x - w/2 + 1.5, cy); c.lineTo(x + w/2 - 1.5, cy);
   }
   c.stroke();
-  // Label below
-  c.fillStyle = MAILBOX_COLOR;
-  c.font = 'bold 9px Courier New';
-  c.textAlign = 'center';
-  c.fillText(dev.label, x, y + h/2 + 11);
-  c.textAlign = 'left';
+  // Cleanup M5: label below (gated by per-family flag — marker stays visible).
+  if(projectInfo.labelVisibility && projectInfo.labelVisibility.mailbox !== false){
+    c.fillStyle = MAILBOX_COLOR;
+    c.font = 'bold 9px Courier New';
+    c.textAlign = 'center';
+    c.fillText(dev.label, x, y + h/2 + 11);
+    c.textAlign = 'left';
+  }
   c.restore();
 }
 
@@ -7166,76 +7279,59 @@ function _suiteDisplayLabel(suite){
 }
 
 // Canvas marker — a small neutral-grey pill with the display label.
-// When the per-session suitesHidden toggle is on, the pill collapses to
-// a 6px suite-green dot (selection still shown via the yellow ring).
-// Selected state: yellow #fbbf24 selection ring (background + text
-// colors unchanged from the resting grey scheme; the ring alone
-// signals selection). Drag bounds = the rendered shape's bounds.
+// Cleanup M5: per-family label visibility (projectInfo.labelVisibility.suite)
+// replaces the prior per-session suitesHidden boolean. When labels are off,
+// the pill marker stays visible but renders empty (fixed 20×18 size). Old
+// "collapse to dot" mode is gone — the brief's "markers not affected, labels
+// only" rule supersedes it.
+// Selected state: yellow #fbbf24 selection ring. Drag bounds = the rendered
+// pill's bounds; hit-test matches in suiteAt below.
 function drawSuite(c, suite, vs, isSelected){
   var x = suite.x*vs, y = suite.y*vs;
+  var labelsOn = !!(projectInfo.labelVisibility && projectInfo.labelVisibility.suite !== false);
   c.save();
-  if(suitesHidden){
-    // Dot mode: filled green disc, yellow ring when selected.
-    var r = 3;
-    c.fillStyle = SUITE_COLOR;
-    c.beginPath();
-    c.arc(x, y, r, 0, Math.PI*2);
-    c.fill();
-    if(isSelected){
-      c.strokeStyle = '#fbbf24';
-      c.lineWidth = 2.0;
-      c.beginPath();
-      c.arc(x, y, r + 2, 0, Math.PI*2);
-      c.stroke();
-    }
-    c.restore();
-    return;
-  }
   c.font = 'bold 12px Courier New';
   var label = _suiteDisplayLabel(suite);
-  var tw = c.measureText(label).width;
+  var tw = labelsOn ? c.measureText(label).width : 0;
   var padX = 6, pillH = 18;
-  var pillW = tw + padX*2;
+  var pillW = labelsOn ? (tw + padX*2) : 20;
   var px = x - pillW/2, py = y - pillH/2;
   c.fillStyle   = '#f3f4f6';
   c.strokeStyle = isSelected ? '#fbbf24' : '#9ca3af';
   c.lineWidth   = isSelected ? 2.0 : 1.2;
   acRoundRect(c, px, py, pillW, pillH, 4);
   c.fill(); c.stroke();
-  c.fillStyle = '#374151';
-  c.textAlign = 'center';
-  c.textBaseline = 'middle';
-  c.fillText(label, x, y);
-  c.textAlign = 'left';
-  c.textBaseline = 'alphabetic';
+  if(labelsOn){
+    c.fillStyle = '#374151';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(label, x, y);
+    c.textAlign = 'left';
+    c.textBaseline = 'alphabetic';
+  }
   c.restore();
 }
 
-// Hit-test: bounding-box around the rendered shape. When suitesHidden,
-// hit a small radial bound around the dot (radius+2 padding). Otherwise
-// measure the DISPLAY label so bounds match the rendered pill width
-// (not the stored label). Iterate newest first so an overlapping
-// later-placed suite wins.
+// Hit-test: bounding-box around the rendered pill. Measure the DISPLAY
+// label width so bounds match the rendered pill (not the stored label).
+// When suite labels are off (Cleanup M5: !labelVisibility.suite), the
+// pill is a fixed 20×18 marker — hit-test against those bounds. Iterate
+// newest first so an overlapping later-placed suite wins.
 function suiteAt(cssX, cssY){
   if(!suites.length) return null;
   var pageSuites = suites.filter(function(s){return s.page === currentPage;});
   if(pageSuites.length === 0) return null;
-  if(suitesHidden){
-    var hitR = 5; // dot radius 3 + 2 padding
-    for(var j = pageSuites.length - 1; j >= 0; j--){
-      var sd = pageSuites[j];
-      var ddx = cssX - sd.x*viewScale;
-      var ddy = cssY - sd.y*viewScale;
-      if(ddx*ddx + ddy*ddy <= hitR*hitR) return sd;
-    }
-    return null;
-  }
+  // Cleanup M5: pill bounds match drawSuite — when labels are on the pill
+  // is sized to fit the label text; when off, fixed 20×18. Dot-mode path
+  // removed (drawSuite no longer collapses to a dot).
+  var labelsOn = !!(projectInfo.labelVisibility && projectInfo.labelVisibility.suite !== false);
   ctx.save();
-  ctx.font = 'bold 12px Courier New';
+  if(labelsOn) ctx.font = 'bold 12px Courier New';
   for(var i = pageSuites.length - 1; i >= 0; i--){
     var s = pageSuites[i];
-    var tw = ctx.measureText(_suiteDisplayLabel(s)).width;
-    var pillW = tw + 12, pillH = 18;
+    var tw = labelsOn ? ctx.measureText(_suiteDisplayLabel(s)).width : 0;
+    var pillW = labelsOn ? (tw + 12) : 20;
+    var pillH = 18;
     var dx = cssX - s.x*viewScale;
     var dy = cssY - s.y*viewScale;
     if(Math.abs(dx) <= pillW/2 + 2 && Math.abs(dy) <= pillH/2 + 2){
@@ -8577,6 +8673,18 @@ function applyProjectState(data){
   if(!projectInfo.acDefaults){
     projectInfo.acDefaults = cloneAcDefaults();
   }
+  // Cleanup M5 (additive backfill): older saves predate per-family label-
+  // visibility. Default all six flags to true (labels visible) so legacy
+  // projects load with no behavior change. Individual missing keys also
+  // default to true.
+  if(!projectInfo.labelVisibility || typeof projectInfo.labelVisibility !== 'object'){
+    projectInfo.labelVisibility = { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true };
+  } else {
+    var _lvKeys = ['camera','accessControl','intercom','parcel','mailbox','suite'];
+    _lvKeys.forEach(function(k){
+      if(projectInfo.labelVisibility[k] === undefined) projectInfo.labelVisibility[k] = true;
+    });
+  }
   acDevices    = data.acDevices  || [];
   acCounters   = data.acCounters || {};
   acSelectedId = null;
@@ -8616,7 +8724,6 @@ function applyProjectState(data){
   suites         = Array.isArray(data.suites) ? data.suites : [];
   suiteCounters  = (data.suiteCounters && typeof data.suiteCounters === 'object')
     ? data.suiteCounters : {};
-  suitesHidden   = false;  // per-session view toggle — never persisted
   intercomSelectedId = null;
   parcelSelectedId   = null;
   mailboxSelectedId  = null;
@@ -11908,7 +12015,11 @@ function saveProjectInfo(){
     // #1 and Modal #3 — M5/M8), so without these two carry-overs a project
     // info save would silently wipe both fields.
     unitTypes:        Array.isArray(projectInfo.unitTypes) ? projectInfo.unitTypes : [],
-    iotDevices:       (projectInfo.iotDevices && typeof projectInfo.iotDevices === 'object') ? projectInfo.iotDevices : {}
+    iotDevices:       (projectInfo.iotDevices && typeof projectInfo.iotDevices === 'object') ? projectInfo.iotDevices : {},
+    // Cleanup M5: preserve labelVisibility across projectInfo modal saves —
+    // the modal doesn't expose it, so without this carry-over a save would
+    // silently reset all six flags to the factory default of all-true.
+    labelVisibility:  (projectInfo.labelVisibility && typeof projectInfo.labelVisibility === 'object') ? projectInfo.labelVisibility : { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true }
   };
   markDirty();
   closeProjectModal();
