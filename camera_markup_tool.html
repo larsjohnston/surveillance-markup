@@ -1070,6 +1070,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <div class="menu-divider"></div>
         <button class="menu-item" id="btn-save" onclick="saveJSON()" data-shortcut="S" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save Project</span></button>
         <button class="menu-item" id="btn-load" onclick="document.getElementById('json-input').click()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Project&hellip;</span></button>
+        <!-- Pricing Data Foundation M2: pricing file picker entries. -->
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="btn-pricing-load" onclick="openPricingFilePicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Pricing&hellip;</span></button>
+        <button class="menu-item" id="btn-pricing-clear" onclick="confirmClearPricing()"><span class="menu-check">&#10003;</span><span class="menu-label">Clear Pricing</span></button>
       </div>
     </div>
     <div class="menu" data-menu="view">
@@ -1112,9 +1116,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </nav>
   <!-- Pass D: auto-save status. updateSaveIndicator() controls visibility/text. -->
   <span id="save-indicator" class="save-indicator" style="display:none" onclick="saveJSON()" title="Click to save (Ctrl+S)"></span>
-  <!-- Pricing Data Foundation M1: pricing-status indicator. M2 wires the
-       click to the file picker; for now it logs a placeholder message. -->
-  <span id="pricing-status" class="pricing-status not-loaded" onclick="console.log('Pricing load flow — coming in M2')" title="Pricing data status (click to load — M2)">Pricing · not loaded</span>
+  <!-- Pricing Data Foundation M1+M2: pricing-status indicator. Click opens
+       the Load Pricing file picker (same as File → Load Pricing…). -->
+  <span id="pricing-status" class="pricing-status not-loaded" onclick="openPricingFilePicker()" title="Pricing data status (click to load)">Pricing · not loaded</span>
   <div class="topbar-spacer"></div>
   <!-- Visibility Toggles UX pass: eye icon + dropdown. Mirrors the View menu's
        five toggles in a click-anywhere surface. setViewToggle() drives both
@@ -2001,6 +2005,21 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
 </div>
 
+<!-- Pricing Data Foundation M2: error modal for parse + validation failures.
+     Reuses .big-modal styling. Body is populated dynamically by
+     showPricingError(); localStorage is NOT mutated on failure. -->
+<div id="pricing-error-modal" class="big-modal" onclick="if(event.target===this) closePricingErrorModal()">
+  <div class="modal-box" style="min-width:480px;">
+    <h3>Couldn't load pricing</h3>
+    <p id="pricing-error-summary" style="margin:0 0 10px 0;"></p>
+    <ul id="pricing-error-list" style="margin:0 0 14px 18px; font:11px var(--font-ui); color:var(--text); line-height:1.5;"></ul>
+    <p style="margin:0 0 14px 0; font:11px var(--font-ui); color:var(--text-muted);">Existing pricing data (if any) is unchanged. Fix the file and try again.</p>
+    <div class="modal-actions">
+      <button class="btn btn-dark" onclick="closePricingErrorModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Tab Modal (Pass A.5) -->
 <div id="tab-edit-modal" class="big-modal">
   <div class="modal-box" style="min-width:420px;">
@@ -2065,12 +2084,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </header>
 
   <div id="bom-scroll-wrap">
-  <!-- Pricing Data Foundation M1: banner shown when no pricing book is
-       loaded (isPricingLoaded() === false). M2 wires the Load Now button
-       to the file picker; for now it logs a placeholder message. -->
+  <!-- Pricing Data Foundation M1+M2: banner shown when no pricing book is
+       loaded (isPricingLoaded() === false). "Load Now" opens the same file
+       picker as File → Load Pricing and the menubar status indicator. -->
   <div id="pricing-banner" class="pricing-banner">
     <span>Pricing data not loaded. Load a pricing file (File → Load Pricing) to enable quote totals on BOM and Take-Off pages.</span>
-    <button id="pricing-banner-load-btn" class="pricing-banner-btn" onclick="console.log('Load pricing flow not yet implemented (M2).')">Load Now</button>
+    <button id="pricing-banner-load-btn" class="pricing-banner-btn" onclick="openPricingFilePicker()">Load Now</button>
   </div>
   <div id="bom-summary">
     <div class="bom-stat"><span class="lbl">Camera Count</span><span class="val" id="bom-cam-count">0</span></div>
@@ -2606,6 +2625,123 @@ function updatePricingUI(){
     }
   }
   return loaded;
+}
+
+// ─── Pricing Data Foundation (M2) — file picker + menu integration ──────────
+// Wires File → Load Pricing, File → Clear Pricing, the menubar status
+// indicator click, and the BOM drawer banner "Load Now" button to a
+// single FileReader-based flow. Validation failures show an error modal
+// without touching localStorage.
+
+// Open the pricing file picker. Creates a fresh hidden <input> on each
+// click, triggers it programmatically, and removes the input after the
+// change event fires (or on cancel). Pattern: don't leave a hidden input
+// in the DOM between picks.
+function openPricingFilePicker(){
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    if(f) _handlePricingFile(f);
+    // Always remove the transient input — cancel path or success path.
+    if(input.parentNode) input.parentNode.removeChild(input);
+  });
+  // Cancel path: in some browsers, clicking the picker and cancelling
+  // never fires a change event. The transient input remains until next
+  // click; this is acceptable (a few extra detached nodes is harmless),
+  // but the listener above removes it whenever a file is actually picked.
+  input.click();
+}
+
+// Read + parse + validate the picked file. On success, write to
+// localStorage via setPricingBook(), refresh banner + status, show toast.
+// On any failure (read error, parse error, schema validation), open the
+// error modal with details; localStorage is NOT touched.
+function _handlePricingFile(file){
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    var text = ev.target && ev.target.result;
+    var parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch(parseErr){
+      showPricingError(
+        'The file is not valid JSON.',
+        ['Parse error: ' + (parseErr && parseErr.message ? parseErr.message : String(parseErr))]
+      );
+      return;
+    }
+    var result = validatePricingBook(parsed);
+    if(!result.valid){
+      showPricingError(
+        'The file is valid JSON but does not match the pricing schema.',
+        result.errors
+      );
+      return;
+    }
+    // setPricingBook re-validates and writes to localStorage atomically.
+    var ok = setPricingBook(parsed);
+    if(!ok){
+      // Defensive: validatePricingBook said valid, setPricingBook said no.
+      // Unlikely (e.g., localStorage quota). Surface what we can.
+      showPricingError(
+        "Pricing data passed validation but couldn't be saved.",
+        ['localStorage write failed. Browser storage may be full or disabled.']
+      );
+      return;
+    }
+    updatePricingUI();
+    var itemCount = parsed.items ? Object.keys(parsed.items).length : 0;
+    showToast('Pricing loaded: ' + itemCount + ' items, ' + (parsed.currency || '—') + ', updated ' + (parsed.updated || '—') + '.');
+  };
+  reader.onerror = function(){
+    showPricingError(
+      "Couldn't read the file.",
+      ['File read error: ' + (reader.error && reader.error.message ? reader.error.message : 'unknown')]
+    );
+  };
+  reader.readAsText(file);
+}
+
+// Confirm before clearing. Pricing books are file-based so clearing is
+// recoverable via re-load — keep the confirm copy non-alarming.
+function confirmClearPricing(){
+  if(!isPricingLoaded()){
+    showToast('No pricing data is loaded.');
+    return;
+  }
+  var ok = confirm('Clear loaded pricing data?\n\nLoaded pricing books are file-based — you can re-load anytime via File → Load Pricing.');
+  if(!ok) return;
+  clearPricingBook();
+  updatePricingUI();
+  showToast('Pricing data cleared.');
+}
+
+// Open the error modal with a summary line + bulleted list of errors.
+// Existing localStorage pricing (if any) is not affected by this path —
+// callers must already have skipped the write.
+function showPricingError(summary, errors){
+  var modal = document.getElementById('pricing-error-modal');
+  var sumEl = document.getElementById('pricing-error-summary');
+  var listEl = document.getElementById('pricing-error-list');
+  if(sumEl) sumEl.textContent = summary || 'The pricing file could not be loaded.';
+  if(listEl){
+    listEl.innerHTML = '';
+    (errors || []).forEach(function(err){
+      var li = document.createElement('li');
+      li.textContent = err;
+      listEl.appendChild(li);
+    });
+  }
+  if(modal) modal.classList.add('show');
+}
+
+function closePricingErrorModal(){
+  var modal = document.getElementById('pricing-error-modal');
+  if(modal) modal.classList.remove('show');
 }
 
 // Pass Left-Pane: project-wide variant defaults per subcategory. Used by
