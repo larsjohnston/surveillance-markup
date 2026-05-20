@@ -1255,16 +1255,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <!-- Tier 3 model list, dynamically rendered. Hidden when brand=other. -->
       <div id="lp-tier3-cameras" class="lp-tier3-list"></div>
 
-      <!-- Pass Left-Pane: CMVR head-end placement relocated from the old
-           #type-row (which was deleted with the style buttons). Standalone
-           control below the drill-down. The Tools menu's "Place Head-End"
-           (id=btn-headend) is the same entry point. Either path works. -->
-      <div id="lp-cmvr-row">
-        <button class="type-btn type-btn-cmvr" id="tb-cmvr" onclick="startHeadendPlacement()" title="Place CMVR / NVR head-end on this page">
-          <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><circle cx="8" cy="7" r=".7" fill="currentColor"/><circle cx="8" cy="17" r=".7" fill="currentColor"/><path d="M12 7h4M12 17h4"/></svg>
-          CMVR / NVR
-        </button>
-      </div>
       <!-- Editable detail fields (Label / Resolution / Angle / FOV / Reach /
            Mount / Notes) live in #right-panel now. Tier and Floor remain
            hidden in the DOM so existing JS reads/writes don't error. -->
@@ -1341,6 +1331,20 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <b>Right-click</b> menu &middot; <b>Del</b> remove<br>
         <b>Scroll</b> zoom &middot; <b>Esc</b> cancel
       </p>
+    </div>
+
+    <!-- Cleanup M4: Camera Accessories section. Holds head-end / network /
+         cabling tiles relocated out of the drill-down so they sit as a peer
+         section, always visible regardless of brand/style/model state. Ships
+         with CMVR/NVR only; the Switch tile is deferred to a future Switch
+         Topology pass (placed switch needs real downstream behavior — BOM,
+         riser, cabling — that's out of cleanup scope). -->
+    <div class="phdr">Camera Accessories</div>
+    <div id="lp-cmvr-row">
+      <button class="type-btn type-btn-cmvr" id="tb-cmvr" onclick="startHeadendPlacement()" title="Place CMVR / NVR head-end on this page">
+        <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><circle cx="8" cy="7" r=".7" fill="currentColor"/><circle cx="8" cy="17" r=".7" fill="currentColor"/><path d="M12 7h4M12 17h4"/></svg>
+        CMVR / NVR
+      </button>
     </div>
 
     <div class="phdr">DORI Range</div>
