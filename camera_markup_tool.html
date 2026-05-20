@@ -2780,13 +2780,19 @@ var wrap=document.getElementById('canvas-wrap');
 
 // ─── Camera Model Browser ─────────────────────────────────────────────────────
 // Style metadata keyed by camera type — drives icons/colors in modal and panel
+// Cleanup M2: tile SVGs are silhouette-matched to drawCamBody canvas
+// markers (filled colored body with white accents), so users see the
+// same shape in the picker that they get on the floor plan. Convention:
+// fill="currentColor" picks up the per-style color from the inline
+// color: set on .ts-icon (sm.color via renderLeftPaneDrillDown). White
+// accents use literal #fff to match the canvas marker's white interior.
 var STYLE_META = {
-  dome:    { label:'Dome',    color:'#c8202c', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 16h18a9 9 0 0 0-18 0z"/><circle cx="12" cy="11" r="3" fill="currentColor"/></svg>' },
-  bullet:  { label:'Bullet',  color:'#2563eb', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="14" height="6" rx="1.5"/><circle cx="17" cy="12" r="2" fill="currentColor"/><path d="M9 9V7M9 17v-2"/></svg>' },
-  turret:  { label:'Turret',  color:'#0891b2', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17a7 7 0 0 1 14 0z"/><circle cx="12" cy="11" r="4" fill="currentColor" stroke="none"/><circle cx="13" cy="10" r="1.2" fill="#fff" stroke="none"/></svg>' },
-  fisheye: { label:'Fisheye', color:'#16a34a', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="#fff" stroke="none"/></svg>' },
-  ptz:     { label:'PTZ',     color:'#7c3aed', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="6"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>' },
-  lpr:     { label:'LPR',     color:'#d97706', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="9" rx="1.5"/><path d="M7 12h2M11 12h2M15 12h2"/></svg>' }
+  dome:    { label:'Dome',    color:'#c8202c', svg:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5" fill="#fff"/></svg>' },
+  bullet:  { label:'Bullet',  color:'#2563eb', svg:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="8" width="18" height="8" rx="1"/><circle cx="9" cy="12" r="2" fill="#fff"/></svg>' },
+  turret:  { label:'Turret',  color:'#0891b2', svg:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="10.5" r="4.5" fill="#fff"/><circle cx="13" cy="9.5" r="2"/></svg>' },
+  fisheye: { label:'Fisheye', color:'#16a34a', svg:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="currentColor"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="#fff" stroke-width="1.4"/><circle cx="12" cy="12" r="2.5" fill="#fff"/></svg>' },
+  ptz:     { label:'PTZ',     color:'#7c3aed', svg:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/><path d="M 19 7 A 6 6 0 0 1 19 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M 5 7 A 6 6 0 0 0 5 17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.8" fill="#fff"/></svg>' },
+  lpr:     { label:'LPR',     color:'#d97706', svg:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="6.5" width="18" height="11" rx="1"/><text x="12" y="15" text-anchor="middle" font-family="Courier New, monospace" font-size="8" font-weight="bold" fill="#fff">LP</text></svg>' }
 };
 
 // Pass Left-Pane M6: legacy brand-modal that read BRAND_META is gone. The
@@ -4796,6 +4802,14 @@ function fmtDist(meters, p){
 }
 function doriDistanceM(hPx, fovDeg, targetPPM){
   if(!hPx||!fovDeg||!targetPPM) return 0;
+  // Cleanup M3: the pinhole formula is undefined for omnidirectional
+  // cameras (fov >= 180°). Math.tan(Math.PI/2) is ~1.6e16 (huge but finite,
+  // not Infinity), so naive math here returns a near-zero positive number
+  // — which passes the `d > 0` guard in cameraSpecReachM and leaves the
+  // fisheye with reachM ≈ 2e-15, producing an invisible cone. Return 0
+  // so callers fall through to their defaults (cameraSpecReachM → 12m
+  // fallback; updateDoriInfo → "0 m" bands; DORI-mode cone → none).
+  if(fovDeg >= 180) return 0;
   var fovRad=fovDeg*Math.PI/180;
   return hPx/(2*targetPPM*Math.tan(fovRad/2));
 }
@@ -8531,6 +8545,16 @@ function applyProjectState(data){
       _legacyReachMigrated = true;
     }
     delete c.reach;
+  });
+  // Cleanup M3 migration: pre-fix fisheye saves stored reachM ≈ 2e-15 (the
+  // doriDistanceM(fov>=180) degenerate-tan bug — see doriDistanceM comment).
+  // Normalize any such camera to its spec reach so old fisheyes render a
+  // cone on load. Silent + idempotent: only touches cameras with the
+  // degenerate value; normal cameras and post-fix fisheyes (reachM=12) skip.
+  cameras.forEach(function(c){
+    if(c.reachM != null && c.reachM < 0.001 && c.fov >= 180){
+      c.reachM = cameraSpecReachM(c.model);
+    }
   });
   if(!projectInfo.proposalSections){
     projectInfo.proposalSections = { cover:true, bom:true, takeOff:true, riser:true, plans:true };
