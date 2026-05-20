@@ -4,7 +4,7 @@
 title: Surveillance Markup Tool
 subtitle: User Guide
 tagline: Plan, mark up, and quote security and smart-apartment systems
-version: 1.6
+version: 1.7
 date: May 2026
 org: Calgary Lock and Safe — Smart MF
 %ENDMETA
@@ -22,8 +22,9 @@ org: Calgary Lock and Safe — Smart MF
 9. Exporting the Proposal
 10. The Take-Off Page
 11. Saving and Reloading Projects
-12. Tips, Shortcuts, and Troubleshooting
-13. Version History
+12. Pricing Data
+13. Tips, Shortcuts, and Troubleshooting
+14. Version History
 %ENDTOC
 
 %H1 Welcome
@@ -388,6 +389,56 @@ Older project files (saved before a new feature shipped) load cleanly. Any field
 
 %PAGEBREAK
 
+%H1 Pricing Data
+
+Vendor pricing is **external** to the tool. There's no price book embedded in the HTML, and prices are never stored inside a project file. Instead, you maintain a `pricing.json` file on your machine and load it into the tool when you want quoting features.
+
+This keeps vendor pricing private (the integrator's contractual data stays out of project files and out of git history) and lets you update prices independently — a new vendor price book means re-editing the JSON, not a tool release.
+
+%H2 Loading pricing
+
+Use **File → Load Pricing…** and pick your `pricing.json`. The tool validates the schema, then loads the data into the browser's local storage on this machine.
+
+After loading:
+
+- The menubar status indicator near the top right reads **Pricing · CAD · 2026-05-20** (or whatever currency and date your file specifies), in subdued grey.
+- The reminder banner inside the BOM drawer disappears.
+
+When pricing is **not** loaded:
+
+- The status indicator reads **Pricing · not loaded** in amber.
+- A banner at the top of the BOM drawer reminds you that quote totals are disabled until a pricing file is loaded. The banner has a **Load Now** button that opens the same file picker.
+
+You can also click the menubar status indicator directly to open the file picker — useful when you want to swap in a refreshed pricing file without going through the menu.
+
+%H2 Clearing pricing
+
+Use **File → Clear Pricing** to remove the loaded data. A confirmation prompt notes that pricing is file-based — you can re-load anytime. After clearing, the banner reappears and the status indicator reverts to amber.
+
+%H2 Where pricing is stored
+
+Loaded pricing lives in your browser's **local storage**, separately from project files. It persists across sessions on the same machine and browser, but it's not bundled into any saved project JSON. When you open a project on a different machine (or a fresh browser profile), you'll need to load the pricing file there too — once. Clearing your browser's site data wipes the loaded pricing; re-load to restore it.
+
+%CALLOUT Pricing and project files are separate
+A saved project JSON contains floor plans, device placements, BOM custom lines, and project info — but no prices. This is deliberate: project files can be shared between integrators without exposing vendor pricing.
+%ENDCALLOUT
+
+%H2 What quoting features look like today
+
+This release ships the **loading foundation** for pricing. Cost columns on the BOM, totals on the Take-Off page, and Grand Total figures on the proposal cover are coming in a later release — the data is in place, but the rendering surfaces will arrive together as a separate update.
+
+In other words: loading a pricing file today doesn't change the BOM drawer's appearance or the proposal PDF output yet. The status indicator just confirms the file is loaded and ready for the next release to consume.
+
+%H2 Maintaining the pricing file
+
+The `pricing.json` file is a small JSON document with a published schema (`schema_version`, `currency`, `updated`, `labor_rate_per_hour`, and an `items` map keyed by SKU). The integrator hand-curates it from vendor price books.
+
+A template is shipped in the repo at `source-data/pricing-template.json` — copy it to `source-data/pricing.json` and fill in real prices. The `source-data/README.md` in the same folder documents the curation flow and the schema in detail.
+
+The `source-data/` folder is gitignored except for the template and README, so neither vendor PDFs nor your curated `pricing.json` ever land in version control.
+
+%PAGEBREAK
+
 %H1 Tips, Shortcuts, and Troubleshooting
 
 %H2 Keyboard shortcuts
@@ -446,6 +497,16 @@ Not currently. Custom lines have to be entered through the BOM editor.
 %H1 Version History
 
 This guide is updated with each major release of the tool.
+
+%H2 Version 1.7 — May 2026
+
+Pricing data foundation. The tool can now load an external price book to enable quoting (cost rendering arrives in a later release).
+
+- Load an external pricing file via **File → Load Pricing**
+- Pricing status indicator (top right) and a BOM-drawer reminder banner show whether pricing is loaded
+- Clear loaded pricing via **File → Clear Pricing**
+- Pricing is stored per-machine in the browser, separate from project files
+- Quote totals on the BOM and Take-Off pages will use this pricing data in a future release
 
 %H2 Version 1.6 — May 2026
 
