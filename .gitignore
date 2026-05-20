@@ -41,3 +41,5 @@ docs/package-lock.json
 # above so they take precedence on these two specific files.
 !source-data/pricing-template.json
 !source-data/README.md
+
+.claude/
