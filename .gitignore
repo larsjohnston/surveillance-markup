@@ -2,7 +2,11 @@
 *.json
 saved_projects/
 client_data/
-source-data/
+# Pricing Foundation M3: ignore source-data CONTENTS (not the folder itself) so
+# the schema reference + curation README can be re-included via negations below.
+# `source-data/` (with trailing slash, no star) would block negations because
+# git won't re-include files from a fully-excluded parent directory.
+source-data/*
 
 # Imported floor plans
 *.pdf
@@ -27,3 +31,11 @@ docs/node_modules/
 docs/package-lock.json
 # Override the project-wide *.json ignore so the docs build manifest tracks
 !docs/package.json
+
+# Pricing Foundation M3: track the source-data schema reference + the curation
+# flow document so the team has the shape and the workflow in git. Everything
+# else inside source-data/ (real pricing.json, vendor PDFs, vendor XLSX files)
+# stays out. Negations must come AFTER the source-data/ + *.json + *.pdf rules
+# above so they take precedence on these two specific files.
+!source-data/pricing-template.json
+!source-data/README.md

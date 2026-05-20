@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "currency": "CAD",
+  "updated": "2026-05-20",
+  "notes": "Template — replace with real pricing. Copy this file to pricing.json (in this same folder) and fill in real unit_cost / msrp values from your vendor price books. Load via File → Load Pricing in the app. See source-data/README.md for the curation flow.",
+  "labor_rate_per_hour": 1,
+  "items": {
+    "EXAMPLE-SKU-001": {
+      "unit_cost": 0,
+      "msrp": 0,
+      "notes": "Replace with a real SKU and price. SKU keys must match the catalog identifiers used in the tool (CAMERA_DB, BRIVO_CATALOG, INTERCOM_DB, PARCEL_DB, MAILBOX_DB, etc.). Open camera_markup_tool.html and grep for the constant of interest to see real SKU strings."
+    },
+    "EXAMPLE-SKU-002": {
+      "unit_cost": 0,
+      "msrp": 0
+    }
+  }
+}
