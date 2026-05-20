@@ -2744,6 +2744,534 @@ function closePricingErrorModal(){
   if(modal) modal.classList.remove('show');
 }
 
+// ─── Door Hardware (Import / Quote / Price) — Data Engine (M1) ──────────────
+// Pure-data layer for the Door Hardware module. No DOM, no menu entries, no
+// rendering — those come in M2/M3/M4. Console-testable: every function is a
+// pure utility over plain objects/strings except dhwNormalizeState which
+// touches the module-level state and the persistence calls in
+// saveJSON / buildLiteSaveData / applyProjectState. See HARDWARE_SPEC.md for
+// the module's overall design.
+
+// Module state. Persisted under the key 'doorHardware' in the project JSON.
+// Older saves (no key) load through dhwNormalizeState which backfills to the
+// empty-state defaults.
+var doorHardware = dhwEmptyState_init();
+
+// Fresh empty state. Returns a NEW object on every call (no shared references)
+// so callers can mutate without corrupting a singleton default.
+function dhwEmptyState(){
+  return {
+    importedTakeoff: null,
+    hardwareQuotes: [],
+    hardwareAward: null,
+    hardwarePricing: {
+      defaultMarkupPct: 0,
+      lineMarkupOverrides: {},
+      includeLabour: false,
+      hourlyRate: 0,
+      lineInstallHours: {}
+    },
+    doorScheduleRef: null
+  };
+}
+// init-time wrapper — declared before doorHardware so the var declaration can
+// call it. (JS hoists function declarations, so this works regardless of file
+// order, but a separate name avoids any "is this a recursion" confusion.)
+function dhwEmptyState_init(){ return dhwEmptyState(); }
+
+// Backfill loader: takes a possibly-partial object (from an old save's
+// doorHardware key, or an entirely missing key handled by the caller) and
+// fills in any missing fields with empty-state defaults. Returns a fresh
+// fully-populated state object.
+function dhwNormalizeState(obj){
+  var empty = dhwEmptyState();
+  if(!obj || typeof obj !== 'object') return empty;
+  empty.importedTakeoff = (obj.importedTakeoff && typeof obj.importedTakeoff === 'object') ? obj.importedTakeoff : null;
+  empty.hardwareQuotes  = Array.isArray(obj.hardwareQuotes) ? obj.hardwareQuotes : [];
+  empty.hardwareAward   = (obj.hardwareAward && typeof obj.hardwareAward === 'object') ? obj.hardwareAward : null;
+  if(obj.hardwarePricing && typeof obj.hardwarePricing === 'object'){
+    var p = obj.hardwarePricing;
+    empty.hardwarePricing.defaultMarkupPct    = (typeof p.defaultMarkupPct    === 'number') ? p.defaultMarkupPct    : 0;
+    empty.hardwarePricing.lineMarkupOverrides = (p.lineMarkupOverrides && typeof p.lineMarkupOverrides === 'object') ? p.lineMarkupOverrides : {};
+    empty.hardwarePricing.includeLabour       = !!p.includeLabour;
+    empty.hardwarePricing.hourlyRate          = (typeof p.hourlyRate === 'number') ? p.hourlyRate : 0;
+    empty.hardwarePricing.lineInstallHours    = (p.lineInstallHours && typeof p.lineInstallHours === 'object') ? p.lineInstallHours : {};
+  }
+  empty.doorScheduleRef = obj.doorScheduleRef || null;
+  return empty;
+}
+
+// Known Allegion manufacturer codes used as preferred grouping order. The
+// importer accepts ANY token as a manufacturer code — this list is only used
+// to order the groups in dhwGroupByMfr. Unknown codes sort after the known
+// set (alphabetical), then OTHER trailing.
+var DHW_KNOWN_MFRS = ['FAL','SCH','VON','LCN','IVE','GLY','SCE','KNC','ZER'];
+
+// Tokens that flag a takeoff/quote line as possibly belonging to the
+// Access-Control / Division-28 scope (so the manager can warn about
+// double-counting with the AC mode). Matched case-insensitively as a
+// substring of the description or catalog number.
+var DHW_AC_OVERLAP_TOKENS = [
+  'electric strike',
+  'electric latch',
+  'electric mortise',
+  'credential reader',
+  'card reader',
+  'prox reader',
+  'power supply',
+  'door contact',
+  'wire harness',
+  'rex',           // request-to-exit
+  'mag lock',
+  'magnetic lock',
+  'electromagnet'
+];
+
+// Tolerance for the supplier-total disagreement check. The classic failure
+// mode (CC Craig FAL block: total = cost + qty) misses by tens to thousands
+// of dollars per line, so 1 cent absolute is more than tight enough to
+// catch real errors without false-flagging on rounding noise.
+var DHW_TOTAL_TOLERANCE = 0.01;
+
+// ─── CSV parsing ─────────────────────────────────────────────────────────────
+// Split a single CSV line into fields. Handles quoted fields containing
+// commas, and doubled-quote escapes inside quoted fields ("" → ").
+function _dhwSplitCsvLine(line){
+  var fields = [];
+  var cur = '';
+  var inQuotes = false;
+  for(var i = 0; i < line.length; i++){
+    var c = line.charAt(i);
+    if(inQuotes){
+      if(c === '"'){
+        if(line.charAt(i+1) === '"'){ cur += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        cur += c;
+      }
+    } else {
+      if(c === ','){ fields.push(cur); cur = ''; }
+      else if(c === '"'){ inQuotes = true; }
+      else { cur += c; }
+    }
+  }
+  fields.push(cur);
+  return fields.map(function(f){ return f.replace(/^\s+|\s+$/g,''); });
+}
+
+// Quote a CSV field if needed (comma, quote, newline, or leading/trailing space).
+function _dhwQuoteCsvField(s){
+  if(s == null) return '';
+  var str = String(s);
+  if(/[",\r\n]|^\s|\s$/.test(str)){
+    return '"' + str.replace(/"/g,'""') + '"';
+  }
+  return str;
+}
+
+// Parse a manufacturer-group header row. A row is a manufacturer header if
+// (a) exactly one field has content, AND (b) that content is a short token
+// (≤6 chars, all-caps/alphanumeric, no spaces) OR equals the literal
+// "NO MANUFACTURER LISTED". Returns the group code or null.
+function _dhwDetectMfrHeader(fields){
+  var nonEmpty = fields.filter(function(f){ return f && f.length > 0; });
+  if(nonEmpty.length !== 1) return null;
+  var token = nonEmpty[0];
+  if(/^NO\s+MANUFACTURER\s+LISTED$/i.test(token)) return 'OTHER';
+  if(/^[A-Z0-9]{2,6}$/.test(token)) return token.toUpperCase();
+  return null;
+}
+
+// Detect the repeated column-header row(s). Allegion templates write the
+// column titles above every manufacturer group; the parser skips them.
+function _dhwIsColumnHeader(fields){
+  var first = (fields[0] || '').toLowerCase();
+  return first.indexOf('extended qty') === 0 || first === 'qty' || first === 'extended';
+}
+
+// Detect the trailing instruction note ("Populate the Hourly Rate ...").
+function _dhwIsTrailingNote(fields){
+  var first = (fields[0] || '').toLowerCase();
+  return first.indexOf('populate') === 0;
+}
+
+// Header-block label matcher. Returns the canonical state-key name or null.
+function _dhwMatchHeaderLabel(label){
+  var s = (label || '').toLowerCase().replace(/\s+/g,' ').replace(/[:.]+$/,'').trim();
+  if(s === 'project name')   return 'projectName';
+  if(s === 'architect name') return 'architectName';
+  if(s === 'project id')     return 'projectId';
+  if(s === 'allegion id')    return 'allegionId';
+  if(s === 'version')        return 'version';
+  if(s === 'report date')    return 'reportDate';
+  return null;
+}
+
+// Parse the Allegion CSV template (unpriced takeoff OR priced quote — one
+// parser, isPriced=true iff any line has a unit cost). Returns:
+//   { header: {projectName, architectName, projectId, allegionId, version, reportDate},
+//     lines: [{manufacturer, qty, uom, description, catalogNumber, finish, hasCutSheet, list?, unitCost?, supplierTotal?}, ...],
+//     isPriced: boolean }
+// Tolerant: blank rows skipped, qty-0 rows kept (not dropped), missing
+// finish/uom allowed, unknown manufacturer codes preserved.
+function parseHardwareCSV(csvText){
+  var header = { projectName:'', architectName:'', projectId:'', allegionId:'', version:'', reportDate:'' };
+  var lines = [];
+  var isPriced = false;
+  // Column indices for the priced section, set from the first column-header
+  // row that contains the price columns. Stays null while we haven't seen
+  // them yet — keeps unpriced takeoffs correctly unpriced.
+  var colListIdx = null, colCostIdx = null, colTotalIdx = null;
+  var currentMfr = 'OTHER';
+  // Split on CRLF or LF, drop final empty line from trailing newline.
+  var rawLines = csvText.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  for(var li = 0; li < rawLines.length; li++){
+    var raw = rawLines[li];
+    if(raw == null) continue;
+    // Trim trailing-only whitespace; leading spaces inside fields handled by splitter.
+    var fields = _dhwSplitCsvLine(raw);
+    // Skip totally-blank rows.
+    var anyContent = fields.some(function(f){ return f && f.length > 0; });
+    if(!anyContent) continue;
+    // Header block: label → value (in first two cells).
+    var hdrKey = _dhwMatchHeaderLabel(fields[0]);
+    if(hdrKey){ header[hdrKey] = fields[1] || ''; continue; }
+    // Trailing instruction note: skip the rest of the file.
+    if(_dhwIsTrailingNote(fields)) break;
+    // Repeated column-header row: detect LIST/COST/TOTAL indices here.
+    if(_dhwIsColumnHeader(fields)){
+      colListIdx = colCostIdx = colTotalIdx = null;
+      for(var ci = 0; ci < fields.length; ci++){
+        var cellLc = (fields[ci] || '').toLowerCase();
+        if(cellLc === 'list') colListIdx = ci;
+        else if(cellLc === 'cost' || cellLc === 'unit cost') colCostIdx = ci;
+        else if(cellLc === 'total') colTotalIdx = ci;
+      }
+      continue;
+    }
+    // Manufacturer group header: a lone short token row.
+    var mfr = _dhwDetectMfrHeader(fields);
+    if(mfr){ currentMfr = mfr; continue; }
+    // Otherwise: data row. Allegion column order: Extended Qty | UoM |
+    // Description | Catalog Number | Cut Sheet | Finish (| LIST | COST | TOTAL).
+    var qtyRaw = fields[0];
+    var qty = parseFloat(qtyRaw);
+    if(!isFinite(qty)) continue;  // skip rows whose first cell isn't a number
+    var line = {
+      manufacturer:  currentMfr,
+      qty:           qty,
+      uom:           fields[1] || '',
+      description:   fields[2] || '',
+      catalogNumber: fields[3] || '',
+      finish:        fields[5] || '',
+      hasCutSheet:   !!(fields[4] && fields[4].length > 0)
+    };
+    // If the column-header row set LIST/COST/TOTAL indices, pull those too.
+    if(colListIdx != null){
+      var v = parseFloat(fields[colListIdx]); if(isFinite(v)) line.list = v;
+    }
+    if(colCostIdx != null){
+      var vc = parseFloat(fields[colCostIdx]); if(isFinite(vc)){ line.unitCost = vc; isPriced = true; }
+    }
+    if(colTotalIdx != null){
+      var vt = parseFloat(fields[colTotalIdx]); if(isFinite(vt)) line.supplierTotal = vt;
+    }
+    lines.push(line);
+  }
+  return { header: header, lines: lines, isPriced: isPriced };
+}
+
+// Recompute each priced line's extended cost and flag rows whose supplier
+// TOTAL column disagrees beyond DHW_TOTAL_TOLERANCE. Mutates the line
+// objects (adds extendedCost + flagged) and returns the same array.
+function recomputeQuoteLines(parsedLines){
+  parsedLines.forEach(function(line){
+    if(typeof line.unitCost === 'number' && isFinite(line.unitCost)){
+      line.extendedCost = line.qty * line.unitCost;
+      if(typeof line.supplierTotal === 'number' && isFinite(line.supplierTotal)){
+        line.flagged = Math.abs(line.supplierTotal - line.extendedCost) > DHW_TOTAL_TOLERANCE;
+      } else {
+        line.flagged = false;
+      }
+    }
+  });
+  return parsedLines;
+}
+
+// Wrap a parsed+recomputed priced import into the persisted quote shape.
+// Persists supplier name, import timestamp, and per-line price detail.
+// Header is dropped here — the takeoff carries the canonical header; the
+// quote rows match back to takeoff lines via dhwMatchKey.
+function buildQuoteRecord(supplierName, parsedQuote){
+  var lines = (parsedQuote && Array.isArray(parsedQuote.lines)) ? parsedQuote.lines : [];
+  return {
+    supplierName: String(supplierName || ''),
+    importedAt:   new Date().toISOString(),
+    lines: lines.map(function(l){
+      return {
+        catalogNumber:  l.catalogNumber || '',
+        finish:         l.finish || '',
+        list:           (typeof l.list           === 'number') ? l.list           : null,
+        unitCost:       (typeof l.unitCost       === 'number') ? l.unitCost       : null,
+        supplierTotal:  (typeof l.supplierTotal  === 'number') ? l.supplierTotal  : null,
+        extendedCost:   (typeof l.extendedCost   === 'number') ? l.extendedCost   : null,
+        flagged:        !!l.flagged
+      };
+    })
+  };
+}
+
+// Normalize a (catalogNumber, finish) pair to a match key. Used to align
+// quote rows back to takeoff rows. Trims, collapses internal whitespace,
+// uppercases the catalog number; finish is trimmed + uppercased.
+function dhwMatchKey(catalogNumber, finish){
+  var c = String(catalogNumber || '').replace(/\s+/g,' ').replace(/^\s|\s$/g,'').toUpperCase();
+  var f = String(finish || '').replace(/^\s+|\s+$/g,'').toUpperCase();
+  return c + '|' + f;
+}
+
+// View 1 — package summary per supplier. Returns an array of:
+//   { supplierName, packageCost, coverage: {priced, total}, flaggedCount }
+function compareBySupplier(takeoff, quotes){
+  var takeoffLines = (takeoff && Array.isArray(takeoff.lines)) ? takeoff.lines : [];
+  var totalCount = takeoffLines.length;
+  var takeoffKeys = {};
+  takeoffLines.forEach(function(t){ takeoffKeys[dhwMatchKey(t.catalogNumber, t.finish)] = true; });
+  return (quotes || []).map(function(q){
+    var pkgCost = 0;
+    var pricedCount = 0;
+    var flagged = 0;
+    (q.lines || []).forEach(function(l){
+      var key = dhwMatchKey(l.catalogNumber, l.finish);
+      if(!takeoffKeys[key]) return;
+      if(typeof l.extendedCost === 'number' && isFinite(l.extendedCost)){
+        pkgCost += l.extendedCost;
+      }
+      if(typeof l.unitCost === 'number' && l.unitCost > 0){
+        pricedCount++;
+      }
+      if(l.flagged) flagged++;
+    });
+    return {
+      supplierName: q.supplierName,
+      packageCost: pkgCost,
+      coverage: { priced: pricedCount, total: totalCount },
+      flaggedCount: flagged
+    };
+  });
+}
+
+// View 2 — best-by-line. Returns { lines: [...], bestLineTotal }.
+//   lines[i] = { matchKey, takeoffLine, perSupplier:[{supplierName,unitCost,flagged},...],
+//                bestSupplierName, bestUnitCost, pricedByAnyone }
+//   bestLineTotal = Σ (takeoffLine.qty × bestUnitCost) over lines priced by ≥1 supplier.
+function compareBestLine(takeoff, quotes){
+  var takeoffLines = (takeoff && Array.isArray(takeoff.lines)) ? takeoff.lines : [];
+  // Index quote lines by matchKey for O(1) lookup.
+  var quoteIndex = (quotes || []).map(function(q){
+    var byKey = {};
+    (q.lines || []).forEach(function(l){
+      byKey[dhwMatchKey(l.catalogNumber, l.finish)] = l;
+    });
+    return { supplierName: q.supplierName, byKey: byKey };
+  });
+  var bestLineTotal = 0;
+  var result = takeoffLines.map(function(t){
+    var key = dhwMatchKey(t.catalogNumber, t.finish);
+    var perSupplier = quoteIndex.map(function(qi){
+      var ql = qi.byKey[key];
+      return {
+        supplierName: qi.supplierName,
+        unitCost: (ql && typeof ql.unitCost === 'number' && ql.unitCost > 0) ? ql.unitCost : null,
+        flagged:  !!(ql && ql.flagged)
+      };
+    });
+    // Find lowest valid (non-null, >0) unit cost.
+    var best = null;
+    perSupplier.forEach(function(ps){
+      if(ps.unitCost == null) return;
+      if(best == null || ps.unitCost < best.unitCost) best = ps;
+    });
+    var pricedByAnyone = best != null;
+    if(pricedByAnyone){
+      bestLineTotal += t.qty * best.unitCost;
+    }
+    return {
+      matchKey: key,
+      takeoffLine: t,
+      perSupplier: perSupplier,
+      bestSupplierName: pricedByAnyone ? best.supplierName : null,
+      bestUnitCost:     pricedByAnyone ? best.unitCost     : null,
+      pricedByAnyone:   pricedByAnyone
+    };
+  });
+  return { lines: result, bestLineTotal: bestLineTotal };
+}
+
+// Resolve award basis into a per-line awarded unit cost.
+//   award.basis === 'whole'    → every line uses award.supplierId's unitCost
+//   award.basis === 'bestLine' → each line uses its cheapest supplier
+// Returns an array of:
+//   { matchKey, takeoffLine, awardedUnitCost, awardedSupplierName, priced }
+// Lines no supplier priced: priced=false, awardedUnitCost=0.
+function resolveAward(takeoff, quotes, award){
+  var takeoffLines = (takeoff && Array.isArray(takeoff.lines)) ? takeoff.lines : [];
+  if(!award || !award.basis) return takeoffLines.map(function(t){
+    return { matchKey: dhwMatchKey(t.catalogNumber, t.finish), takeoffLine: t, awardedUnitCost: 0, awardedSupplierName: null, priced: false };
+  });
+  if(award.basis === 'whole'){
+    var supplier = (quotes || []).find(function(q){ return q.supplierName === award.supplierId; });
+    var byKey = {};
+    if(supplier){
+      (supplier.lines || []).forEach(function(l){
+        byKey[dhwMatchKey(l.catalogNumber, l.finish)] = l;
+      });
+    }
+    return takeoffLines.map(function(t){
+      var key = dhwMatchKey(t.catalogNumber, t.finish);
+      var ql = byKey[key];
+      var priced = !!(ql && typeof ql.unitCost === 'number' && ql.unitCost > 0);
+      return {
+        matchKey: key,
+        takeoffLine: t,
+        awardedUnitCost: priced ? ql.unitCost : 0,
+        awardedSupplierName: priced ? (supplier ? supplier.supplierName : null) : null,
+        priced: priced
+      };
+    });
+  }
+  if(award.basis === 'bestLine'){
+    var best = compareBestLine(takeoff, quotes);
+    return best.lines.map(function(bl){
+      return {
+        matchKey: bl.matchKey,
+        takeoffLine: bl.takeoffLine,
+        awardedUnitCost: bl.pricedByAnyone ? bl.bestUnitCost : 0,
+        awardedSupplierName: bl.bestSupplierName,
+        priced: bl.pricedByAnyone
+      };
+    });
+  }
+  // Unknown basis: same shape as null award.
+  return takeoffLines.map(function(t){
+    return { matchKey: dhwMatchKey(t.catalogNumber, t.finish), takeoffLine: t, awardedUnitCost: 0, awardedSupplierName: null, priced: false };
+  });
+}
+
+// Pricing math: unit sell = unit cost × (1 + markup%/100). Pure function;
+// the manager / render layer pulls the markup% from state (project default
+// or per-line override) and calls this.
+function dhwUnitSell(unitCost, markupPct){
+  var c = (typeof unitCost === 'number' && isFinite(unitCost)) ? unitCost : 0;
+  var m = (typeof markupPct === 'number' && isFinite(markupPct)) ? markupPct : 0;
+  return c * (1 + m / 100);
+}
+
+// Labour math: Σ (per-line install hours) × hourlyRate. The line install
+// hours object is keyed by matchKey; each value is hours PER LINE (not per
+// unit — qty is NOT a multiplier).
+function dhwLabourTotal(lineInstallHours, hourlyRate){
+  var rate = (typeof hourlyRate === 'number' && isFinite(hourlyRate)) ? hourlyRate : 0;
+  var totalHours = 0;
+  if(lineInstallHours && typeof lineInstallHours === 'object'){
+    Object.keys(lineInstallHours).forEach(function(k){
+      var h = lineInstallHours[k];
+      if(typeof h === 'number' && isFinite(h)) totalHours += h;
+    });
+  }
+  return totalHours * rate;
+}
+
+// Group lines by manufacturer in conventional order. Known mfrs go first
+// (DHW_KNOWN_MFRS order), then any unknown codes sorted alphabetically,
+// then 'OTHER' trailing. Preserves the takeoff's report order within each
+// group. Returns: [{ manufacturer, lines: [...] }, ...].
+function dhwGroupByMfr(lines){
+  var groups = {};
+  var seenOrder = [];
+  (lines || []).forEach(function(l){
+    var m = (l.manufacturer || 'OTHER').toUpperCase();
+    if(!groups[m]){ groups[m] = []; seenOrder.push(m); }
+    groups[m].push(l);
+  });
+  // Build the ordered group list.
+  var ordered = [];
+  DHW_KNOWN_MFRS.forEach(function(m){
+    if(groups[m]){ ordered.push({ manufacturer: m, lines: groups[m] }); delete groups[m]; }
+  });
+  // Unknowns (everything left except OTHER), alphabetical.
+  var unknowns = Object.keys(groups).filter(function(k){ return k !== 'OTHER'; }).sort();
+  unknowns.forEach(function(m){ ordered.push({ manufacturer: m, lines: groups[m] }); });
+  // OTHER trailing if present.
+  if(groups.OTHER) ordered.push({ manufacturer: 'OTHER', lines: groups.OTHER });
+  return ordered;
+}
+
+// Access-Control overlap advisory. Scans line descriptions + catalog
+// numbers for tokens that suggest Division-28 / AC hardware. Returns the
+// list of matching lines (the manager surfaces these as a non-blocking
+// warning so the user doesn't double-count strikes, readers, supplies,
+// etc., against the AC mode). Pure advisory — does NOT mutate or link.
+function dhwAcOverlap(lines){
+  var hits = [];
+  (lines || []).forEach(function(l){
+    var hay = ((l.description || '') + ' ' + (l.catalogNumber || '')).toLowerCase();
+    var matchedToken = null;
+    for(var i = 0; i < DHW_AC_OVERLAP_TOKENS.length; i++){
+      var tok = DHW_AC_OVERLAP_TOKENS[i];
+      // Word-boundary-ish: token surrounded by start/end/space/punctuation.
+      var re = new RegExp('(^|[^a-z])' + tok.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '([^a-z]|$)', 'i');
+      if(re.test(hay)){ matchedToken = tok; break; }
+    }
+    if(matchedToken){ hits.push({ line: l, matchedToken: matchedToken }); }
+  });
+  return hits;
+}
+
+// Emit the takeoff as a CSV with blank LIST/COST/TOTAL columns appended.
+// Round-trippable: once a supplier fills the columns and saves, the result
+// must parse back through parseHardwareCSV as a priced quote. So we keep
+// the same header block, manufacturer group headers, and per-group column
+// header rows the importer expects.
+function buildRfqCsv(takeoff){
+  var lines = [];
+  function emit(row){ lines.push(row.map(_dhwQuoteCsvField).join(',')); }
+  // Header block (in the same label,value shape the importer reads).
+  var h = (takeoff && takeoff.header) || {};
+  emit(['Project Name',   h.projectName   || '']);
+  emit(['Architect Name', h.architectName || '']);
+  emit(['Project Id',     h.projectId     || '']);
+  emit(['Allegion Id',    h.allegionId    || '']);
+  emit(['Version',        h.version       || '']);
+  emit(['Report Date',    h.reportDate    || '']);
+  emit([]);  // blank separator before the manufacturer blocks
+  // Group lines by manufacturer and emit each block with its column headers.
+  var groups = dhwGroupByMfr(takeoff && takeoff.lines || []);
+  groups.forEach(function(g){
+    emit([g.manufacturer === 'OTHER' ? 'NO MANUFACTURER LISTED' : g.manufacturer]);
+    emit(['Extended Qty','UoM','Description','Catalog Number','Cut Sheet','Finish','LIST','COST','TOTAL']);
+    g.lines.forEach(function(l){
+      emit([
+        String(l.qty || 0),
+        l.uom || '',
+        l.description || '',
+        l.catalogNumber || '',
+        l.hasCutSheet ? 'Yes' : '',
+        l.finish || '',
+        '',  // LIST — blank for the supplier to fill
+        '',  // COST — blank
+        ''   // TOTAL — blank
+      ]);
+    });
+    emit([]);  // blank between groups for readability
+  });
+  // Trailing note (matches the Allegion template — parser skips it on read).
+  emit(['Populate the Hourly Rate and Install Hours Per Item to calculate labour.']);
+  return lines.join('\n') + '\n';
+}
+
+// ─── End Door Hardware data engine ──────────────────────────────────────────
+
 // Pass Left-Pane: project-wide variant defaults per subcategory. Used by
 // the inline Tier 3 dropdown (M3) and the right-panel override (M4).
 // Per brief: Mullion → Tri-tech, Single → Tri-tech, Keypad → Dual-tech,
@@ -8462,7 +8990,11 @@ function buildLiteSaveData(){
     smartAptCounters: smartAptCounters,
     suites:           suites,
     suiteCounters:    suiteCounters,
-    tabOrder: tabOrder    // Pass A.7: manual riser order (null = auto-parse)
+    tabOrder: tabOrder,   // Pass A.7: manual riser order (null = auto-parse)
+    // Door Hardware M1 (v18): full module state. doorScheduleRef is null
+    // at M1; M2 will attach the actual PDF and may need to split this into
+    // a full-save-only field if PDF bytes turn out too large for autosave.
+    doorHardware: doorHardware
   };
 }
 
@@ -8480,7 +9012,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 17,             // generation tag — autosave produced by a v17-aware tool (Catalog-Tier1: mailbox cols/rows shape)
+      version: 18,             // generation tag — autosave produced by a v18-aware tool (Door Hardware M1 data engine + module state)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -8690,7 +9222,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 17,            // Catalog-Tier1: mailbox shape (brand + cols/rows, no model)
+    version: 18,            // Door Hardware M1: data engine + module state (doorHardware)
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -8705,7 +9237,11 @@ async function saveJSON(){
     smartAptCounters: smartAptCounters,
     suites:           suites,
     suiteCounters:    suiteCounters,
-    tabOrder: tabOrder    // Pass A.7: manual riser order (null = auto-parse)
+    tabOrder: tabOrder,   // Pass A.7: manual riser order (null = auto-parse)
+    // Door Hardware M1 (v18): full module state. M2 will attach a PDF to
+    // doorHardware.doorScheduleRef; for now it's null and the field is
+    // small enough to round-trip cleanly through both lite and full saves.
+    doorHardware: doorHardware
   }, null, 2);
 
   showProgress('Saving file…', 95);
@@ -8758,6 +9294,9 @@ function applyProjectState(data){
   if(data.calibrations) calibrations = data.calibrations;
   if(data.headends) headends = data.headends;
   if(data.projectInfo) projectInfo = data.projectInfo;
+  // Door Hardware M1 (v18): load module state through the normalizer so
+  // partial / older / missing payloads backfill to empty-state defaults.
+  doorHardware = dhwNormalizeState(data.doorHardware);
   // Pass A.7 (v14): manual tab order. Validate it's a permutation of the
   // page indices we're about to populate — if the file is from a different
   // session with a different page count, or hand-edited bogus values, fall
