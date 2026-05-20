@@ -25,6 +25,8 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+# Claude Code agent metadata (per-machine session state)
+.claude/
 
 # Doc build deps (lockfile + modules are environment-local; package.json is tracked)
 docs/node_modules/
