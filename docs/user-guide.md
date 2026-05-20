@@ -4,7 +4,7 @@
 title: Surveillance Markup Tool
 subtitle: User Guide
 tagline: Plan, mark up, and quote security and smart-apartment systems
-version: 1.5
+version: 1.6
 date: May 2026
 org: Calgary Lock and Safe — Smart MF
 %ENDMETA
@@ -105,7 +105,7 @@ Suites | Unit markers — one per dwelling unit. Drives per-suite IoT calculatio
 Each mode follows the same pattern:
 
 %NUMLIST working
-1. **Pick a device** from the drill-down panel on the left (brand → style → model, or whatever the mode's catalog offers).
+1. **Pick a device** from the catalog panel on the left. Each section is labelled by tier — for cameras that's Camera Manufacturers, Camera Styles, and Camera Models; other modes follow the same pattern (e.g., AC Manufacturers / AC Devices / AC Models).
 2. **Click anywhere on the floor plan** to place a marker for that device.
 3. **Click the placed marker** to open the right panel and edit its properties (label, tier, notes, etc.).
 4. **Drag a placed marker** to move it. Drag the device anywhere on the canvas.
@@ -126,9 +126,9 @@ Cameras is the original mode and the most feature-rich. Use it to place every CC
 
 %H2 Pick a camera
 
-The left pane shows a drill-down: brand → style → model. Drill down until a specific model is selected. Once selected, your next canvas click places that camera.
+The left pane has three labelled sections that walk you from brand to specific model: **Camera Manufacturers**, **Camera Styles**, and **Camera Models**. Pick a manufacturer, then a style, then a specific model. Once selected, your next canvas click places that camera.
 
-**Six camera styles are supported:** Dome, Bullet, Turret, Fisheye, PTZ, and LPR (license-plate-recognition). Each has its own flat icon style so you can tell them apart at a glance on the floor plan.
+**Six camera styles are supported:** Dome, Bullet, Turret, Fisheye, PTZ, and LPR (license-plate-recognition). The Camera Styles tile icons match the markers drawn on the floor plan, so you can tell at a glance which marker corresponds to which style. Fisheye cameras render a 180° coverage wedge on the floor plan.
 
 %H2 Per-camera fields
 
@@ -139,9 +139,13 @@ Click a placed camera to open the right panel. You can set:
 - **Mount height** — the height above the floor (or grade) where the camera will be installed.
 - **Notes** — free-text scratchpad. Survey detail, hardware quirks, mounting concerns.
 
+%H2 Head-end placement
+
+The **Camera Accessories** section at the bottom of the Cameras left pane houses the CMVR/NVR tile. Click it and then click on the floor plan to place the head-end location for the current page (typically the NVR/IT room). This is the same action as Tools → Place Head-End.
+
 %H2 Cable runs
 
-Once a head-end location is set on the page (typically the NVR/IT room), the tool measures each camera's cable run distance from the camera to the head-end and applies a routing-overhead multiplier. The result feeds the riser diagram and the Take-Off page; cabling is not on the BOM (the BOM is equipment-only as of v1.3).
+Once a head-end location is set on the page, the tool measures each camera's cable run distance from the camera to the head-end and applies a routing-overhead multiplier. The result feeds the riser diagram and the Take-Off page; cabling is not on the BOM (the BOM is equipment-only as of v1.3).
 
 *Cable runs are recalculated automatically when you move a camera.*
 
@@ -215,9 +219,9 @@ If you click the floor plan in Suites mode *before* defining any unit types, the
 
 Click any placed suite to open the right panel. Edit the label, change the unit type, add notes, or delete it via the × button.
 
-%H2 Hide unit labels
+%H2 Hide suite labels
 
-Need a clean view of the floor plan without label clutter? Click **Hide unit labels** in the Suites left pane. Every suite collapses to a small green dot. Click any dot to reselect that suite. Click **Show unit labels** to flip back.
+For a cleaner view of the floor plan, hide suite text labels via **View → Equipment Labels → Suite Labels**. Suite pill markers stay visible (as small empty pills) so you can still click to select them. The Equipment Labels group also lets you hide labels on the other five device families. See *Equipment Labels visibility* in the Tips section.
 
 %PAGEBREAK
 
@@ -395,6 +399,14 @@ Esc | Close the open modal or right panel
 1–6 | Switch between the six modes (Cameras, AC, Intercoms, Parcel, Mailbox, Suites)
 %ENDTABLE
 
+%H2 Equipment Labels visibility
+
+The View menu's **Equipment Labels** group controls the text labels shown next to each device on the floor plan. The master toggle hides or shows all device labels at once; the six children (Camera, Access Control, Intercom, Parcel, Mailbox, and Suite Labels) toggle each family independently.
+
+Hiding labels affects only the text — device markers and camera FOV cones remain visible. The master toggle shows a checkmark when all six children are on, a dash when some are on and some off (indeterminate), and is unchecked when all six are off.
+
+Label-visibility preferences are saved with the project, so a clean-view configuration carries over between sessions.
+
 %H2 Working tips
 
 - **Calibrate every page that has devices.** Uncalibrated pages show cable lengths as "—" on the BOM and riser.
@@ -434,6 +446,17 @@ Not currently. Custom lines have to be entered through the BOM editor.
 %H1 Version History
 
 This guide is updated with each major release of the tool.
+
+%H2 Version 1.6 — May 2026
+
+Cleanup pass. UI clarity and consistency improvements across the device-picker panes, plus a new Equipment Labels visibility control.
+
+- Left-pane section headers now use clear static labels (Camera Manufacturers / Camera Styles / Camera Models, and the parallel for each mode)
+- Camera Styles tile icons now match the markers drawn on the floor plan
+- Fisheye cameras now render their FOV coverage wedge
+- New Camera Accessories section in the Cameras pane (houses the CMVR/NVR head-end placement)
+- New Equipment Labels visibility group in the View menu — master toggle plus per-family controls for hiding/showing device text labels; preferences saved with the project
+- Removed the standalone Suites-mode "Hide unit labels" control (suite-label visibility now lives only under Equipment Labels → Suite Labels)
 
 %H2 Version 1.5 — May 2026
 
@@ -502,4 +525,4 @@ Initial user guide release. Covers all features shipped through Pass N+1 milesto
 - PDF proposal export with toggleable sections
 - Project JSON save and load with backwards-compatible loading
 
-*This document supersedes any earlier user-facing documentation. Last updated: May 19, 2026.*
+*This document supersedes any earlier user-facing documentation. Last updated: May 20, 2026.*
