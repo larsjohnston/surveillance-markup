@@ -1219,7 +1219,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 
   <div id="panel" data-mode="cameras" style="display:none">
     <div class="panel-body" data-mode-section="cameras">
-    <div class="phdr">Camera Model</div>
+    <div class="phdr">Camera Manufacturers</div>
     <div id="controls">
       <!-- Pass Left-Pane: Tier 1 manufacturer tiles. .brand-tile class
            reused from the previous flow (D2). Clicks route through
@@ -1242,13 +1242,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           <div class="brand-name">Other</div>
         </div>
       </div>
-      <!-- Breadcrumb between Tier 1 and Tier 2. -->
-      <div class="lp-breadcrumb" id="lp-bc1"></div>
+      <!-- Tier-2 section header (Cleanup M1). Class shared with smart-apt
+           tier-2 headers so all five modes' tier-2/3 headers render in the
+           same uppercase/700 treatment (Cleanup M1 follow-up — styling unify). -->
+      <div class="sa-tier-breadcrumb" id="lp-bc1"></div>
 
       <!-- Tier 2 style tiles, dynamically rendered. Hidden when brand=other. -->
       <div id="lp-tier2-cameras" class="lp-tier-row"></div>
-      <!-- Breadcrumb between Tier 2 and Tier 3. -->
-      <div class="lp-breadcrumb" id="lp-bc2"></div>
+      <!-- Tier-3 section header (Cleanup M1). -->
+      <div class="sa-tier-breadcrumb" id="lp-bc2"></div>
 
       <!-- Tier 3 model list, dynamically rendered. Hidden when brand=other. -->
       <div id="lp-tier3-cameras" class="lp-tier3-list"></div>
@@ -1349,7 +1351,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </div><!-- /panel-body cameras -->
 
     <div class="panel-body" data-mode-section="access">
-      <div class="phdr">AC Equipment</div>
+      <div class="phdr">AC Manufacturers</div>
       <div id="ac-controls">
         <!-- Pass Left-Pane M3: Tier 1 — Brivo / Other. .brand-tile class
              reused for visual consistency with the cameras drill-down.
@@ -1367,11 +1369,13 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
             <div class="brand-name">Other</div>
           </div>
         </div>
-        <div class="lp-breadcrumb" id="lp-ac-bc1"></div>
+        <!-- Tier-2 section header (Cleanup M1 follow-up — styling unify). -->
+        <div class="sa-tier-breadcrumb" id="lp-ac-bc1"></div>
 
         <!-- Tier 2 — Readers / Controllers. Dynamically rendered. -->
         <div id="lp-ac-tier2" class="lp-tier-row"></div>
-        <div class="lp-breadcrumb" id="lp-ac-bc2"></div>
+        <!-- Tier-3 section header (Cleanup M1 follow-up — styling unify). -->
+        <div class="sa-tier-breadcrumb" id="lp-ac-bc2"></div>
 
         <!-- Tier 3 — leaves per subcategory. Dynamically rendered. -->
         <div id="lp-ac-tier3" class="lp-tier-row"></div>
@@ -1382,7 +1386,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 
         <p class="reader-hint" id="ac-hint">Pick a Brivo device — click on the floor plan to place.</p>
       </div>
-      <div class="phdr">AC Devices &nbsp;<span id="ac-count" style="color:#9ca3af;font-weight:400"></span></div>
+      <div class="phdr">AC Devices on this page &nbsp;<span id="ac-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="ac-list"></div>
     </div>
 
@@ -1392,7 +1396,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
          the tile list via _render*DrillDown. Setting data-mode-section
          matches the 6-mode CSS filter from M1. -->
     <div class="panel-body" data-mode-section="intercom">
-      <div class="phdr">Intercoms</div>
+      <div class="phdr">Intercom Manufacturers</div>
       <div id="ac-controls">
         <div id="lp-intercom-tiles" class="sa-tile-grid"></div>
         <p class="reader-hint">Pick an intercom — click on the floor plan to place.</p>
@@ -1402,7 +1406,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </div>
 
     <div class="panel-body" data-mode-section="parcel">
-      <div class="phdr">Parcel Lockers</div>
+      <div class="phdr">Parcel Manufacturers</div>
       <div id="ac-controls">
         <div id="lp-parcel-tiles" class="sa-tile-grid"></div>
         <p class="reader-hint">Pick a parcel locker — click on the floor plan to place.</p>
@@ -1412,7 +1416,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </div>
 
     <div class="panel-body" data-mode-section="mailbox">
-      <div class="phdr">Mailbox Banks</div>
+      <div class="phdr">Mailbox Manufacturers</div>
       <div id="ac-controls">
         <div id="lp-mailbox-tiles" class="sa-tile-grid"></div>
         <p class="reader-hint">Pick a mailbox bank — click on the floor plan to place.</p>
@@ -2995,7 +2999,9 @@ function renderLeftPaneDrillDown(mode){
   var t3  = document.getElementById('lp-tier3-cameras');
   if(!t2 || !t3) return;
 
-  if(bc1) bc1.innerHTML = currentBrand ? ('Selected: <b>' + escapeHtml(brandLabelFor(currentBrand)) + '</b>') : '';
+  // Static tier-2 header (Cleanup M1). Shows iff Tier 2 will be visible
+  // (brand chosen and not "Other"). Text describes the tier's purpose.
+  if(bc1) bc1.innerHTML = (currentBrand && currentBrand !== 'other') ? 'Camera Styles' : '';
 
   // "Other" hides Tier 2/3 and the inter-tier breadcrumb. Per brief #8.
   if(currentBrand === 'other'){
@@ -3023,7 +3029,10 @@ function renderLeftPaneDrillDown(mode){
   t2.innerHTML = t2Html;
 
   var styleLabel = STYLE_META[currentType] ? STYLE_META[currentType].label : currentType;
-  if(bc2) bc2.innerHTML = 'Selected: <b>' + escapeHtml(brandLabelFor(currentBrand)) + ' &rarr; ' + escapeHtml(styleLabel) + '</b>';
+  // Static tier-3 header (Cleanup M1). Reached only when Tier 3 area is
+  // visible (brand chosen, not "Other"). Empty-state message still renders
+  // inside Tier 3 below; the header sits above it either way.
+  if(bc2) bc2.innerHTML = 'Camera Models';
 
   var models = modelsForBrandStyle(currentBrand, currentType);
   if(models.length === 0){
@@ -3235,7 +3244,9 @@ function _renderAcDrillDown(){
 
   var brandLabel = currentACBrand === 'brivo' ? 'Brivo' :
                    currentACBrand === 'other' ? 'Other' : '—';
-  if(bc1) bc1.innerHTML = currentACBrand ? ('Selected: <b>' + escapeHtml(brandLabel) + '</b>') : '';
+  // Static tier-2 header (Cleanup M1). Shows iff Tier 2 (Readers /
+  // Controllers) will be visible — i.e. brand chosen and not "Other".
+  if(bc1) bc1.innerHTML = (currentACBrand && currentACBrand !== 'other') ? 'AC Devices' : '';
 
   // "Other" Tier 1 hides Tier 2/3/variant entirely. Per acceptance #17.
   if(currentACBrand === 'other'){
@@ -3264,12 +3275,10 @@ function _renderAcDrillDown(){
   });
   t2.innerHTML = t2Html;
 
-  if(bc2){
-    var bc2Text = 'Selected: <b>' + escapeHtml(brandLabel);
-    if(currentACCategory) bc2Text += ' &rarr; ' + escapeHtml(currentACCategory);
-    bc2Text += '</b>';
-    bc2.innerHTML = bc2Text;
-  }
+  // Static tier-3 header (Cleanup M1). Generic "AC Models" regardless of
+  // whether the user drilled into Readers or Controllers — per brief, the
+  // header describes the tier, not the active branch.
+  if(bc2) bc2.innerHTML = 'AC Models';
 
   // Tier 3 — leaves derived from BRIVO_CATALOG for current category.
   var subs = currentACCategory ? subcategoriesFor(currentACCategory) : [];
@@ -6047,7 +6056,7 @@ function _renderIntercomDrillDown(){
   }
   listEl.innerHTML =
     '<div class="sa-tier1-row">'+tier1+'</div>' +
-    (currentIntercomBrand ? '<div class="sa-tier-breadcrumb">' + escapeHtml(currentIntercomBrand) + ' &rsaquo;</div>' : '') +
+    (currentIntercomBrand ? '<div class="sa-tier-breadcrumb">Intercom Models</div>' : '') +
     '<div class="sa-tier2-row">'+tier2+'</div>';
 }
 
@@ -6088,7 +6097,7 @@ function _renderParcelDrillDown(){
   }
   listEl.innerHTML =
     '<div class="sa-tier1-row">'+tier1+'</div>' +
-    (currentParcelBrand ? '<div class="sa-tier-breadcrumb">' + escapeHtml(currentParcelBrand) + ' &rsaquo;</div>' : '') +
+    (currentParcelBrand ? '<div class="sa-tier-breadcrumb">Parcel Models</div>' : '') +
     '<div class="sa-tier2-row">'+tier2+'</div>';
 }
 
@@ -6137,7 +6146,7 @@ function _renderMailboxDrillDown(){
   }
   listEl.innerHTML =
     '<div class="sa-tier1-row">'+tier1+'</div>' +
-    (currentMailboxBrand ? '<div class="sa-tier-breadcrumb">' + escapeHtml(currentMailboxBrand) + ' &rsaquo;</div>' : '') +
+    (currentMailboxBrand ? '<div class="sa-tier-breadcrumb">Mailbox Models</div>' : '') +
     '<div class="sa-tier2-row">'+tier2+'</div>';
 }
 
