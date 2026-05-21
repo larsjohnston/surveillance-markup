@@ -3873,7 +3873,7 @@ function _dhwRenderStepper(){
 function _dhwRenderActiveStep(takeoff, quotes){
   switch(_dhwCurrentStep){
     case 1: return _dhwRenderStep1Comparison(takeoff, quotes);
-    case 2: return _dhwRenderStep2HardwarePlaceholder();
+    case 2: return _dhwRenderStep2Hardware(takeoff, quotes);
     case 3: return _dhwRenderStep3AcOverlapPlaceholder();
     case 4: return _dhwRenderStep4LabourPlaceholder();
     case 5: return _dhwRenderStep5SummaryPlaceholder();
@@ -3893,15 +3893,126 @@ function _dhwRenderStep1Comparison(takeoff, quotes){
          (hasQuotes ? _dhwRenderComparison(takeoff, quotes) : '');
 }
 
-// Step 2 — Hardware (W2 will build the real page). Placeholder for W1.
-function _dhwRenderStep2HardwarePlaceholder(){
-  return '<div class="dhw-step-placeholder">' +
-    '<b>Hardware — coming in W2.</b>' +
-    '<br><span style="font:500 11px var(--font-ui); color:var(--text-muted);">' +
-      'This step will show the awarded hardware list (one row per awarded line) ' +
-      'and the Project Markup control (default + per-line override). Hardware sell ' +
-      'prices only — labour lives on step 4.' +
-    '</span>' +
+// Step 2 — Hardware (W2). Awarded hardware list + Project Markup control
+// (default + per-line override). HARDWARE PRICING ONLY — no hourly rate,
+// no include-labour toggle, no install hours, no labour columns; those
+// live on step 4 (Labour). When no award has been confirmed yet, shows
+// the Project Markup default control + a hint pointing back to step 1.
+//
+// All math flows through M1 engine functions (resolveAward, dhwUnitSell);
+// the render layer only sums Σ (qty × unitSell) for the on-screen total.
+function _dhwRenderStep2Hardware(takeoff, quotes){
+  var award = doorHardware.hardwareAward;
+  var pricing = doorHardware.hardwarePricing;
+  var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 0;
+
+  // Project Markup default control. Reused setter from M3d (_dhwSetDefaultMarkup);
+  // unchanged behavior — on blur, parseFloat, clamp >= 0, markDirty, re-render.
+  // Step 5%, type-in any value (M3-polish item 8).
+  var markupControl =
+    '<div class="dhw-control-row">' +
+      '<label><b>Project Markup:</b> ' +
+        '<input type="number" class="dhw-input" min="0" step="5"' +
+          ' value="' + _dhwEsc(markupDefault) + '"' +
+          ' onchange="_dhwSetDefaultMarkup(this.value)"> %' +
+      '</label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every awarded line unless a per-line override is set below. Steppers move ±5%; type any value directly.</span>' +
+    '</div>';
+
+  // No award yet → markup default control + hint pointing back to step 1.
+  // The brief is explicit on the wording: "Award a basis on the Comparison
+  // step to price the hardware."
+  if(!award || !award.basis){
+    return '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Hardware</span></div>' +
+      markupControl +
+      '<div class="dhw-empty" style="margin-top:12px;">Award a basis on the Comparison step to price the hardware.</div>' +
+    '</div>';
+  }
+
+  // Award is set → render the per-line awarded hardware table.
+  var resolved = resolveAward(takeoff, quotes, award);
+  var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
+  var overrides = pricing.lineMarkupOverrides || {};
+  var totalSell = 0;
+  var trs = resolved.map(function(r){
+    var t = r.takeoffLine || {};
+    var key = r.matchKey;
+    var qty = (typeof t.qty === 'number') ? t.qty : 0;
+    var unitCost = r.priced ? r.awardedUnitCost : null;
+    var override = overrides[key];
+    var hasOverride = (typeof override === 'number' && isFinite(override));
+    var effectiveMarkup = hasOverride ? override : markupDefault;
+    var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, effectiveMarkup);
+    var extSell  = (unitSell == null) ? null : qty * unitSell;
+    if(extSell != null) totalSell += extSell;
+    var flagged = !!flaggedByKey[key];
+    var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
+    var flagMark = flagged
+      ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>'
+      : '';
+    var gapMark = !r.priced
+      ? '<span class="dhw-warn" title="No awarded supplier priced this line">&#9888;</span> '
+      : '';
+    var supplierLabel = r.awardedSupplierName
+      ? _dhwEsc(r.awardedSupplierName)
+      : '<span class="dhw-gap">&mdash;</span>';
+    // Brief: gaps shown as "not priced", never $0.00 — the flagged-not-zeroed
+    // rule. The resolver returns awardedUnitCost=0 for gaps, but we treat
+    // unitCost=null in the render so the cell reads "not priced".
+    var unitCostCell = (unitCost == null)
+      ? '<span class="dhw-gap">not priced</span>'
+      : (_dhwFmtMoney(unitCost) + flagMark);
+    var unitSellCell = (unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(unitSell);
+    var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
+    var keyAttr = _dhwAttrJs(key);
+    // Per-line markup override; blank = fall back to project default.
+    var markupInput = '<input type="number" class="dhw-input-inline" min="0" step="5"' +
+      ' value="' + _dhwEsc(hasOverride ? override : '') + '"' +
+      ' placeholder="' + _dhwEsc(markupDefault) + '"' +
+      ' title="Per-line override; blank = use project default (' + _dhwEsc(markupDefault) + '%)"' +
+      ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
+    return '<tr' + rowCls + '>' +
+      '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
+      '<td>' + _dhwEsc(t.description || '') + '</td>' +
+      '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(t.finish || '') + '</td>' +
+      '<td>' + supplierLabel + '</td>' +
+      '<td class="dhw-num">' + unitCostCell + '</td>' +
+      '<td class="dhw-num">' + markupInput + ' %</td>' +
+      '<td class="dhw-num">' + unitSellCell + '</td>' +
+      '<td class="dhw-num">' + extSellCell  + '</td>' +
+    '</tr>';
+  }).join('');
+  var subtotalRow = '<tr>' +
+    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Hardware sell subtotal:</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalSell) + '</td>' +
+  '</tr>';
+  var header = '<tr>' +
+    '<th class="dhw-num">Qty</th>' +
+    '<th>Description</th>' +
+    '<th>Catalog #</th>' +
+    '<th>Finish</th>' +
+    '<th>Supplier</th>' +
+    '<th class="dhw-num">Unit cost</th>' +
+    '<th class="dhw-num">Markup %</th>' +
+    '<th class="dhw-num">Unit sell</th>' +
+    '<th class="dhw-num">Ext sell</th>' +
+  '</tr>';
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Hardware</span></div>' +
+    markupControl +
+    '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
+      '<table class="dhw-table">' +
+        '<thead>' + header + '</thead>' +
+        '<tbody>' + trs + subtotalRow + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
+      'Per-line markup override blanks fall back to the project default. ' +
+      'Sell totals are internal &mdash; the proposal will show sell prices only, never cost or markup. ' +
+      'Install labour lives on the Labour step.' +
+    '</p>' +
   '</div>';
 }
 
