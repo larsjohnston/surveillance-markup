@@ -3748,7 +3748,8 @@ function renderDoorHardwareModal(){
   body.innerHTML =
     _dhwRenderTakeoffSummary(takeoff) +
     _dhwRenderQuoteList(quotes) +
-    _dhwRenderComparison(takeoff, quotes);
+    _dhwRenderComparison(takeoff, quotes) +
+    _dhwRenderPricingAndLabour(takeoff, quotes);
 }
 
 function _dhwRenderEmpty(){
@@ -4050,6 +4051,247 @@ function _dhwAwardBestLine(){
   markDirty();
   renderDoorHardwareModal();
   showToast('Awarded best line per supplier.');
+}
+
+// ─── Pricing & Labour controls (M3d) ───────────────────────────────────────
+// Renders the project-default markup, hourly rate, include-labour toggle,
+// and the internal pricing table (cost + sell visible — the proposal will
+// show sell only in M4). Per-line markup overrides and install-hours
+// inputs live inline in the table. All math flows through M1 engine
+// functions (dhwUnitSell, dhwLabourTotal, resolveAward); no arithmetic
+// in the render layer beyond Σ qty × unitSell for the on-screen total.
+
+// JS-string-literal-as-HTML-attribute encoder. Match keys are uppercased
+// catalog#+'|'+finish (ASCII-safe in practice), but JSON.stringify +
+// &quot;/&amp; escaping makes the embedding robust against unusual codes.
+function _dhwAttrJs(s){
+  return JSON.stringify(String(s == null ? '' : s))
+    .replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+}
+
+// Resolve flagged status (supplier-TOTAL disagreement) per match key for
+// the currently-awarded supplier(s). resolveAward intentionally strips
+// this info; the manager table re-adds it as a warning marker so the
+// user knows the awarded supplier sheet had a math error on this line.
+function _dhwBuildFlaggedMap(award, takeoff, quotes){
+  var map = {};
+  if(!award || !award.basis || !quotes || quotes.length === 0) return map;
+  if(award.basis === 'whole'){
+    var q = quotes.find(function(qq){ return qq.supplierName === award.supplierId; });
+    if(!q) return map;
+    (q.lines || []).forEach(function(l){
+      if(l.flagged) map[dhwMatchKey(l.catalogNumber, l.finish)] = true;
+    });
+    return map;
+  }
+  if(award.basis === 'bestLine'){
+    var cmp = compareBestLine(takeoff, quotes);
+    cmp.lines.forEach(function(L){
+      if(!L.pricedByAnyone) return;
+      // Find the per-supplier entry whose unitCost matches the awarded best.
+      for(var i = 0; i < L.perSupplier.length; i++){
+        var ps = L.perSupplier[i];
+        if(ps.unitCost === L.bestUnitCost && ps.supplierName === L.bestSupplierName){
+          if(ps.flagged) map[L.matchKey] = true;
+          break;
+        }
+      }
+    });
+  }
+  return map;
+}
+
+function _dhwRenderPricingAndLabour(takeoff, quotes){
+  var award = doorHardware.hardwareAward;
+  var pricing = doorHardware.hardwarePricing;
+  var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 0;
+  var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
+  var includeLabour = !!pricing.includeLabour;
+  var controls =
+    '<div class="dhw-control-row">' +
+      '<label><b>Project default markup:</b> ' +
+        '<input type="number" class="dhw-input" min="0" step="0.1"' +
+          ' value="' + _dhwEsc(markupDefault) + '"' +
+          ' onchange="_dhwSetDefaultMarkup(this.value)"> %' +
+      '</label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every awarded line unless a per-line override is set below.</span>' +
+    '</div>' +
+    '<div class="dhw-control-row">' +
+      '<label><input type="checkbox" ' + (includeLabour ? 'checked' : '') +
+        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Include install labour in totals</b></label>' +
+      '<label><b>Hourly rate:</b> $ ' +
+        '<input type="number" class="dhw-input" min="0" step="1"' +
+          ' value="' + _dhwEsc(hourlyRate) + '"' +
+          ' onchange="_dhwSetHourlyRate(this.value)"> /hr' +
+      '</label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Per-line install hours editable in the table below (hours are per line, not per unit).</span>' +
+    '</div>';
+  if(!award || !award.basis){
+    return '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr">Pricing &amp; Labour</div>' +
+      controls +
+      '<div class="dhw-empty" style="margin-top:12px;">Award a supplier or best-line basis above to enable per-line pricing and labour.</div>' +
+    '</div>';
+  }
+  var resolved = resolveAward(takeoff, quotes, award);
+  var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
+  var overrides = pricing.lineMarkupOverrides || {};
+  var hoursMap  = pricing.lineInstallHours    || {};
+  var totalSell = 0;
+  var totalHrs  = 0;
+  var trs = resolved.map(function(r){
+    var t = r.takeoffLine || {};
+    var key = r.matchKey;
+    var qty = (typeof t.qty === 'number') ? t.qty : 0;
+    var unitCost = r.priced ? r.awardedUnitCost : null;
+    var override = overrides[key];
+    var hasOverride = (typeof override === 'number' && isFinite(override));
+    var effectiveMarkup = hasOverride ? override : markupDefault;
+    var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, effectiveMarkup);
+    var extSell  = (unitSell == null) ? null : qty * unitSell;
+    if(extSell != null) totalSell += extSell;
+    var hoursVal = hoursMap[key];
+    var hasHoursOverride = (typeof hoursVal === 'number' && isFinite(hoursVal));
+    var hours = hasHoursOverride ? hoursVal : 0;
+    totalHrs += hours;
+    var lineLabour = hours * hourlyRate;
+    var flagged = !!flaggedByKey[key];
+    var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
+    var flagMark = flagged
+      ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>'
+      : '';
+    var gapMark = !r.priced
+      ? '<span class="dhw-warn" title="No awarded supplier priced this line">&#9888;</span> '
+      : '';
+    var supplierLabel = r.awardedSupplierName
+      ? _dhwEsc(r.awardedSupplierName)
+      : '<span class="dhw-gap">&mdash;</span>';
+    var unitCostCell = (unitCost == null)
+      ? '<span class="dhw-gap">not priced</span>'
+      : (_dhwFmtMoney(unitCost) + flagMark);
+    var unitSellCell = (unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(unitSell);
+    var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
+    var keyAttr = _dhwAttrJs(key);
+    var markupInput = '<input type="number" class="dhw-input-inline" min="0" step="0.1"' +
+      ' value="' + _dhwEsc(hasOverride ? override : '') + '"' +
+      ' placeholder="' + _dhwEsc(markupDefault) + '"' +
+      ' title="Per-line override; blank = use project default (' + _dhwEsc(markupDefault) + '%)"' +
+      ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
+    var hoursInput = '<input type="number" class="dhw-input-inline" min="0" step="0.25"' +
+      ' value="' + _dhwEsc(hasHoursOverride ? hoursVal : '') + '"' +
+      ' placeholder="0"' +
+      ' title="Install hours for this line (NOT per unit)"' +
+      ' onchange="_dhwSetLineHours(' + keyAttr + ', this.value)">';
+    var labourCell = hasHoursOverride
+      ? _dhwFmtMoney(lineLabour)
+      : '<span class="dhw-gap">&mdash;</span>';
+    return '<tr' + rowCls + '>' +
+      '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
+      '<td>' + _dhwEsc(t.description || '') + '</td>' +
+      '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(t.finish || '') + '</td>' +
+      '<td>' + supplierLabel + '</td>' +
+      '<td class="dhw-num">' + unitCostCell + '</td>' +
+      '<td class="dhw-num">' + markupInput + ' %</td>' +
+      '<td class="dhw-num">' + unitSellCell + '</td>' +
+      '<td class="dhw-num">' + extSellCell  + '</td>' +
+      '<td class="dhw-num">' + hoursInput + '</td>' +
+      '<td class="dhw-num">' + labourCell + '</td>' +
+    '</tr>';
+  }).join('');
+  var labourTotal = dhwLabourTotal(hoursMap, hourlyRate);
+  var grandTotal  = totalSell + (includeLabour ? labourTotal : 0);
+  var subtotalRow = '<tr>' +
+    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Hardware sell subtotal:</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalSell) + '</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(labourTotal) + '</td>' +
+  '</tr>';
+  var grandLabel = includeLabour
+    ? 'Hardware + labour total:'
+    : 'Hardware total (labour excluded):';
+  var grandRow = '<tr>' +
+    '<td colspan="8" style="text-align:right; font-weight:800; padding-top:6px;">' + grandLabel + '</td>' +
+    '<td class="dhw-num" colspan="3" style="font-weight:800; font-size:13px; color:var(--primary); padding-top:6px;">' + _dhwFmtMoney(grandTotal) + '</td>' +
+  '</tr>';
+  var header = '<tr>' +
+    '<th class="dhw-num">Qty</th>' +
+    '<th>Description</th>' +
+    '<th>Catalog #</th>' +
+    '<th>Finish</th>' +
+    '<th>Supplier</th>' +
+    '<th class="dhw-num">Unit cost</th>' +
+    '<th class="dhw-num">Markup %</th>' +
+    '<th class="dhw-num">Unit sell</th>' +
+    '<th class="dhw-num">Ext sell</th>' +
+    '<th class="dhw-num">Install hrs</th>' +
+    '<th class="dhw-num">Labour</th>' +
+  '</tr>';
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr">Pricing &amp; Labour</div>' +
+    controls +
+    '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
+      '<table class="dhw-table">' +
+        '<thead>' + header + '</thead>' +
+        '<tbody>' + trs + subtotalRow + grandRow + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
+      'Per-line markup override blanks fall back to the project default. ' +
+      'Install hours are per line, not per unit. ' +
+      'Sell totals are internal &mdash; the proposal will show sell prices only, never cost or markup.' +
+    '</p>' +
+  '</div>';
+}
+
+// Setters use onchange (blur), not oninput, so the re-render doesn't
+// steal keystroke focus. All mutations go through markDirty().
+function _dhwSetDefaultMarkup(raw){
+  var n = parseFloat(raw);
+  if(!isFinite(n) || n < 0) n = 0;
+  doorHardware.hardwarePricing.defaultMarkupPct = n;
+  markDirty();
+  renderDoorHardwareModal();
+}
+function _dhwSetHourlyRate(raw){
+  var n = parseFloat(raw);
+  if(!isFinite(n) || n < 0) n = 0;
+  doorHardware.hardwarePricing.hourlyRate = n;
+  markDirty();
+  renderDoorHardwareModal();
+}
+function _dhwSetIncludeLabour(checked){
+  doorHardware.hardwarePricing.includeLabour = !!checked;
+  markDirty();
+  renderDoorHardwareModal();
+}
+function _dhwSetLineMarkup(matchKey, raw){
+  var pricing = doorHardware.hardwarePricing;
+  if(!pricing.lineMarkupOverrides) pricing.lineMarkupOverrides = {};
+  var s = String(raw == null ? '' : raw).replace(/^\s+|\s+$/g,'');
+  if(s === ''){
+    delete pricing.lineMarkupOverrides[matchKey];
+  } else {
+    var n = parseFloat(s);
+    if(!isFinite(n) || n < 0) n = 0;
+    pricing.lineMarkupOverrides[matchKey] = n;
+  }
+  markDirty();
+  renderDoorHardwareModal();
+}
+function _dhwSetLineHours(matchKey, raw){
+  var pricing = doorHardware.hardwarePricing;
+  if(!pricing.lineInstallHours) pricing.lineInstallHours = {};
+  var s = String(raw == null ? '' : raw).replace(/^\s+|\s+$/g,'');
+  if(s === ''){
+    delete pricing.lineInstallHours[matchKey];
+  } else {
+    var n = parseFloat(s);
+    if(!isFinite(n) || n < 0) n = 0;
+    pricing.lineInstallHours[matchKey] = n;
+  }
+  markDirty();
+  renderDoorHardwareModal();
 }
 
 // ─── End Door Hardware Manager Modal ────────────────────────────────────────
