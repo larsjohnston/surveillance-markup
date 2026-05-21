@@ -3729,6 +3729,11 @@ function _dhwFmtMoney(n){
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Comparison view state (M3b). Module-local, not persisted; resets to
+// 'bySupplier' each session. The two values match the dispatch keys used
+// by _dhwRenderComparison / _dhwSetCompareView below.
+var _dhwActiveCompareView = 'bySupplier';
+
 // Main render dispatcher. Builds body innerHTML from current state.
 // Idempotent — safe to call any number of times.
 function renderDoorHardwareModal(){
@@ -3739,9 +3744,11 @@ function renderDoorHardwareModal(){
     body.innerHTML = _dhwRenderEmpty();
     return;
   }
+  var quotes = doorHardware.hardwareQuotes || [];
   body.innerHTML =
     _dhwRenderTakeoffSummary(takeoff) +
-    _dhwRenderQuoteList(doorHardware.hardwareQuotes || []);
+    _dhwRenderQuoteList(quotes) +
+    _dhwRenderComparison(takeoff, quotes);
 }
 
 function _dhwRenderEmpty(){
@@ -3823,6 +3830,171 @@ function _dhwDeleteQuote(idx){
   showToast(awardCleared
     ? 'Quote deleted: ' + name + '. Award cleared (the deleted supplier held it).'
     : 'Quote deleted: ' + name + '.');
+}
+
+// ─── Comparison views (M3b) ────────────────────────────────────────────────
+// Two views rendered over the M1 engine output: By Supplier (whole-package
+// summary per quote) and Best by Line (per-line cheapest across suppliers).
+// Both views surface gaps (priced/total coverage; not-priced lines) and
+// flagged-line counts as visible warnings — never zeroed.
+
+function _dhwRenderComparison(takeoff, quotes){
+  // No quotes yet → the quote-list section already shows the empty-state
+  // advice, no need for an empty comparison panel.
+  if(!quotes || quotes.length === 0) return '';
+  var tabs =
+    '<div class="dhw-tabs">' +
+      '<button class="dhw-tab' + (_dhwActiveCompareView === 'bySupplier' ? ' active' : '') + '"' +
+        ' onclick="_dhwSetCompareView(\'bySupplier\')">By Supplier</button>' +
+      '<button class="dhw-tab' + (_dhwActiveCompareView === 'bestLine'   ? ' active' : '') + '"' +
+        ' onclick="_dhwSetCompareView(\'bestLine\')">Best by Line</button>' +
+    '</div>';
+  var content = (_dhwActiveCompareView === 'bestLine')
+    ? _dhwRenderCompareBestLine(takeoff, quotes)
+    : _dhwRenderCompareBySupplier(takeoff, quotes);
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr">Comparison</div>' +
+    tabs +
+    content +
+    '</div>';
+}
+
+function _dhwSetCompareView(view){
+  _dhwActiveCompareView = (view === 'bestLine') ? 'bestLine' : 'bySupplier';
+  renderDoorHardwareModal();
+}
+
+// View 1 — By Supplier. One row per imported quote with the recomputed
+// package cost, coverage (priced / total takeoff lines), and flagged-line
+// count from compareBySupplier(). Per-row "Award whole package" button.
+function _dhwRenderCompareBySupplier(takeoff, quotes){
+  var rows = compareBySupplier(takeoff, quotes);
+  var trs = rows.map(function(r, idx){
+    var cov = r.coverage || { priced: 0, total: 0 };
+    var pricedPart = cov.priced + ' / ' + cov.total;
+    var covCell = (cov.priced < cov.total)
+      ? '<span class="dhw-warn">' + pricedPart + '</span>'
+      : pricedPart;
+    var flagCell = (r.flaggedCount > 0)
+      ? '<span class="dhw-warn">' + r.flaggedCount + ' flagged</span>'
+      : '0';
+    var awardBtn = '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardWhole(' + idx + ')">' +
+                   'Award whole package</button>';
+    return '<tr>' +
+      '<td><b>' + _dhwEsc(r.supplierName || '(unnamed)') + '</b></td>' +
+      '<td class="dhw-num">' + _dhwFmtMoney(r.packageCost) + '</td>' +
+      '<td>' + covCell + '</td>' +
+      '<td>' + flagCell + '</td>' +
+      '<td style="text-align:right;">' + awardBtn + '</td>' +
+    '</tr>';
+  }).join('');
+  return '<table class="dhw-table">' +
+    '<thead><tr>' +
+      '<th>Supplier</th>' +
+      '<th class="dhw-num">Package cost (recomputed)</th>' +
+      '<th>Coverage</th>' +
+      '<th>Flags</th>' +
+      '<th></th>' +
+    '</tr></thead>' +
+    '<tbody>' + trs + '</tbody>' +
+  '</table>' +
+  '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
+    'Package cost is recomputed (&Sigma; qty &times; unit cost). Supplier TOTAL columns are ignored. ' +
+    'Coverage shows how many takeoff lines each supplier priced; gaps stay visible rather than zeroed. ' +
+    'Flagged lines are rows whose supplier TOTAL disagreed with qty &times; unit cost beyond a rounding tolerance.' +
+  '</p>';
+}
+
+// View 2 — Best by Line. One row per takeoff line; one column per
+// supplier with that supplier's recomputed unit cost (lowest highlighted).
+// Trailing "Best" column picks the per-line min + the winning supplier
+// name. Footer row shows the blended best-line total. "Award best line"
+// button below the table.
+function _dhwRenderCompareBestLine(takeoff, quotes){
+  var cmp = compareBestLine(takeoff, quotes);
+  var lines = cmp.lines || [];
+  var supplierNames = (quotes || []).map(function(q){ return q.supplierName || ''; });
+  var supplierCols = supplierNames.map(function(n){
+    return '<th class="dhw-num">' + _dhwEsc(n || '(unnamed)') + '</th>';
+  }).join('');
+  var hdr = '<tr>' +
+    '<th class="dhw-num">Qty</th>' +
+    '<th>Description</th>' +
+    '<th>Catalog #</th>' +
+    '<th>Finish</th>' +
+    supplierCols +
+    '<th class="dhw-num">Best</th>' +
+  '</tr>';
+  var unpricedCount = 0;
+  var trs = lines.map(function(L){
+    var t = L.takeoffLine || {};
+    if(!L.pricedByAnyone) unpricedCount++;
+    var cells = supplierNames.map(function(_n, sIdx){
+      var ps = L.perSupplier[sIdx];
+      if(!ps || ps.unitCost == null){
+        return '<td class="dhw-num dhw-gap">&mdash;</td>';
+      }
+      var isBest = (ps.unitCost === L.bestUnitCost);
+      var cls = 'dhw-num' + (isBest ? ' dhw-best' : '');
+      var flag = ps.flagged ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>' : '';
+      return '<td class="' + cls + '">' + _dhwFmtMoney(ps.unitCost) + flag + '</td>';
+    }).join('');
+    var bestCell = L.pricedByAnyone
+      ? '<td class="dhw-num"><b>' + _dhwFmtMoney(L.bestUnitCost) + '</b>' +
+        '<br><span style="font:500 9px var(--font-ui); color:var(--text-muted);">' +
+        _dhwEsc(L.bestSupplierName || '') + '</span></td>'
+      : '<td class="dhw-num dhw-gap">not priced</td>';
+    return '<tr' + (!L.pricedByAnyone ? ' class="dhw-row-flagged"' : '') + '>' +
+      '<td class="dhw-num">' + _dhwEsc(t.qty == null ? '' : String(t.qty)) + '</td>' +
+      '<td>' + _dhwEsc(t.description || '') + '</td>' +
+      '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(t.finish || '') + '</td>' +
+      cells +
+      bestCell +
+    '</tr>';
+  }).join('');
+  var totalSpan = 4 + supplierNames.length;
+  var totalRow = '<tr>' +
+    '<td colspan="' + totalSpan + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
+      'Blended best-line total (priced lines only):' +
+    '</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
+      _dhwFmtMoney(cmp.bestLineTotal) +
+    '</td>' +
+  '</tr>';
+  var awardBtn = '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardBestLine()">Award best line</button>';
+  var unpricedNote = (unpricedCount > 0)
+    ? '<p style="margin:0 0 10px;" class="dhw-warn">&#9888; ' +
+      unpricedCount + ' line' + (unpricedCount === 1 ? '' : 's') + ' priced by no supplier &mdash; ' +
+      'awarding best-line will leave these as gaps (not zeroed).</p>'
+    : '';
+  return unpricedNote +
+    '<div style="overflow-x:auto; max-width:100%;">' +
+      '<table class="dhw-table">' +
+        '<thead>' + hdr + '</thead>' +
+        '<tbody>' + trs + totalRow + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div style="margin-top:12px; text-align:right;">' + awardBtn + '</div>';
+}
+
+// Award setters (mutations). The M3c pass adds the resolved-award summary
+// panel and active-button styling; this layer just sets state correctly.
+function _dhwAwardWhole(quoteIdx){
+  var quotes = doorHardware.hardwareQuotes || [];
+  if(quoteIdx < 0 || quoteIdx >= quotes.length) return;
+  var q = quotes[quoteIdx];
+  var supplierName = q.supplierName || '';
+  doorHardware.hardwareAward = { basis: 'whole', supplierId: supplierName };
+  markDirty();
+  renderDoorHardwareModal();
+  showToast('Awarded whole package to ' + (supplierName || '(unnamed)') + '.');
+}
+function _dhwAwardBestLine(){
+  doorHardware.hardwareAward = { basis: 'bestLine' };
+  markDirty();
+  renderDoorHardwareModal();
+  showToast('Awarded best line per supplier.');
 }
 
 // ─── End Door Hardware Manager Modal ────────────────────────────────────────
