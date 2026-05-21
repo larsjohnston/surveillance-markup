@@ -3842,6 +3842,7 @@ function _dhwRenderComparison(takeoff, quotes){
   // No quotes yet → the quote-list section already shows the empty-state
   // advice, no need for an empty comparison panel.
   if(!quotes || quotes.length === 0) return '';
+  var summary = _dhwRenderAwardSummary(takeoff, quotes);
   var tabs =
     '<div class="dhw-tabs">' +
       '<button class="dhw-tab' + (_dhwActiveCompareView === 'bySupplier' ? ' active' : '') + '"' +
@@ -3853,10 +3854,57 @@ function _dhwRenderComparison(takeoff, quotes){
     ? _dhwRenderCompareBestLine(takeoff, quotes)
     : _dhwRenderCompareBySupplier(takeoff, quotes);
   return '<div class="dhw-section">' +
-    '<div class="dhw-section-hdr">Comparison</div>' +
+    '<div class="dhw-section-hdr">Comparison &amp; Award</div>' +
+    summary +
+    '<div style="height:14px;"></div>' +
     tabs +
     content +
     '</div>';
+}
+
+// Award summary panel (M3c). Reflects the current hardwareAward state
+// using resolveAward() so the priced/gap counts come straight from the
+// engine. Gaps surface as a visible warn-colored note. Clear button
+// removes the award entirely (markup/labour overrides untouched).
+function _dhwRenderAwardSummary(takeoff, quotes){
+  var award = doorHardware.hardwareAward;
+  if(!award || !award.basis){
+    return '<div class="dhw-award-summary dhw-award-none">' +
+      'No award yet. Pick a basis below &mdash; award the whole package to one supplier ' +
+      '(View 1) or take the cheapest valid quote on a per-line basis (View 2).' +
+    '</div>';
+  }
+  var resolved = resolveAward(takeoff, quotes, award);
+  var total = resolved.length;
+  var priced = resolved.filter(function(r){ return r.priced; }).length;
+  var gaps = total - priced;
+  var label;
+  if(award.basis === 'whole'){
+    label = '<span class="dhw-award-active">Awarded: ' +
+            _dhwEsc(award.supplierId || '(unnamed)') +
+            '</span> (whole package)';
+  } else if(award.basis === 'bestLine'){
+    label = '<span class="dhw-award-active">Awarded: best line per supplier</span>';
+  } else {
+    label = '<span class="dhw-award-active">Awarded: ' + _dhwEsc(award.basis) + '</span>';
+  }
+  var gapsCell = (gaps > 0)
+    ? '<span class="dhw-warn">' + gaps + ' gap' + (gaps === 1 ? '' : 's') +
+      ' &mdash; line' + (gaps === 1 ? '' : 's') + ' priced by no awarded supplier</span>'
+    : 'no gaps';
+  return '<div class="dhw-award-summary">' +
+    label + ' &mdash; ' + priced + ' of ' + total + ' lines priced, ' + gapsCell + '.' +
+    ' <button class="dhw-btn-small dhw-btn-danger" style="margin-left:10px;" onclick="_dhwClearAward()">Clear award</button>' +
+  '</div>';
+}
+
+function _dhwClearAward(){
+  if(!doorHardware.hardwareAward) return;
+  if(!confirm('Clear the current award? Pricing/labour and any per-line markup or install-hour overrides remain.')) return;
+  doorHardware.hardwareAward = null;
+  markDirty();
+  renderDoorHardwareModal();
+  showToast('Award cleared.');
 }
 
 function _dhwSetCompareView(view){
@@ -3869,6 +3917,7 @@ function _dhwSetCompareView(view){
 // count from compareBySupplier(). Per-row "Award whole package" button.
 function _dhwRenderCompareBySupplier(takeoff, quotes){
   var rows = compareBySupplier(takeoff, quotes);
+  var award = doorHardware.hardwareAward;
   var trs = rows.map(function(r, idx){
     var cov = r.coverage || { priced: 0, total: 0 };
     var pricedPart = cov.priced + ' / ' + cov.total;
@@ -3878,8 +3927,10 @@ function _dhwRenderCompareBySupplier(takeoff, quotes){
     var flagCell = (r.flaggedCount > 0)
       ? '<span class="dhw-warn">' + r.flaggedCount + ' flagged</span>'
       : '0';
-    var awardBtn = '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardWhole(' + idx + ')">' +
-                   'Award whole package</button>';
+    var isActive = (award && award.basis === 'whole' && award.supplierId === r.supplierName);
+    var awardBtn = isActive
+      ? '<button class="dhw-btn-small" disabled style="opacity:0.7; cursor:default;">Awarded</button>'
+      : '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardWhole(' + idx + ')">Award whole package</button>';
     return '<tr>' +
       '<td><b>' + _dhwEsc(r.supplierName || '(unnamed)') + '</b></td>' +
       '<td class="dhw-num">' + _dhwFmtMoney(r.packageCost) + '</td>' +
@@ -3962,7 +4013,11 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       _dhwFmtMoney(cmp.bestLineTotal) +
     '</td>' +
   '</tr>';
-  var awardBtn = '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardBestLine()">Award best line</button>';
+  var award = doorHardware.hardwareAward;
+  var isActiveBestLine = (award && award.basis === 'bestLine');
+  var awardBtn = isActiveBestLine
+    ? '<button class="dhw-btn-small" disabled style="opacity:0.7; cursor:default;">Awarded</button>'
+    : '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardBestLine()">Award best line</button>';
   var unpricedNote = (unpricedCount > 0)
     ? '<p style="margin:0 0 10px;" class="dhw-warn">&#9888; ' +
       unpricedCount + ' line' + (unpricedCount === 1 ? '' : 's') + ' priced by no supplier &mdash; ' +
