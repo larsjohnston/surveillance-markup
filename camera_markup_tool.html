@@ -3874,7 +3874,7 @@ function _dhwRenderActiveStep(takeoff, quotes){
   switch(_dhwCurrentStep){
     case 1: return _dhwRenderStep1Comparison(takeoff, quotes);
     case 2: return _dhwRenderStep2Hardware(takeoff, quotes);
-    case 3: return _dhwRenderStep3AcOverlapPlaceholder();
+    case 3: return _dhwRenderStep3AcOverlap(takeoff);
     case 4: return _dhwRenderStep4LabourPlaceholder();
     case 5: return _dhwRenderStep5SummaryPlaceholder();
   }
@@ -4016,14 +4016,23 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
   '</div>';
 }
 
-// Step 3 — AC Overlap (W3 will relocate the existing advisory). Placeholder.
-function _dhwRenderStep3AcOverlapPlaceholder(){
+// Step 3 — AC Overlap (W3). Relocate the existing AC-overlap advisory
+// into the wizard. The underlying renderer (_dhwRenderAcOverlap, shipped
+// in M3e and polished in the M3-polish info-icon pass) already carries
+// the section header + ⓘ tooltip + flagged-line count + the read-only
+// hits table. It returns empty string when there are no hits — we fall
+// back to a friendly empty-state placeholder so the step is never blank.
+// DELIBERATELY no remove/exclude toggle (deferred feature). Advisory only.
+function _dhwRenderStep3AcOverlap(takeoff){
+  var section = _dhwRenderAcOverlap(takeoff);
+  if(section) return section;
   return '<div class="dhw-step-placeholder">' +
-    '<b>Access Control Overlap — coming in W3.</b>' +
+    '<b>No Access-Control overlap detected on this takeoff.</b>' +
     '<br><span style="font:500 11px var(--font-ui); color:var(--text-muted);">' +
-      'This step will surface lines that look like Access-Control / Division-28 ' +
-      'hardware so you can review for double-counting with the AC mode. Advisory only — ' +
-      'no automatic deduplication or removal.' +
+      'The scan looks for line descriptions and catalog numbers containing tokens ' +
+      'like "electric strike", "credential reader", "power supply", "door contact", ' +
+      '"REX", or "mag lock". If any matched, they would appear here as a heads-up so ' +
+      'you don\'t bill for them twice across Door Hardware and Access Control.' +
     '</span>' +
   '</div>';
 }
