@@ -3749,7 +3749,8 @@ function renderDoorHardwareModal(){
     _dhwRenderTakeoffSummary(takeoff) +
     _dhwRenderQuoteList(quotes) +
     _dhwRenderComparison(takeoff, quotes) +
-    _dhwRenderPricingAndLabour(takeoff, quotes);
+    _dhwRenderPricingAndLabour(takeoff, quotes) +
+    _dhwRenderAcOverlap(takeoff);
 }
 
 function _dhwRenderEmpty(){
@@ -4292,6 +4293,48 @@ function _dhwSetLineHours(matchKey, raw){
   }
   markDirty();
   renderDoorHardwareModal();
+}
+
+// ─── AC-overlap advisory (M3e) ─────────────────────────────────────────────
+// Read-only panel listing takeoff lines whose description / catalog # hit
+// one of DHW_AC_OVERLAP_TOKENS (electric strike, prox reader, power supply,
+// etc.). Advisory ONLY — no auto-link, no state change. Suppressed when
+// there are no matches so the modal stays clean.
+function _dhwRenderAcOverlap(takeoff){
+  if(!takeoff || !takeoff.lines) return '';
+  var hits = dhwAcOverlap(takeoff.lines);
+  if(!hits || hits.length === 0) return '';
+  var rows = hits.map(function(h){
+    var l = h.line || {};
+    return '<tr>' +
+      '<td class="dhw-num">' + _dhwEsc(l.qty == null ? '' : String(l.qty)) + '</td>' +
+      '<td>' + _dhwEsc(l.description || '') + '</td>' +
+      '<td>' + _dhwEsc(l.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(l.finish || '') + '</td>' +
+      '<td><b>' + _dhwEsc(h.matchedToken || '') + '</b></td>' +
+    '</tr>';
+  }).join('');
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr">Access-Control overlap (advisory)</div>' +
+    '<div class="dhw-advisory">' +
+      '<b>' + hits.length + ' line' + (hits.length === 1 ? '' : 's') +
+      ' look like Access Control / Division-28 hardware</b> ' +
+      'and may also be quoted by your Access Control mode. Review to avoid double-counting. ' +
+      'This is advisory only &mdash; no automatic deduplication or linking.' +
+    '</div>' +
+    '<div style="overflow-x:auto; max-width:100%; margin-top:10px;">' +
+      '<table class="dhw-table">' +
+        '<thead><tr>' +
+          '<th class="dhw-num">Qty</th>' +
+          '<th>Description</th>' +
+          '<th>Catalog #</th>' +
+          '<th>Finish</th>' +
+          '<th>Matched on</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+  '</div>';
 }
 
 // ─── End Door Hardware Manager Modal ────────────────────────────────────────
