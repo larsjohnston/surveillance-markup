@@ -2895,7 +2895,12 @@ function dhwEmptyState(){
       lineMarkupOverrides: {},
       includeLabour: false,
       hourlyRate: 0,
-      lineInstallHours: {}
+      lineInstallHours: {},
+      // W4: how labour is shown on the customer-facing proposal — either
+      // "separate" lines under the hardware section, or "combined" into
+      // the hardware sell prices. INERT in this milestone; the M4 proposal
+      // Hardware Schedule renderer will consume this. Default 'separate'.
+      labourDisplay: 'separate'
     },
     doorScheduleRef: null
   };
@@ -2929,6 +2934,10 @@ function dhwNormalizeState(obj){
     empty.hardwarePricing.includeLabour       = !!p.includeLabour;
     empty.hardwarePricing.hourlyRate          = (typeof p.hourlyRate === 'number') ? p.hourlyRate : 0;
     empty.hardwarePricing.lineInstallHours    = (p.lineInstallHours && typeof p.lineInstallHours === 'object') ? p.lineInstallHours : {};
+    // W4: additive backfill. Older saves predate labourDisplay → default
+    // to 'separate' (also the empty-state default). Only the two known
+    // string values are accepted; anything else snaps back to 'separate'.
+    empty.hardwarePricing.labourDisplay       = (p.labourDisplay === 'combined') ? 'combined' : 'separate';
   }
   empty.doorScheduleRef = obj.doorScheduleRef || null;
   return empty;
@@ -3875,7 +3884,7 @@ function _dhwRenderActiveStep(takeoff, quotes){
     case 1: return _dhwRenderStep1Comparison(takeoff, quotes);
     case 2: return _dhwRenderStep2Hardware(takeoff, quotes);
     case 3: return _dhwRenderStep3AcOverlap(takeoff);
-    case 4: return _dhwRenderStep4LabourPlaceholder();
+    case 4: return _dhwRenderStep4Labour(takeoff, quotes);
     case 5: return _dhwRenderStep5SummaryPlaceholder();
   }
   return '';
@@ -4037,17 +4046,155 @@ function _dhwRenderStep3AcOverlap(takeoff){
   '</div>';
 }
 
-// Step 4 — Labour (W4 will build the real page). Placeholder for W1.
-function _dhwRenderStep4LabourPlaceholder(){
-  return '<div class="dhw-step-placeholder">' +
-    '<b>Labour — coming in W4.</b>' +
-    '<br><span style="font:500 11px var(--font-ui); color:var(--text-muted);">' +
-      'Dedicated per-line labour entry — hourly rate, per-line install hours ' +
-      '(per line, not per unit), include-labour toggle, and a customer display ' +
-      'toggle (separate / combined) that controls the future proposal Hardware ' +
-      'Schedule render.' +
-    '</span>' +
+// Step 4 — Labour (W4). Dedicated per-line labour entry page. Top controls:
+//   • Hourly rate (hardwarePricing.hourlyRate)
+//   • Include-labour toggle (hardwarePricing.includeLabour)
+//   • Customer-display toggle: separate | combined (hardwarePricing.labourDisplay
+//     — NEW persisted field; INERT this milestone, feeds the M4 proposal
+//     Hardware Schedule renderer).
+// Per-line table: each awarded hardware line as a row with an editable
+// install-hours input. Hours are per LINE, not per unit — quantity is NOT a
+// multiplier (matches the existing hardwarePricing.lineInstallHours[matchKey]
+// shape from M3d). Labour total = Σ (per-line hours) × hourly rate via the
+// engine's dhwLabourTotal.
+//
+// All math flows through M1 engine functions; the render layer only sums
+// per-line totals for the on-screen breakdown. Hardware pricing lives on
+// step 2 and is not duplicated here.
+function _dhwRenderStep4Labour(takeoff, quotes){
+  var award = doorHardware.hardwareAward;
+  var pricing = doorHardware.hardwarePricing;
+  var hourlyRate    = (typeof pricing.hourlyRate === 'number') ? pricing.hourlyRate : 0;
+  var includeLabour = !!pricing.includeLabour;
+  var labourDisplay = (pricing.labourDisplay === 'combined') ? 'combined' : 'separate';
+  var hoursMap      = pricing.lineInstallHours || {};
+
+  // --- Top controls (rendered in both no-award and awarded states) ---
+  var hourlyRow =
+    '<div class="dhw-control-row">' +
+      '<label><b>Hourly rate:</b> $ ' +
+        '<input type="number" class="dhw-input" min="0" step="1"' +
+          ' value="' + _dhwEsc(hourlyRate) + '"' +
+          ' onchange="_dhwSetHourlyRate(this.value)"> /hr' +
+      '</label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every line\'s install hours.</span>' +
+    '</div>';
+  var includeRow =
+    '<div class="dhw-control-row">' +
+      '<label><input type="checkbox" ' + (includeLabour ? 'checked' : '') +
+        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Include install labour in totals</b></label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">When off, the Summary step\'s grand total excludes labour.</span>' +
+    '</div>';
+  // W4: customer-display toggle. Two radios — labels match the brief's
+  // "Separate" / "Combined" phrasing. INERT this milestone (no consumer yet);
+  // the M4 proposal Hardware Schedule renderer will read this and choose
+  // whether to print labour as its own line group or fold it into hardware
+  // sell prices. markDirty fires so the choice survives autosave.
+  var displayRow =
+    '<div class="dhw-control-row">' +
+      '<label><b>On the customer proposal, show hardware and labour:</b></label>' +
+      '<label style="margin-left:6px;">' +
+        '<input type="radio" name="dhw-labour-display" value="separate"' +
+          (labourDisplay === 'separate' ? ' checked' : '') +
+          ' onchange="_dhwSetLabourDisplay(\'separate\')"> Separate' +
+      '</label>' +
+      '<label>' +
+        '<input type="radio" name="dhw-labour-display" value="combined"' +
+          (labourDisplay === 'combined' ? ' checked' : '') +
+          ' onchange="_dhwSetLabourDisplay(\'combined\')"> Combined' +
+      '</label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Controls how labour appears on the customer proposal (consumed by a later release).</span>' +
+    '</div>';
+  var controls = hourlyRow + includeRow + displayRow;
+
+  // No award yet → controls + hint pointing back to step 1.
+  if(!award || !award.basis){
+    return '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
+      controls +
+      '<div class="dhw-empty" style="margin-top:12px;">Award a basis on the Comparison step to enter labour for the hardware lines.</div>' +
+    '</div>';
+  }
+
+  // Awarded → per-line table.
+  var resolved = resolveAward(takeoff, quotes, award);
+  var totalHrs = 0;
+  var trs = resolved.map(function(r){
+    var t = r.takeoffLine || {};
+    var key = r.matchKey;
+    var qty = (typeof t.qty === 'number') ? t.qty : 0;
+    var hoursVal = hoursMap[key];
+    var hasHoursOverride = (typeof hoursVal === 'number' && isFinite(hoursVal));
+    var hours = hasHoursOverride ? hoursVal : 0;
+    totalHrs += hours;
+    var lineLabour = hours * hourlyRate;
+    var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
+    var gapMark = !r.priced
+      ? '<span class="dhw-warn" title="No awarded supplier priced this line">&#9888;</span> '
+      : '';
+    var supplierLabel = r.awardedSupplierName
+      ? _dhwEsc(r.awardedSupplierName)
+      : '<span class="dhw-gap">&mdash;</span>';
+    var keyAttr = _dhwAttrJs(key);
+    var hoursInput = '<input type="number" class="dhw-input-inline" min="0" step="0.25"' +
+      ' value="' + _dhwEsc(hasHoursOverride ? hoursVal : '') + '"' +
+      ' placeholder="0"' +
+      ' title="Install hours for this line (NOT per unit). Quantity is not a multiplier."' +
+      ' onchange="_dhwSetLineHours(' + keyAttr + ', this.value)">';
+    var labourCell = hasHoursOverride
+      ? _dhwFmtMoney(lineLabour)
+      : '<span class="dhw-gap">&mdash;</span>';
+    return '<tr' + rowCls + '>' +
+      '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
+      '<td>' + _dhwEsc(t.description || '') + '</td>' +
+      '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(t.finish || '') + '</td>' +
+      '<td>' + supplierLabel + '</td>' +
+      '<td class="dhw-num">' + hoursInput + '</td>' +
+      '<td class="dhw-num">' + labourCell + '</td>' +
+    '</tr>';
+  }).join('');
+  var labourTotal = dhwLabourTotal(hoursMap, hourlyRate);
+  var subtotalRow = '<tr>' +
+    '<td colspan="5" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Labour subtotal:</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(labourTotal) + '</td>' +
+  '</tr>';
+  var header = '<tr>' +
+    '<th class="dhw-num">Qty</th>' +
+    '<th>Description</th>' +
+    '<th>Catalog #</th>' +
+    '<th>Finish</th>' +
+    '<th>Supplier</th>' +
+    '<th class="dhw-num">Install hrs</th>' +
+    '<th class="dhw-num">Line labour</th>' +
+  '</tr>';
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
+    controls +
+    '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
+      '<table class="dhw-table">' +
+        '<thead>' + header + '</thead>' +
+        '<tbody>' + trs + subtotalRow + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
+      'Install hours are per LINE, not per unit — quantity is not a multiplier. ' +
+      'Lines with blank hours show <span class="dhw-gap">&mdash;</span> and contribute nothing to the labour subtotal. ' +
+      'The "Include install labour in totals" toggle controls whether labour flows into the Summary step\'s grand total.' +
+    '</p>' +
   '</div>';
+}
+
+// W4: setter for the customer-display toggle. Accepts only the two known
+// values; anything else falls back to 'separate' (the safe default).
+// INERT in M3.5 — no UI consumer yet — but markDirty fires so the choice
+// survives autosave and load.
+function _dhwSetLabourDisplay(value){
+  var v = (value === 'combined') ? 'combined' : 'separate';
+  doorHardware.hardwarePricing.labourDisplay = v;
+  markDirty();
+  renderDoorHardwareModal();
 }
 
 // Step 5 — Summary (W5 will build the real page). Placeholder for W1.
