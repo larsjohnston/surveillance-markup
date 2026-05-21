@@ -542,10 +542,20 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    only add the per-section dividers, table style, and small action
    buttons specific to the Door Hardware manager. */
 .dhw-modal-box { min-width:780px; max-width:1100px; }
-.dhw-section { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+/* Polish: stronger section separation — thicker top border, more breathing room,
+   bolder section title with an under-bar. Each region reads as its own block. */
+.dhw-section { margin-top:26px; padding-top:18px; border-top:2px solid var(--border); }
 .dhw-section:first-child { margin-top:0; padding-top:0; border-top:0; }
-.dhw-section-hdr { font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.dhw-section-hdr-actions { display:flex; gap:6px; }
+.dhw-section-hdr { font:700 12px var(--font-ui); color:var(--text); text-transform:uppercase; letter-spacing:.10em; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.dhw-section-hdr-title { display:inline-flex; align-items:center; gap:8px; }
+.dhw-section-hdr-actions { display:flex; gap:6px; margin-left:auto; }
+/* Polish: bold Awarded / Unawarded status pill beside the section header. */
+.dhw-status-pill { font:700 10px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; border-radius:3px; }
+.dhw-status-pill.dhw-status-unawarded { color:#92400e; background:#fef3c7; border:1px solid #fcd34d; }
+.dhw-status-pill.dhw-status-awarded   { color:#065f46; background:#d1fae5; border:1px solid #6ee7b7; }
+/* Polish: info icon (ⓘ) for collapsed explanatory text — hover/title tooltip. */
+.dhw-info { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; background:var(--surface-soft); border:1px solid var(--border); font:700 10px var(--font-ui); color:var(--text-muted); cursor:help; line-height:1; flex-shrink:0; }
+.dhw-info:hover { background:var(--primary-faint); color:var(--primary); border-color:var(--primary-soft); }
 .dhw-summary-line { font:500 12px var(--font-ui); color:var(--text); margin:0 0 4px; line-height:1.5; }
 .dhw-summary-line .lbl { font:600 10px var(--font-ui); color:var(--text-muted); letter-spacing:.04em; text-transform:uppercase; margin-right:8px; display:inline-block; min-width:80px; }
 .dhw-empty { padding:18px; background:var(--surface-soft); border:1px dashed var(--border); border-radius:6px; font:500 12px var(--font-ui); color:var(--text-muted); text-align:center; line-height:1.5; }
@@ -563,10 +573,14 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-btn-danger:hover { background:#fef2f2; }
 .dhw-btn-primary { color:#fff; background:var(--primary); border-color:var(--primary); }
 .dhw-btn-primary:hover { background:var(--primary-dark); border-color:var(--primary-dark); }
-.dhw-tabs { display:flex; gap:0; border-bottom:1.5px solid var(--border); margin-bottom:12px; }
-.dhw-tab { background:none; border:0; padding:9px 16px; font:700 10px var(--font-ui); color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1.5px; }
-.dhw-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
-.dhw-tab:hover:not(.active) { color:var(--text); }
+/* Polish: colored comparison tabs — active state gets a clear primary fill so
+   the user sees which view is current at a glance. Inactive: soft-surface
+   chip; hover: lifted to white. Bottom border on the container ties the
+   active tab to the content panel below. */
+.dhw-tabs { display:flex; gap:4px; border-bottom:1.5px solid var(--border); margin-bottom:14px; }
+.dhw-tab { background:var(--surface-soft); border:1px solid var(--border); border-bottom:0; padding:8px 18px; font:700 10px var(--font-ui); color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; cursor:pointer; border-radius:4px 4px 0 0; margin-bottom:-1.5px; }
+.dhw-tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.dhw-tab:hover:not(.active) { color:var(--text); background:#fff; }
 .dhw-best { background:#ecfdf5; color:#065f46; font-weight:700; }
 .dhw-award-summary { padding:10px 12px; background:var(--primary-faint); border:1px solid var(--primary-soft); border-radius:5px; font:500 12px var(--font-ui); color:var(--text); line-height:1.5; }
 .dhw-award-summary.dhw-award-none { background:var(--surface-soft); border-color:var(--border); color:var(--text-muted); }
@@ -2847,7 +2861,10 @@ function dhwEmptyState(){
     hardwareQuotes: [],
     hardwareAward: null,
     hardwarePricing: {
-      defaultMarkupPct: 0,
+      // Polish item 8: fresh-state default is 50% (was 0). Existing saved
+      // projects keep their saved value because dhwNormalizeState only
+      // backfills when the field is missing entirely.
+      defaultMarkupPct: 50,
       lineMarkupOverrides: {},
       includeLabour: false,
       hourlyRate: 0,
@@ -3101,11 +3118,15 @@ function recomputeQuoteLines(parsedLines){
 // Persists supplier name, import timestamp, and per-line price detail.
 // Header is dropped here — the takeoff carries the canonical header; the
 // quote rows match back to takeoff lines via dhwMatchKey.
-function buildQuoteRecord(supplierName, parsedQuote){
+function buildQuoteRecord(supplierName, parsedQuote, sourceFileName){
   var lines = (parsedQuote && Array.isArray(parsedQuote.lines)) ? parsedQuote.lines : [];
   return {
     supplierName: String(supplierName || ''),
     importedAt:   new Date().toISOString(),
+    // Polish item 3: capture the picked file's filename so the user can
+    // identify which CSV version a quote came from. Additive — old saved
+    // quotes will lack this field; the manager renders a neutral fallback.
+    sourceFileName: (sourceFileName == null) ? null : String(sourceFileName),
     lines: lines.map(function(l){
       return {
         catalogNumber:  l.catalogNumber || '',
@@ -3558,7 +3579,7 @@ function _handleHardwareQuoteFile(file){
     supplierName = supplierName.replace(/^\s+|\s+$/g, '');
     if(supplierName.length === 0) return;
     recomputeQuoteLines(parsed.lines);
-    var rec = buildQuoteRecord(supplierName, parsed);
+    var rec = buildQuoteRecord(supplierName, parsed, file && file.name);
     doorHardware.hardwareQuotes.push(rec);
     markDirty();
     _dhwRefreshManagerIfOpen();
@@ -3760,15 +3781,18 @@ function _dhwRenderEmpty(){
 }
 
 function _dhwRenderTakeoffSummary(takeoff){
+  // Polish item 2: drop the "Takeoff" section header and the "Lines: N" row.
+  // The project / architect / date metadata is enough — line count repeats
+  // information already visible on the quote rows and the comparison views.
+  // Section header omitted entirely; the project header now sits directly
+  // at the top of the modal body as the file's identification block.
   var h = takeoff.header || {};
-  var n = takeoff.lines.length;
   var rows = [];
   if(h.projectName)   rows.push('<div class="dhw-summary-line"><span class="lbl">Project</span>'   + _dhwEsc(h.projectName)   + '</div>');
   if(h.architectName) rows.push('<div class="dhw-summary-line"><span class="lbl">Architect</span>' + _dhwEsc(h.architectName) + '</div>');
   if(h.reportDate)    rows.push('<div class="dhw-summary-line"><span class="lbl">Report Date</span>' + _dhwEsc(h.reportDate) + '</div>');
-  rows.push('<div class="dhw-summary-line"><span class="lbl">Lines</span>' + n + '</div>');
-  return '<div class="dhw-section">' +
-    '<div class="dhw-section-hdr">Takeoff</div>' +
+  if(rows.length === 0) return '';
+  return '<div class="dhw-section" style="border-top:0; padding-top:0; margin-top:0;">' +
     rows.join('') +
     '</div>';
 }
@@ -3776,21 +3800,37 @@ function _dhwRenderTakeoffSummary(takeoff){
 function _dhwRenderQuoteList(quotes){
   if(!quotes || quotes.length === 0){
     return '<div class="dhw-section">' +
-      '<div class="dhw-section-hdr">Quotes</div>' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Quotes</span></div>' +
       '<div class="dhw-empty">No supplier quotes imported yet. ' +
         'Use <b>File &rarr; Import Hardware Quote (CSV)</b> to add one.</div>' +
       '</div>';
   }
+  // Polish item 4: the "N flagged" cell carries a tooltip explaining what
+  // flagged means. Uses the native title attribute (same convention used
+  // throughout the tool) — no click-to-annotate / note-taking UI here;
+  // that's a deferred feature requiring design.
+  var flagTooltip = 'Flagged lines are rows where the supplier\'s TOTAL column ' +
+                    'disagreed with qty × unit cost beyond a rounding tolerance — ' +
+                    'the tool recomputed the correct extended cost.';
   var rows = quotes.map(function(q, idx){
     var lines = q.lines || [];
     var priced = lines.filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
     var flagged = lines.filter(function(l){ return l.flagged; }).length;
     var importedAt = q.importedAt ? new Date(q.importedAt).toLocaleString() : '';
     var flaggedCell = flagged > 0
-      ? '<span class="dhw-warn">' + flagged + ' flagged</span>'
-      : '0 flagged';
+      ? '<span class="dhw-warn" title="' + _dhwEsc(flagTooltip) + '">' + flagged + ' flagged</span> ' +
+        '<span class="dhw-info" title="' + _dhwEsc(flagTooltip) + '">i</span>'
+      : '<span title="' + _dhwEsc(flagTooltip) + '">0 flagged</span> ' +
+        '<span class="dhw-info" title="' + _dhwEsc(flagTooltip) + '">i</span>';
+    // Polish item 3: render the source CSV filename on the supplier row.
+    // Old saved quotes (pre-M3-polish) lack sourceFileName — render a
+    // neutral "—" so the column doesn't look broken.
+    var fname = q.sourceFileName ? _dhwEsc(q.sourceFileName) : '<span class="dhw-gap">&mdash;</span>';
     return '<tr>' +
-      '<td><b>' + _dhwEsc(q.supplierName || '(unnamed supplier)') + '</b></td>' +
+      '<td>' +
+        '<b>' + _dhwEsc(q.supplierName || '(unnamed supplier)') + '</b>' +
+        '<div style="font:500 10px var(--font-ui); color:var(--text-muted); margin-top:2px;">' + fname + '</div>' +
+      '</td>' +
       '<td>' + _dhwEsc(importedAt) + '</td>' +
       '<td>' + priced + ' priced</td>' +
       '<td>' + flaggedCell + '</td>' +
@@ -3798,9 +3838,9 @@ function _dhwRenderQuoteList(quotes){
     '</tr>';
   }).join('');
   return '<div class="dhw-section">' +
-    '<div class="dhw-section-hdr">Quotes (' + quotes.length + ')</div>' +
+    '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Quotes (' + quotes.length + ')</span></div>' +
     '<table class="dhw-table">' +
-      '<thead><tr><th>Supplier</th><th>Imported</th><th>Priced lines</th><th>Flags</th><th></th></tr></thead>' +
+      '<thead><tr><th>Supplier / file</th><th>Imported</th><th>Priced lines</th><th>Flags</th><th></th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
     '</table>' +
     '</div>';
@@ -3844,6 +3884,24 @@ function _dhwRenderComparison(takeoff, quotes){
   // No quotes yet → the quote-list section already shows the empty-state
   // advice, no need for an empty comparison panel.
   if(!quotes || quotes.length === 0) return '';
+  // Polish item 5: bold "Awarded" / "Unawarded" status pill beside the
+  // section header. Replaces the verbose "No award yet. Pick a basis below…"
+  // paragraph the section opened with — the pill is the primary cue; the
+  // detailed resolved-award summary still appears below when an award is set.
+  var award = doorHardware.hardwareAward;
+  var hasAward = !!(award && award.basis);
+  var statusPill = hasAward
+    ? '<span class="dhw-status-pill dhw-status-awarded">Awarded</span>'
+    : '<span class="dhw-status-pill dhw-status-unawarded">Unawarded</span>';
+  // Polish item 7: the comparison-explanation paragraph moves behind an ⓘ
+  // icon in the section header. Hover to read. Same pattern as item 11
+  // (AC Overlap) and item 4 (flagged-count tooltip).
+  var compareTooltip = 'Package cost is recomputed (Σ qty × unit cost). ' +
+                       'Supplier TOTAL columns are ignored. ' +
+                       'Coverage shows how many takeoff lines each supplier priced; ' +
+                       'gaps stay visible rather than zeroed. ' +
+                       'Flagged lines are rows whose supplier TOTAL disagreed with ' +
+                       'qty × unit cost beyond a rounding tolerance.';
   var summary = _dhwRenderAwardSummary(takeoff, quotes);
   var tabs =
     '<div class="dhw-tabs">' +
@@ -3856,9 +3914,14 @@ function _dhwRenderComparison(takeoff, quotes){
     ? _dhwRenderCompareBestLine(takeoff, quotes)
     : _dhwRenderCompareBySupplier(takeoff, quotes);
   return '<div class="dhw-section">' +
-    '<div class="dhw-section-hdr">Comparison &amp; Award</div>' +
+    '<div class="dhw-section-hdr">' +
+      '<span class="dhw-section-hdr-title">Comparison &amp; Award ' +
+        '<span class="dhw-info" title="' + _dhwEsc(compareTooltip) + '">i</span>' +
+      '</span>' +
+      statusPill +
+    '</div>' +
     summary +
-    '<div style="height:14px;"></div>' +
+    (hasAward ? '<div style="height:14px;"></div>' : '') +
     tabs +
     content +
     '</div>';
@@ -3871,10 +3934,11 @@ function _dhwRenderComparison(takeoff, quotes){
 function _dhwRenderAwardSummary(takeoff, quotes){
   var award = doorHardware.hardwareAward;
   if(!award || !award.basis){
-    return '<div class="dhw-award-summary dhw-award-none">' +
-      'No award yet. Pick a basis below &mdash; award the whole package to one supplier ' +
-      '(View 1) or take the cheapest valid quote on a per-line basis (View 2).' +
-    '</div>';
+    // Polish item 5: the verbose "No award yet. Pick a basis below…" paragraph
+    // is replaced by the bold "Unawarded" status pill in the section header
+    // (built in _dhwRenderComparison). Return empty here so the comparison
+    // tabs and content sit directly under the header.
+    return '';
   }
   var resolved = resolveAward(takeoff, quotes, award);
   var total = resolved.length;
@@ -3941,6 +4005,8 @@ function _dhwRenderCompareBySupplier(takeoff, quotes){
       '<td style="text-align:right;">' + awardBtn + '</td>' +
     '</tr>';
   }).join('');
+  // Polish item 7: trailing explanatory paragraph removed — the text now
+  // lives behind the ⓘ icon in the "Comparison & Award" section header.
   return '<table class="dhw-table">' +
     '<thead><tr>' +
       '<th>Supplier</th>' +
@@ -3950,12 +4016,7 @@ function _dhwRenderCompareBySupplier(takeoff, quotes){
       '<th></th>' +
     '</tr></thead>' +
     '<tbody>' + trs + '</tbody>' +
-  '</table>' +
-  '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
-    'Package cost is recomputed (&Sigma; qty &times; unit cost). Supplier TOTAL columns are ignored. ' +
-    'Coverage shows how many takeoff lines each supplier priced; gaps stay visible rather than zeroed. ' +
-    'Flagged lines are rows whose supplier TOTAL disagreed with qty &times; unit cost beyond a rounding tolerance.' +
-  '</p>';
+  '</table>';
 }
 
 // View 2 — Best by Line. One row per takeoff line; one column per
@@ -4108,28 +4169,36 @@ function _dhwRenderPricingAndLabour(takeoff, quotes){
   var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 0;
   var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
   var includeLabour = !!pricing.includeLabour;
+  // Polish items 8/9/10: reordered controls (markup → hourly rate →
+  // include-labour toggle each on their own row); markup renamed to
+  // "Project Markup" with ±5% stepper while still accepting any typed value.
   var controls =
+    // Line 1: Project Markup (renamed, step=5, default surfaced via state).
     '<div class="dhw-control-row">' +
-      '<label><b>Project default markup:</b> ' +
-        '<input type="number" class="dhw-input" min="0" step="0.1"' +
+      '<label><b>Project Markup:</b> ' +
+        '<input type="number" class="dhw-input" min="0" step="5"' +
           ' value="' + _dhwEsc(markupDefault) + '"' +
           ' onchange="_dhwSetDefaultMarkup(this.value)"> %' +
       '</label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every awarded line unless a per-line override is set below.</span>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every awarded line unless a per-line override is set below. Steppers move ±5%; type any value directly.</span>' +
     '</div>' +
+    // Line 2: Hourly rate alone on its own row.
     '<div class="dhw-control-row">' +
-      '<label><input type="checkbox" ' + (includeLabour ? 'checked' : '') +
-        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Include install labour in totals</b></label>' +
       '<label><b>Hourly rate:</b> $ ' +
         '<input type="number" class="dhw-input" min="0" step="1"' +
           ' value="' + _dhwEsc(hourlyRate) + '"' +
           ' onchange="_dhwSetHourlyRate(this.value)"> /hr' +
       '</label>' +
       '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Per-line install hours editable in the table below (hours are per line, not per unit).</span>' +
+    '</div>' +
+    // Line 3: Include-labour toggle alone on its own row.
+    '<div class="dhw-control-row">' +
+      '<label><input type="checkbox" ' + (includeLabour ? 'checked' : '') +
+        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Include install labour in totals</b></label>' +
     '</div>';
   if(!award || !award.basis){
     return '<div class="dhw-section">' +
-      '<div class="dhw-section-hdr">Pricing &amp; Labour</div>' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Pricing &amp; Labour</span></div>' +
       controls +
       '<div class="dhw-empty" style="margin-top:12px;">Award a supplier or best-line basis above to enable per-line pricing and labour.</div>' +
     '</div>';
@@ -4229,7 +4298,7 @@ function _dhwRenderPricingAndLabour(takeoff, quotes){
     '<th class="dhw-num">Labour</th>' +
   '</tr>';
   return '<div class="dhw-section">' +
-    '<div class="dhw-section-hdr">Pricing &amp; Labour</div>' +
+    '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Pricing &amp; Labour</span></div>' +
     controls +
     '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
       '<table class="dhw-table">' +
@@ -4314,15 +4383,24 @@ function _dhwRenderAcOverlap(takeoff){
       '<td><b>' + _dhwEsc(h.matchedToken || '') + '</b></td>' +
     '</tr>';
   }).join('');
+  // Polish item 11: collapse the advisory paragraph behind an ⓘ icon in the
+  // section header (same pattern as item 7). The flagged-overlap line list
+  // stays visible; the line-count moves into the header as a quick reference.
+  // DELIBERATELY no remove/exclude toggle — that's a deferred feature.
+  var advisoryTooltip = hits.length + ' line' + (hits.length === 1 ? '' : 's') +
+                        ' look like Access Control / Division-28 hardware and may also be ' +
+                        'quoted by your Access Control mode. Review to avoid double-counting. ' +
+                        'This is advisory only — no automatic deduplication or linking.';
   return '<div class="dhw-section">' +
-    '<div class="dhw-section-hdr">Access-Control overlap (advisory)</div>' +
-    '<div class="dhw-advisory">' +
-      '<b>' + hits.length + ' line' + (hits.length === 1 ? '' : 's') +
-      ' look like Access Control / Division-28 hardware</b> ' +
-      'and may also be quoted by your Access Control mode. Review to avoid double-counting. ' +
-      'This is advisory only &mdash; no automatic deduplication or linking.' +
+    '<div class="dhw-section-hdr">' +
+      '<span class="dhw-section-hdr-title">Access-Control overlap (advisory) ' +
+        '<span class="dhw-info" title="' + _dhwEsc(advisoryTooltip) + '">i</span>' +
+      '</span>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted); text-transform:none; letter-spacing:0;">' +
+        hits.length + ' line' + (hits.length === 1 ? '' : 's') + ' flagged' +
+      '</span>' +
     '</div>' +
-    '<div style="overflow-x:auto; max-width:100%; margin-top:10px;">' +
+    '<div style="overflow-x:auto; max-width:100%;">' +
       '<table class="dhw-table">' +
         '<thead><tr>' +
           '<th class="dhw-num">Qty</th>' +
