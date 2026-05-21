@@ -537,6 +537,49 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .modal-close-x { position:absolute; top:10px; right:12px; background:transparent; border:none; font:700 22px sans-serif; line-height:1; color:var(--text-muted); cursor:pointer; padding:4px 8px; border-radius:4px; }
 .modal-close-x:hover { color:var(--text); background:var(--surface-soft); }
 
+/* Door Hardware M3: manager modal layout helpers. Reuses the existing
+   .big-modal / .modal-box / .modal-actions scaffolding; these rules
+   only add the per-section dividers, table style, and small action
+   buttons specific to the Door Hardware manager. */
+.dhw-modal-box { min-width:780px; max-width:1100px; }
+.dhw-section { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+.dhw-section:first-child { margin-top:0; padding-top:0; border-top:0; }
+.dhw-section-hdr { font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.dhw-section-hdr-actions { display:flex; gap:6px; }
+.dhw-summary-line { font:500 12px var(--font-ui); color:var(--text); margin:0 0 4px; line-height:1.5; }
+.dhw-summary-line .lbl { font:600 10px var(--font-ui); color:var(--text-muted); letter-spacing:.04em; text-transform:uppercase; margin-right:8px; display:inline-block; min-width:80px; }
+.dhw-empty { padding:18px; background:var(--surface-soft); border:1px dashed var(--border); border-radius:6px; font:500 12px var(--font-ui); color:var(--text-muted); text-align:center; line-height:1.5; }
+.dhw-table { width:100%; border-collapse:collapse; font:500 11px var(--font-ui); }
+.dhw-table th { text-align:left; padding:8px 10px; font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; border-bottom:1.5px solid var(--border); background:var(--surface-soft); }
+.dhw-table td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.dhw-table tr:last-child td { border-bottom:0; }
+.dhw-table tr.dhw-row-flagged td { background:#fffaf2; }
+.dhw-warn { color:#b45309; font-weight:700; }
+.dhw-gap  { color:#b45309; font-style:italic; }
+.dhw-num  { font:600 11px var(--font-mono); text-align:right; }
+.dhw-btn-small { padding:4px 10px; font:600 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; border-radius:3px; border:1px solid var(--border); background:#fff; color:var(--text); cursor:pointer; }
+.dhw-btn-small:hover { background:var(--surface-soft); }
+.dhw-btn-danger { color:#b91c1c; border-color:#fecaca; }
+.dhw-btn-danger:hover { background:#fef2f2; }
+.dhw-btn-primary { color:#fff; background:var(--primary); border-color:var(--primary); }
+.dhw-btn-primary:hover { background:var(--primary-dark); border-color:var(--primary-dark); }
+.dhw-tabs { display:flex; gap:0; border-bottom:1.5px solid var(--border); margin-bottom:12px; }
+.dhw-tab { background:none; border:0; padding:9px 16px; font:700 10px var(--font-ui); color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1.5px; }
+.dhw-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+.dhw-tab:hover:not(.active) { color:var(--text); }
+.dhw-best { background:#ecfdf5; color:#065f46; font-weight:700; }
+.dhw-award-summary { padding:10px 12px; background:var(--primary-faint); border:1px solid var(--primary-soft); border-radius:5px; font:500 12px var(--font-ui); color:var(--text); line-height:1.5; }
+.dhw-award-summary.dhw-award-none { background:var(--surface-soft); border-color:var(--border); color:var(--text-muted); }
+.dhw-award-active { font-weight:700; color:var(--primary); }
+.dhw-control-row { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:10px; font:500 12px var(--font-ui); }
+.dhw-control-row label { display:inline-flex; align-items:center; gap:6px; }
+.dhw-input { padding:5px 8px; border:1.5px solid var(--border); border-radius:4px; font:600 12px var(--font-mono); width:80px; box-sizing:border-box; }
+.dhw-input:focus { outline:none; border-color:var(--primary); }
+.dhw-input-inline { padding:3px 5px; border:1px solid var(--border); border-radius:3px; font:600 11px var(--font-mono); width:60px; box-sizing:border-box; text-align:right; }
+.dhw-input-inline:focus { outline:none; border-color:var(--primary); }
+.dhw-advisory { padding:12px 14px; background:#fffbeb; border:1px solid #fcd34d; border-radius:5px; font:500 11px var(--font-ui); color:#92400e; line-height:1.5; }
+.dhw-advisory b { color:#78350f; }
+
 /* Pass N+1 M5: Unit Types modal — row layout. Header + flex row per
    unit type with bedrooms, bathrooms, label, and a delete button. The
    header row uses the same column structure so labels align. */
@@ -1113,6 +1156,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <button class="menu-trigger">Proposal</button>
       <div class="menu-dropdown">
         <button class="menu-item" id="btn-project" onclick="openProjectModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Project Info&hellip;</span></button>
+        <!-- Door Hardware M3: manager modal. Always enabled — modal handles its
+             own empty state when no takeoff is imported. -->
+        <button class="menu-item" id="btn-dhw-manager" onclick="openDoorHardwareModal()"><span class="menu-check">&#10003;</span><span class="menu-label">Door Hardware&hellip;</span></button>
         <button class="menu-item" id="btn-bom" onclick="toggleBom()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Bill of Materials</span></button>
         <div class="menu-divider"></div>
         <button class="menu-item" id="btn-pdf" onclick="openExportModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Export Proposal PDF</span></button>
@@ -2037,6 +2083,21 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <p style="margin:0 0 14px 0; font:11px var(--font-ui); color:var(--text-muted);">Existing hardware data (takeoff, quotes, award, pricing) is unchanged. Fix the file and try again.</p>
     <div class="modal-actions">
       <button class="btn btn-dark" onclick="closeHardwareErrorModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Door Hardware M3: manager modal. Reuses .big-modal scaffolding.
+     Body populated imperatively by renderDoorHardwareModal() from
+     doorHardware state. File-menu imports made while the modal is open
+     call _dhwRefreshManagerIfOpen() to keep the view current. -->
+<div id="door-hardware-modal" class="big-modal" onclick="if(event.target===this) closeDoorHardwareModal()">
+  <div class="modal-box big-modal-box dhw-modal-box" style="position:relative;">
+    <button class="modal-close-x" onclick="closeDoorHardwareModal()" title="Close" aria-label="Close">&times;</button>
+    <h3>Door Hardware</h3>
+    <div id="dhw-modal-body"></div>
+    <div class="modal-actions" style="margin-top:18px;">
+      <button class="btn btn-dark" onclick="closeDoorHardwareModal()">Close</button>
     </div>
   </div>
 </div>
@@ -3432,6 +3493,7 @@ function _handleHardwareTakeoffFile(file){
     }
     doorHardware.importedTakeoff = { header: parsed.header, lines: parsed.lines };
     markDirty();
+    _dhwRefreshManagerIfOpen();
     var projName = (parsed.header && parsed.header.projectName) || 'unnamed';
     showToast('Takeoff imported: ' + parsed.lines.length + ' lines, ' + projName + '.');
   };
@@ -3499,6 +3561,7 @@ function _handleHardwareQuoteFile(file){
     var rec = buildQuoteRecord(supplierName, parsed);
     doorHardware.hardwareQuotes.push(rec);
     markDirty();
+    _dhwRefreshManagerIfOpen();
     var pricedCount = parsed.lines.filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
     var flaggedCount = parsed.lines.filter(function(l){ return l.flagged; }).length;
     showToast('Quote imported: ' + supplierName + ', ' + pricedCount + ' priced line' + (pricedCount === 1 ? '' : 's') +
@@ -3609,6 +3672,7 @@ function _handleDoorScheduleFile(file){
       attached: true
     };
     markDirty();
+    _dhwRefreshManagerIfOpen();
     showToast('Door schedule attached: ' + (file.name || 'door-schedule.pdf') + '.');
   };
   reader.onerror = function(){
@@ -3622,6 +3686,146 @@ function _handleDoorScheduleFile(file){
 }
 
 // ─── End Door Hardware file pickers ─────────────────────────────────────────
+
+// ─── Door Hardware Manager Modal (M3) ──────────────────────────────────────
+// UI layer over the M1 data engine and M2 file pickers. Reached via
+// Proposal → Door Hardware…. Renders takeoff summary, quote list,
+// comparison views, award selector, markup/labour controls, and an
+// AC-overlap advisory. Does not implement comparison/award/pricing math —
+// every figure shown is computed by an M1 engine function over the
+// current doorHardware state (compareBySupplier, compareBestLine,
+// resolveAward, dhwUnitSell, dhwLabourTotal, dhwAcOverlap). No new
+// persisted fields; mutations go through markDirty().
+
+// Modal show/hide.
+function openDoorHardwareModal(){
+  renderDoorHardwareModal();
+  var modal = document.getElementById('door-hardware-modal');
+  if(modal) modal.classList.add('show');
+}
+function closeDoorHardwareModal(){
+  var modal = document.getElementById('door-hardware-modal');
+  if(modal) modal.classList.remove('show');
+}
+// Re-render hook for outside-the-modal state changes (file-menu imports).
+// Cheap — short-circuits when modal isn't open. Called from the M2 file
+// picker success paths so the manager stays in sync with imports.
+function _dhwRefreshManagerIfOpen(){
+  var modal = document.getElementById('door-hardware-modal');
+  if(modal && modal.classList.contains('show')) renderDoorHardwareModal();
+}
+
+// HTML escape for any text from imported data that lands in innerHTML.
+function _dhwEsc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Format a number as USD currency. Used everywhere the modal displays
+// money so the formatting is consistent. Falsy / non-finite → "—".
+function _dhwFmtMoney(n){
+  if(typeof n !== 'number' || !isFinite(n)) return '—';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Main render dispatcher. Builds body innerHTML from current state.
+// Idempotent — safe to call any number of times.
+function renderDoorHardwareModal(){
+  var body = document.getElementById('dhw-modal-body');
+  if(!body) return;
+  var takeoff = doorHardware.importedTakeoff;
+  if(!takeoff || !takeoff.lines || takeoff.lines.length === 0){
+    body.innerHTML = _dhwRenderEmpty();
+    return;
+  }
+  body.innerHTML =
+    _dhwRenderTakeoffSummary(takeoff) +
+    _dhwRenderQuoteList(doorHardware.hardwareQuotes || []);
+}
+
+function _dhwRenderEmpty(){
+  return '<div class="dhw-empty">No hardware takeoff imported. ' +
+         'Use <b>File &rarr; Import Hardware Takeoff (CSV)</b> to load the unpriced Allegion template, ' +
+         'then re-open this dialog to import supplier quotes and price the package.</div>';
+}
+
+function _dhwRenderTakeoffSummary(takeoff){
+  var h = takeoff.header || {};
+  var n = takeoff.lines.length;
+  var rows = [];
+  if(h.projectName)   rows.push('<div class="dhw-summary-line"><span class="lbl">Project</span>'   + _dhwEsc(h.projectName)   + '</div>');
+  if(h.architectName) rows.push('<div class="dhw-summary-line"><span class="lbl">Architect</span>' + _dhwEsc(h.architectName) + '</div>');
+  if(h.reportDate)    rows.push('<div class="dhw-summary-line"><span class="lbl">Report Date</span>' + _dhwEsc(h.reportDate) + '</div>');
+  rows.push('<div class="dhw-summary-line"><span class="lbl">Lines</span>' + n + '</div>');
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr">Takeoff</div>' +
+    rows.join('') +
+    '</div>';
+}
+
+function _dhwRenderQuoteList(quotes){
+  if(!quotes || quotes.length === 0){
+    return '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr">Quotes</div>' +
+      '<div class="dhw-empty">No supplier quotes imported yet. ' +
+        'Use <b>File &rarr; Import Hardware Quote (CSV)</b> to add one.</div>' +
+      '</div>';
+  }
+  var rows = quotes.map(function(q, idx){
+    var lines = q.lines || [];
+    var priced = lines.filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
+    var flagged = lines.filter(function(l){ return l.flagged; }).length;
+    var importedAt = q.importedAt ? new Date(q.importedAt).toLocaleString() : '';
+    var flaggedCell = flagged > 0
+      ? '<span class="dhw-warn">' + flagged + ' flagged</span>'
+      : '0 flagged';
+    return '<tr>' +
+      '<td><b>' + _dhwEsc(q.supplierName || '(unnamed supplier)') + '</b></td>' +
+      '<td>' + _dhwEsc(importedAt) + '</td>' +
+      '<td>' + priced + ' priced</td>' +
+      '<td>' + flaggedCell + '</td>' +
+      '<td style="text-align:right;"><button class="dhw-btn-small dhw-btn-danger" onclick="_dhwDeleteQuote(' + idx + ')">Delete</button></td>' +
+    '</tr>';
+  }).join('');
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr">Quotes (' + quotes.length + ')</div>' +
+    '<table class="dhw-table">' +
+      '<thead><tr><th>Supplier</th><th>Imported</th><th>Priced lines</th><th>Flags</th><th></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>' +
+    '</div>';
+}
+
+// Delete a quote by index. Confirms via native window.confirm (the spec
+// keeps native prompts for M3 — no styled-input upgrade this milestone).
+// If the deleted quote was the currently-awarded whole-package supplier
+// AND no surviving quote still carries that supplier name, the award is
+// cleared (otherwise resolveAward would return a phantom-empty result).
+function _dhwDeleteQuote(idx){
+  var quotes = doorHardware.hardwareQuotes || [];
+  if(idx < 0 || idx >= quotes.length) return;
+  var q = quotes[idx];
+  var name = q.supplierName || '(unnamed)';
+  if(!confirm('Delete supplier quote "' + name + '"? This cannot be undone.')) return;
+  quotes.splice(idx, 1);
+  var award = doorHardware.hardwareAward;
+  var awardCleared = false;
+  if(award && award.basis === 'whole' && award.supplierId === q.supplierName){
+    var stillHas = quotes.some(function(qq){ return qq.supplierName === q.supplierName; });
+    if(!stillHas){
+      doorHardware.hardwareAward = null;
+      awardCleared = true;
+    }
+  }
+  markDirty();
+  renderDoorHardwareModal();
+  showToast(awardCleared
+    ? 'Quote deleted: ' + name + '. Award cleared (the deleted supplier held it).'
+    : 'Quote deleted: ' + name + '.');
+}
+
+// ─── End Door Hardware Manager Modal ────────────────────────────────────────
 
 // Pass Left-Pane: project-wide variant defaults per subcategory. Used by
 // the inline Tier 3 dropdown (M3) and the right-panel override (M4).
