@@ -593,6 +593,34 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-input-inline:focus { outline:none; border-color:var(--primary); }
 .dhw-advisory { padding:12px 14px; background:#fffbeb; border:1px solid #fcd34d; border-radius:5px; font:500 11px var(--font-ui); color:#92400e; line-height:1.5; }
 .dhw-advisory b { color:#78350f; }
+/* W1: 5-step wizard. Stepper sits at the top of the modal body (above the
+   step content). Active step gets the tool's red accent; inactive steps are
+   muted/navy. Connectors are simple horizontal lines between dots. All
+   steps are clickable to allow free bidirectional navigation. */
+.dhw-stepper { display:flex; align-items:flex-start; justify-content:space-between; gap:6px; margin:4px 0 22px; }
+.dhw-step { display:flex; flex-direction:column; align-items:center; flex:0 0 auto; cursor:pointer; background:none; border:0; padding:0; font:inherit; }
+.dhw-step:focus-visible .dhw-step-dot { box-shadow:0 0 0 3px var(--primary-faint); }
+.dhw-step-dot { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font:700 14px var(--font-ui); border:2px solid #d1d5db; background:#fff; color:#6b7280; transition:background 0.15s, border-color 0.15s, color 0.15s; }
+.dhw-step:hover .dhw-step-dot { border-color:#9ca3af; color:#374151; }
+.dhw-step.active .dhw-step-dot { background:var(--primary); border-color:var(--primary); color:#fff; }
+.dhw-step-label { margin-top:6px; font:600 10px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:#9ca3af; text-align:center; white-space:nowrap; }
+.dhw-step.active .dhw-step-label { color:#111827; }
+.dhw-step-connector { flex:1 1 auto; height:2px; background:#e5e7eb; align-self:flex-start; margin-top:17px; min-width:18px; }
+/* W1: wizard nav row. Back is left-aligned; Continue/Save right-aligned. */
+#dhw-wizard-nav { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+#dhw-wizard-nav .dhw-nav-spacer { flex:1 1 auto; }
+/* W1: persistent project-info block above the stepper across all steps. */
+.dhw-project-info { margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+.dhw-project-info:empty { display:none; }
+/* W1: step content wrapper. Each step's renderer puts its sections here. */
+.dhw-step-content > .dhw-section:first-child { margin-top:0; padding-top:0; border-top:0; }
+.dhw-step-placeholder { padding:28px 22px; background:var(--surface-soft); border:1px dashed var(--border); border-radius:6px; font:500 12px var(--font-ui); color:var(--text-muted); text-align:center; line-height:1.6; }
+/* W1: per-line manual supplier override <select> in View 2's Best column. */
+.dhw-line-override { display:block; margin-top:4px; padding:3px 4px; border:1px solid var(--border); border-radius:3px; font:500 10px var(--font-ui); background:#fff; color:var(--text); width:100%; box-sizing:border-box; max-width:140px; }
+.dhw-line-override:focus { outline:none; border-color:var(--primary); }
+.dhw-best-cell { text-align:center; }
+.dhw-best-cell b { display:block; font:700 11px var(--font-mono); }
+.dhw-best-cell .dhw-best-supp { display:block; font:500 9px var(--font-ui); color:var(--text-muted); margin-top:1px; }
 
 /* Pass N+1 M5: Unit Types modal — row layout. Header + flex row per
    unit type with bedrooms, bathrooms, label, and a delete button. The
@@ -2101,18 +2129,17 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
 </div>
 
-<!-- Door Hardware M3: manager modal. Reuses .big-modal scaffolding.
-     Body populated imperatively by renderDoorHardwareModal() from
-     doorHardware state. File-menu imports made while the modal is open
-     call _dhwRefreshManagerIfOpen() to keep the view current. -->
+<!-- Door Hardware M3 / W1: manager modal. Reuses .big-modal scaffolding.
+     Body populated imperatively by renderDoorHardwareModal(); the 5-step
+     wizard stepper, active-step content, and Back/Continue/Save nav all
+     render inside #dhw-modal-body and #dhw-wizard-nav. The top-right X is
+     always available as the global close affordance. -->
 <div id="door-hardware-modal" class="big-modal" onclick="if(event.target===this) closeDoorHardwareModal()">
   <div class="modal-box big-modal-box dhw-modal-box" style="position:relative;">
     <button class="modal-close-x" onclick="closeDoorHardwareModal()" title="Close" aria-label="Close">&times;</button>
     <h3>Door Hardware</h3>
     <div id="dhw-modal-body"></div>
-    <div class="modal-actions" style="margin-top:18px;">
-      <button class="btn btn-dark" onclick="closeDoorHardwareModal()">Close</button>
-    </div>
+    <div id="dhw-wizard-nav" class="modal-actions" style="margin-top:18px;"></div>
   </div>
 </div>
 
@@ -2888,6 +2915,13 @@ function dhwNormalizeState(obj){
   empty.importedTakeoff = (obj.importedTakeoff && typeof obj.importedTakeoff === 'object') ? obj.importedTakeoff : null;
   empty.hardwareQuotes  = Array.isArray(obj.hardwareQuotes) ? obj.hardwareQuotes : [];
   empty.hardwareAward   = (obj.hardwareAward && typeof obj.hardwareAward === 'object') ? obj.hardwareAward : null;
+  // W1: additive backfill for the per-line supplier override map. Always an
+  // object (possibly empty) when an award exists, so render code can index
+  // into it without null-checks. The resolver only consults the map when
+  // basis === 'bestLine', so its presence on a 'whole' award is harmless.
+  if(empty.hardwareAward && (!empty.hardwareAward.lineSupplier || typeof empty.hardwareAward.lineSupplier !== 'object')){
+    empty.hardwareAward.lineSupplier = {};
+  }
   if(obj.hardwarePricing && typeof obj.hardwarePricing === 'object'){
     var p = obj.hardwarePricing;
     empty.hardwarePricing.defaultMarkupPct    = (typeof p.defaultMarkupPct    === 'number') ? p.defaultMarkupPct    : 0;
@@ -3262,7 +3296,31 @@ function resolveAward(takeoff, quotes, award){
   }
   if(award.basis === 'bestLine'){
     var best = compareBestLine(takeoff, quotes);
+    // W1: optional per-line manual override map. When the user picks a
+    // specific supplier for a line, that supplier's quote drives the line
+    // instead of auto-cheapest. Lines where the chosen supplier didn't
+    // price → still a gap (priced:false), NOT zeroed (the brief's
+    // flagged-not-zeroed rule). When no override is set for a line, the
+    // behavior is identical to today (auto-cheapest).
+    var overrideMap = (award.lineSupplier && typeof award.lineSupplier === 'object') ? award.lineSupplier : null;
     return best.lines.map(function(bl){
+      var chosen = overrideMap ? overrideMap[bl.matchKey] : null;
+      if(chosen){
+        // Find this line's per-supplier entry for the chosen supplier.
+        var ps = null;
+        for(var i = 0; i < bl.perSupplier.length; i++){
+          if(bl.perSupplier[i].supplierName === chosen){ ps = bl.perSupplier[i]; break; }
+        }
+        var pricedByChoice = !!(ps && typeof ps.unitCost === 'number' && ps.unitCost > 0);
+        return {
+          matchKey: bl.matchKey,
+          takeoffLine: bl.takeoffLine,
+          awardedUnitCost: pricedByChoice ? ps.unitCost : 0,
+          awardedSupplierName: chosen,
+          priced: pricedByChoice
+        };
+      }
+      // No override → auto-cheapest (original behavior; byte-identical).
       return {
         matchKey: bl.matchKey,
         takeoffLine: bl.takeoffLine,
@@ -3718,8 +3776,10 @@ function _handleDoorScheduleFile(file){
 // resolveAward, dhwUnitSell, dhwLabourTotal, dhwAcOverlap). No new
 // persisted fields; mutations go through markDirty().
 
-// Modal show/hide.
+// Modal show/hide. W1: reset to step 1 (Comparison) on every open — the
+// wizard is a guided sequence and the user always starts at Comparison.
 function openDoorHardwareModal(){
+  _dhwCurrentStep = 1;
   renderDoorHardwareModal();
   var modal = document.getElementById('door-hardware-modal');
   if(modal) modal.classList.add('show');
@@ -3755,23 +3815,159 @@ function _dhwFmtMoney(n){
 // by _dhwRenderComparison / _dhwSetCompareView below.
 var _dhwActiveCompareView = 'bySupplier';
 
-// Main render dispatcher. Builds body innerHTML from current state.
-// Idempotent — safe to call any number of times.
+// W1: 5-step wizard state. Module-local, not persisted — resets to 1 on
+// every modal open (per the brief). Range 1..5:
+//   1 = Comparison (this milestone; full content)
+//   2 = Hardware (W2 placeholder for W1)
+//   3 = AC Overlap (W3 placeholder for W1)
+//   4 = Labour (W4 placeholder for W1)
+//   5 = Summary (W5 placeholder for W1)
+var _dhwCurrentStep = 1;
+var _DHW_STEP_LABELS = ['Comparison', 'Hardware', 'AC Overlap', 'Labour', 'Summary'];
+
+// Main render dispatcher. Builds the modal body + wizard nav from current
+// state. Idempotent — safe to call any number of times.
 function renderDoorHardwareModal(){
   var body = document.getElementById('dhw-modal-body');
+  var nav  = document.getElementById('dhw-wizard-nav');
   if(!body) return;
   var takeoff = doorHardware.importedTakeoff;
+  // Empty state: no takeoff yet. Skip the wizard entirely — show the
+  // import-prompt message; nav row carries just a Close button.
   if(!takeoff || !takeoff.lines || takeoff.lines.length === 0){
     body.innerHTML = _dhwRenderEmpty();
+    if(nav) nav.innerHTML = '<button class="btn btn-dark" onclick="closeDoorHardwareModal()">Close</button>';
     return;
   }
+  // Defensive clamp (shouldn't happen through normal nav).
+  if(_dhwCurrentStep < 1 || _dhwCurrentStep > 5) _dhwCurrentStep = 1;
   var quotes = doorHardware.hardwareQuotes || [];
   body.innerHTML =
-    _dhwRenderTakeoffSummary(takeoff) +
-    _dhwRenderQuoteList(quotes) +
-    _dhwRenderComparison(takeoff, quotes) +
-    _dhwRenderPricingAndLabour(takeoff, quotes) +
-    _dhwRenderAcOverlap(takeoff);
+    '<div class="dhw-project-info">' + _dhwRenderTakeoffSummary(takeoff) + '</div>' +
+    _dhwRenderStepper() +
+    '<div class="dhw-step-content">' + _dhwRenderActiveStep(takeoff, quotes) + '</div>';
+  if(nav) nav.innerHTML = _dhwRenderWizardNav();
+}
+
+// W1: render the 5-step indicator. Each step is a clickable button that
+// jumps directly to that step (free bidirectional nav). Connectors are
+// flex-grow lines between dots.
+function _dhwRenderStepper(){
+  var parts = [];
+  for(var i = 1; i <= 5; i++){
+    var cls = 'dhw-step' + (i === _dhwCurrentStep ? ' active' : '');
+    var labelHtml = _dhwEsc(_DHW_STEP_LABELS[i-1]);
+    parts.push(
+      '<button class="' + cls + '" type="button" onclick="_dhwGoToStep(' + i + ')" aria-label="Step ' + i + ': ' + labelHtml + '">' +
+        '<div class="dhw-step-dot">' + i + '</div>' +
+        '<div class="dhw-step-label">' + labelHtml + '</div>' +
+      '</button>'
+    );
+    if(i < 5) parts.push('<div class="dhw-step-connector" aria-hidden="true"></div>');
+  }
+  return '<div class="dhw-stepper" role="navigation" aria-label="Door Hardware wizard steps">' + parts.join('') + '</div>';
+}
+
+// W1: dispatch to the per-step content renderer. Step 1 is full; the rest
+// are placeholders this milestone (W2–W5 will fill them).
+function _dhwRenderActiveStep(takeoff, quotes){
+  switch(_dhwCurrentStep){
+    case 1: return _dhwRenderStep1Comparison(takeoff, quotes);
+    case 2: return _dhwRenderStep2HardwarePlaceholder();
+    case 3: return _dhwRenderStep3AcOverlapPlaceholder();
+    case 4: return _dhwRenderStep4LabourPlaceholder();
+    case 5: return _dhwRenderStep5SummaryPlaceholder();
+  }
+  return '';
+}
+
+// Step 1 — Comparison. The quote list (with filenames + delete) sits at the
+// top so the user can manage quotes in the same view as the analysis. Below
+// it, the Comparison & Award section: tabbed views (By Supplier / Best by
+// Line), Awarded/Unawarded status pill (M3-polish), info-icon tooltip
+// (M3-polish), and the award action(s). Per-line supplier overrides live
+// in View 2's Best column.
+function _dhwRenderStep1Comparison(takeoff, quotes){
+  var hasQuotes = !!(quotes && quotes.length > 0);
+  return _dhwRenderQuoteList(quotes) +
+         (hasQuotes ? _dhwRenderComparison(takeoff, quotes) : '');
+}
+
+// Step 2 — Hardware (W2 will build the real page). Placeholder for W1.
+function _dhwRenderStep2HardwarePlaceholder(){
+  return '<div class="dhw-step-placeholder">' +
+    '<b>Hardware — coming in W2.</b>' +
+    '<br><span style="font:500 11px var(--font-ui); color:var(--text-muted);">' +
+      'This step will show the awarded hardware list (one row per awarded line) ' +
+      'and the Project Markup control (default + per-line override). Hardware sell ' +
+      'prices only — labour lives on step 4.' +
+    '</span>' +
+  '</div>';
+}
+
+// Step 3 — AC Overlap (W3 will relocate the existing advisory). Placeholder.
+function _dhwRenderStep3AcOverlapPlaceholder(){
+  return '<div class="dhw-step-placeholder">' +
+    '<b>Access Control Overlap — coming in W3.</b>' +
+    '<br><span style="font:500 11px var(--font-ui); color:var(--text-muted);">' +
+      'This step will surface lines that look like Access-Control / Division-28 ' +
+      'hardware so you can review for double-counting with the AC mode. Advisory only — ' +
+      'no automatic deduplication or removal.' +
+    '</span>' +
+  '</div>';
+}
+
+// Step 4 — Labour (W4 will build the real page). Placeholder for W1.
+function _dhwRenderStep4LabourPlaceholder(){
+  return '<div class="dhw-step-placeholder">' +
+    '<b>Labour — coming in W4.</b>' +
+    '<br><span style="font:500 11px var(--font-ui); color:var(--text-muted);">' +
+      'Dedicated per-line labour entry — hourly rate, per-line install hours ' +
+      '(per line, not per unit), include-labour toggle, and a customer display ' +
+      'toggle (separate / combined) that controls the future proposal Hardware ' +
+      'Schedule render.' +
+    '</span>' +
+  '</div>';
+}
+
+// Step 5 — Summary (W5 will build the real page). Placeholder for W1.
+function _dhwRenderStep5SummaryPlaceholder(){
+  return '<div class="dhw-step-placeholder">' +
+    '<b>Internal Summary — coming in W5.</b>' +
+    '<br><span style="font:500 11px var(--font-ui); color:var(--text-muted);">' +
+      'Final internal summary table — per-line cost / markup / sell / install hours / ' +
+      'labour, plus the equipment / labour / grand totals (respecting the ' +
+      'include-labour toggle). All numbers flow through the M1 engine.' +
+    '</span>' +
+  '</div>';
+}
+
+// W1: render the Back/Continue/Save nav. Back is omitted on step 1; the
+// right-hand button is "Continue →" on steps 1-4 and "Save" on step 5.
+// Save just closes (everything is live-saved via markDirty — the label is
+// reassurance at the end of the flow per the brief).
+function _dhwRenderWizardNav(){
+  var back = (_dhwCurrentStep > 1)
+    ? '<button class="btn btn-dark" onclick="_dhwStepBack()" style="background:#fff; color:var(--text); border:1px solid var(--border);">&larr; Back</button>'
+    : '';
+  var forward = (_dhwCurrentStep < 5)
+    ? '<button class="btn btn-dark" onclick="_dhwStepNext()">Continue &rarr;</button>'
+    : '<button class="btn btn-dark" onclick="closeDoorHardwareModal()">Save</button>';
+  return back + '<div class="dhw-nav-spacer"></div>' + forward;
+}
+
+// W1: step navigation. All three (jump-to / next / back) re-render through
+// renderDoorHardwareModal so the indicator + nav stay in sync.
+function _dhwGoToStep(n){
+  if(typeof n !== 'number' || n < 1 || n > 5) return;
+  _dhwCurrentStep = n;
+  renderDoorHardwareModal();
+}
+function _dhwStepNext(){
+  if(_dhwCurrentStep < 5){ _dhwCurrentStep++; renderDoorHardwareModal(); }
+}
+function _dhwStepBack(){
+  if(_dhwCurrentStep > 1){ _dhwCurrentStep--; renderDoorHardwareModal(); }
 }
 
 function _dhwRenderEmpty(){
@@ -3978,18 +4174,21 @@ function _dhwSetCompareView(view){
   renderDoorHardwareModal();
 }
 
-// View 1 — By Supplier. One row per imported quote with the recomputed
-// package cost, coverage (priced / total takeoff lines), and flagged-line
-// count from compareBySupplier(). Per-row "Award whole package" button.
+// View 1 — By Supplier (W1 revised). One row per imported quote: supplier,
+// recomputed package cost (centered), OMISSIONS count (lines this supplier
+// left unpriced — was the priced/total ratio), flagged-line count, and the
+// "Award whole package" action. Footer row: the blended best-line total
+// (the theoretical floor across all suppliers), pulled from compareBestLine.
 function _dhwRenderCompareBySupplier(takeoff, quotes){
   var rows = compareBySupplier(takeoff, quotes);
   var award = doorHardware.hardwareAward;
   var trs = rows.map(function(r, idx){
     var cov = r.coverage || { priced: 0, total: 0 };
-    var pricedPart = cov.priced + ' / ' + cov.total;
-    var covCell = (cov.priced < cov.total)
-      ? '<span class="dhw-warn">' + pricedPart + '</span>'
-      : pricedPart;
+    // W1: Omissions = COUNT of unpriced lines (was "priced / total").
+    var omissions = Math.max(0, (cov.total || 0) - (cov.priced || 0));
+    var omissionsCell = (omissions > 0)
+      ? '<span class="dhw-warn">' + omissions + '</span>'
+      : '0';
     var flagCell = (r.flaggedCount > 0)
       ? '<span class="dhw-warn">' + r.flaggedCount + ' flagged</span>'
       : '0';
@@ -3999,34 +4198,57 @@ function _dhwRenderCompareBySupplier(takeoff, quotes){
       : '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardWhole(' + idx + ')">Award whole package</button>';
     return '<tr>' +
       '<td><b>' + _dhwEsc(r.supplierName || '(unnamed)') + '</b></td>' +
-      '<td class="dhw-num">' + _dhwFmtMoney(r.packageCost) + '</td>' +
-      '<td>' + covCell + '</td>' +
+      // W1: package cost CENTERED in its column (was right-aligned).
+      '<td style="text-align:center;">' + _dhwFmtMoney(r.packageCost) + '</td>' +
+      '<td>' + omissionsCell + '</td>' +
       '<td>' + flagCell + '</td>' +
       '<td style="text-align:right;">' + awardBtn + '</td>' +
     '</tr>';
   }).join('');
-  // Polish item 7: trailing explanatory paragraph removed — the text now
-  // lives behind the ⓘ icon in the "Comparison & Award" section header.
+  // W1: "Best Price" footer row — the blended theoretical floor (Σ cheapest
+  // valid unit cost × qty across all suppliers, via compareBestLine).
+  // Labeled distinctly from the per-supplier rows above. Not awardable on
+  // its own (View 2 carries the best-line award action).
+  var bestPriceTotal = compareBestLine(takeoff, quotes).bestLineTotal;
+  var bestRow = '<tr>' +
+    '<td style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
+      '<span style="font:600 9px var(--font-ui); color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; display:block;">Theoretical floor</span>' +
+      'Best Price (line-by-line)' +
+    '</td>' +
+    '<td style="text-align:center; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
+      _dhwFmtMoney(bestPriceTotal) +
+    '</td>' +
+    '<td colspan="3" style="padding-top:12px; border-top:1.5px solid var(--border); font:500 10px var(--font-ui); color:var(--text-muted);">' +
+      'Cheapest valid unit cost per line, summed across all priced lines. See View 2 to award.' +
+    '</td>' +
+  '</tr>';
   return '<table class="dhw-table">' +
     '<thead><tr>' +
       '<th>Supplier</th>' +
-      '<th class="dhw-num">Package cost (recomputed)</th>' +
-      '<th>Coverage</th>' +
+      '<th style="text-align:center;">Package cost (recomputed)</th>' +
+      '<th>Omissions</th>' +
       '<th>Flags</th>' +
       '<th></th>' +
     '</tr></thead>' +
-    '<tbody>' + trs + '</tbody>' +
+    '<tbody>' + trs + bestRow + '</tbody>' +
   '</table>';
 }
 
-// View 2 — Best by Line. One row per takeoff line; one column per
-// supplier with that supplier's recomputed unit cost (lowest highlighted).
-// Trailing "Best" column picks the per-line min + the winning supplier
-// name. Footer row shows the blended best-line total. "Award best line"
-// button below the table.
+// View 2 — Best by Line (W1 revised). One row per takeoff line; one column
+// per supplier with that supplier's recomputed unit cost (lowest valid
+// price highlighted green). Trailing "Best" column shows the awarded
+// per-line price + supplier — defaulting to auto-cheapest unless the user
+// has set a manual override via the per-line <select>. Override map lives
+// at hardwareAward.lineSupplier and feeds resolveAward (W1 engine
+// extension). Picking any override implicitly awards best-line. Footer row
+// shows the blended best-line total; the "Award best line" button below
+// commits best-line basis without changing any existing overrides.
 function _dhwRenderCompareBestLine(takeoff, quotes){
   var cmp = compareBestLine(takeoff, quotes);
   var lines = cmp.lines || [];
+  var award = doorHardware.hardwareAward;
+  var overrideMap = (award && award.lineSupplier && typeof award.lineSupplier === 'object')
+    ? award.lineSupplier : {};
   var supplierNames = (quotes || []).map(function(q){ return q.supplierName || ''; });
   var supplierCols = supplierNames.map(function(n){
     return '<th class="dhw-num">' + _dhwEsc(n || '(unnamed)') + '</th>';
@@ -4037,12 +4259,41 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
     '<th>Catalog #</th>' +
     '<th>Finish</th>' +
     supplierCols +
-    '<th class="dhw-num">Best</th>' +
+    '<th class="dhw-best-cell">Best</th>' +
   '</tr>';
+  // Pre-render the override <option> list once (same supplier set for every
+  // line). "" maps to auto-cheapest. JSON.stringify on the supplier name
+  // gives a safe quoted string literal for the JS-in-attribute call site.
+  function supplierOptions(currentOverride){
+    var opts = ['<option value=""' + (currentOverride ? '' : ' selected') + '>Auto (cheapest)</option>'];
+    supplierNames.forEach(function(n){
+      var sel = (currentOverride === n) ? ' selected' : '';
+      opts.push('<option value="' + _dhwEsc(n) + '"' + sel + '>' + _dhwEsc(n || '(unnamed)') + '</option>');
+    });
+    return opts.join('');
+  }
   var unpricedCount = 0;
   var trs = lines.map(function(L){
     var t = L.takeoffLine || {};
-    if(!L.pricedByAnyone) unpricedCount++;
+    var override = overrideMap[L.matchKey] || null;
+    // The "current" chosen price/supplier for this row reflects the
+    // override (if any), otherwise the auto-cheapest from compareBestLine.
+    var chosen = null;
+    if(override){
+      var ps = null;
+      for(var i = 0; i < L.perSupplier.length; i++){
+        if(L.perSupplier[i].supplierName === override){ ps = L.perSupplier[i]; break; }
+      }
+      chosen = (ps && typeof ps.unitCost === 'number' && ps.unitCost > 0)
+        ? { unitCost: ps.unitCost, supplierName: override, priced: true }
+        : { unitCost: null, supplierName: override, priced: false };
+    } else if(L.pricedByAnyone){
+      chosen = { unitCost: L.bestUnitCost, supplierName: L.bestSupplierName, priced: true };
+    } else {
+      chosen = { unitCost: null, supplierName: null, priced: false };
+    }
+    if(!chosen.priced) unpricedCount++;
+    // Per-supplier cells. Green highlight on the AUTO-cheapest (unchanged).
     var cells = supplierNames.map(function(_n, sIdx){
       var ps = L.perSupplier[sIdx];
       if(!ps || ps.unitCost == null){
@@ -4053,12 +4304,18 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       var flag = ps.flagged ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>' : '';
       return '<td class="' + cls + '">' + _dhwFmtMoney(ps.unitCost) + flag + '</td>';
     }).join('');
-    var bestCell = L.pricedByAnyone
-      ? '<td class="dhw-num"><b>' + _dhwFmtMoney(L.bestUnitCost) + '</b>' +
-        '<br><span style="font:500 9px var(--font-ui); color:var(--text-muted);">' +
-        _dhwEsc(L.bestSupplierName || '') + '</span></td>'
-      : '<td class="dhw-num dhw-gap">not priced</td>';
-    return '<tr' + (!L.pricedByAnyone ? ' class="dhw-row-flagged"' : '') + '>' +
+    // Best column: chosen price + supplier label, then the override <select>.
+    var matchKeyAttr = _dhwAttrJs(L.matchKey);
+    var bestInner = chosen.priced
+      ? '<b>' + _dhwFmtMoney(chosen.unitCost) + '</b>' +
+        '<span class="dhw-best-supp">' + _dhwEsc(chosen.supplierName || '') + '</span>'
+      : '<span class="dhw-gap">not priced</span>' +
+        (chosen.supplierName ? '<span class="dhw-best-supp">' + _dhwEsc(chosen.supplierName) + '</span>' : '');
+    var selectEl = '<select class="dhw-line-override" onchange="_dhwSetLineSupplier(' + matchKeyAttr + ', this.value)" title="Force a specific supplier for this line, or leave on Auto (cheapest).">' +
+      supplierOptions(override) +
+    '</select>';
+    var bestCell = '<td class="dhw-best-cell">' + bestInner + selectEl + '</td>';
+    return '<tr' + (!chosen.priced ? ' class="dhw-row-flagged"' : '') + '>' +
       '<td class="dhw-num">' + _dhwEsc(t.qty == null ? '' : String(t.qty)) + '</td>' +
       '<td>' + _dhwEsc(t.description || '') + '</td>' +
       '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
@@ -4072,11 +4329,10 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
     '<td colspan="' + totalSpan + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
       'Blended best-line total (priced lines only):' +
     '</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
+    '<td class="dhw-best-cell" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
       _dhwFmtMoney(cmp.bestLineTotal) +
     '</td>' +
   '</tr>';
-  var award = doorHardware.hardwareAward;
   var isActiveBestLine = (award && award.basis === 'bestLine');
   var awardBtn = isActiveBestLine
     ? '<button class="dhw-btn-small" disabled style="opacity:0.7; cursor:default;">Awarded</button>'
@@ -4098,21 +4354,62 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
 
 // Award setters (mutations). The M3c pass adds the resolved-award summary
 // panel and active-button styling; this layer just sets state correctly.
+// W1: also seeds/preserves the hardwareAward.lineSupplier override map so
+// the resolver can consult it on bestLine basis (the no-override path is
+// identical to today — an empty map yields auto-cheapest everywhere).
 function _dhwAwardWhole(quoteIdx){
   var quotes = doorHardware.hardwareQuotes || [];
   if(quoteIdx < 0 || quoteIdx >= quotes.length) return;
   var q = quotes[quoteIdx];
   var supplierName = q.supplierName || '';
-  doorHardware.hardwareAward = { basis: 'whole', supplierId: supplierName };
+  // W1: preserve any existing line-supplier overrides on the award object —
+  // resolveAward ignores them for whole-package, but they survive if the
+  // user later flips back to best-line.
+  var existing = doorHardware.hardwareAward || {};
+  doorHardware.hardwareAward = {
+    basis: 'whole',
+    supplierId: supplierName,
+    lineSupplier: (existing.lineSupplier && typeof existing.lineSupplier === 'object') ? existing.lineSupplier : {}
+  };
   markDirty();
   renderDoorHardwareModal();
   showToast('Awarded whole package to ' + (supplierName || '(unnamed)') + '.');
 }
 function _dhwAwardBestLine(){
-  doorHardware.hardwareAward = { basis: 'bestLine' };
+  // W1: preserve any existing lineSupplier overrides (the user may have set
+  // a few per-line picks before hitting the button); else start with empty.
+  var existing = doorHardware.hardwareAward || {};
+  doorHardware.hardwareAward = {
+    basis: 'bestLine',
+    lineSupplier: (existing.lineSupplier && typeof existing.lineSupplier === 'object') ? existing.lineSupplier : {}
+  };
   markDirty();
   renderDoorHardwareModal();
   showToast('Awarded best line per supplier.');
+}
+// W1: per-line manual supplier override. Picking a supplier from a line's
+// override <select> in View 2 sets hardwareAward.lineSupplier[matchKey];
+// picking "" (Auto / cheapest) deletes the entry. Picking any override
+// implicitly awards best-line if the basis isn't already best-line — this
+// matches the brief's "Builds a custom line-by-line award" framing. If the
+// chosen supplier didn't price the line, the line becomes a gap (resolver
+// handles that — flagged-not-zeroed rule).
+function _dhwSetLineSupplier(matchKey, supplierName){
+  if(matchKey == null) return;
+  var award = doorHardware.hardwareAward;
+  if(!award || award.basis !== 'bestLine'){
+    award = { basis: 'bestLine', lineSupplier: (award && award.lineSupplier && typeof award.lineSupplier === 'object') ? award.lineSupplier : {} };
+    doorHardware.hardwareAward = award;
+  }
+  if(!award.lineSupplier || typeof award.lineSupplier !== 'object') award.lineSupplier = {};
+  var s = (supplierName == null) ? '' : String(supplierName);
+  if(s === ''){
+    delete award.lineSupplier[matchKey];
+  } else {
+    award.lineSupplier[matchKey] = s;
+  }
+  markDirty();
+  renderDoorHardwareModal();
 }
 
 // ─── Pricing & Labour controls (M3d) ───────────────────────────────────────
