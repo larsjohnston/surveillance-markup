@@ -3956,18 +3956,51 @@ function _dhwRenderWizardNav(){
   return back + '<div class="dhw-nav-spacer"></div>' + forward;
 }
 
-// W1: step navigation. All three (jump-to / next / back) re-render through
-// renderDoorHardwareModal so the indicator + nav stay in sync.
+// W1 / F4: step navigation.
+//   _dhwStepNext: when stepping forward FROM Comparison (step 1) the user
+//     is implicitly confirming whatever they've staged. If they staged
+//     per-line picks but never clicked an Award button, the bestLine
+//     basis is committed here. Other forward transitions are plain.
+//   _dhwStepBack: plain navigation; never confirms.
+//   _dhwGoToStep: indicator click — plain navigation; never confirms.
+// Explicit confirmation paths remain: the "Award whole package" /
+// "Award best line" buttons in View 1 / View 2.
 function _dhwGoToStep(n){
   if(typeof n !== 'number' || n < 1 || n > 5) return;
   _dhwCurrentStep = n;
   renderDoorHardwareModal();
 }
 function _dhwStepNext(){
-  if(_dhwCurrentStep < 5){ _dhwCurrentStep++; renderDoorHardwareModal(); }
+  if(_dhwCurrentStep < 5){
+    if(_dhwCurrentStep === 1) _dhwConfirmAwardOnContinue();
+    _dhwCurrentStep++;
+    renderDoorHardwareModal();
+  }
 }
 function _dhwStepBack(){
   if(_dhwCurrentStep > 1){ _dhwCurrentStep--; renderDoorHardwareModal(); }
+}
+
+// F4: confirm staged award on Continue from Comparison. If the user has
+// staged per-line supplier picks (hardwareAward.lineSupplier non-empty)
+// but hasn't yet set a basis (no explicit Award button click), advancing
+// from Comparison commits those picks as a best-line award — flipping
+// the status pill to "Awarded".
+//
+// No-ops when:
+//   • there's no hardwareAward at all (nothing staged, nothing to commit);
+//   • basis is already set (whole or bestLine — user already confirmed
+//     explicitly; advancing doesn't re-confirm);
+//   • no staged picks AND no prior basis (Continue just advances cleanly
+//     without auto-awarding anything the user didn't ask for).
+function _dhwConfirmAwardOnContinue(){
+  var award = doorHardware.hardwareAward;
+  if(!award) return;
+  if(award.basis) return;
+  var ls = award.lineSupplier;
+  if(!ls || typeof ls !== 'object' || Object.keys(ls).length === 0) return;
+  award.basis = 'bestLine';
+  markDirty();
 }
 
 function _dhwRenderEmpty(){
@@ -4387,18 +4420,28 @@ function _dhwAwardBestLine(){
   renderDoorHardwareModal();
   showToast('Awarded best line per supplier.');
 }
-// W1: per-line manual supplier override. Picking a supplier from a line's
-// override <select> in View 2 sets hardwareAward.lineSupplier[matchKey];
-// picking "" (Auto / cheapest) deletes the entry. Picking any override
-// implicitly awards best-line if the basis isn't already best-line — this
-// matches the brief's "Builds a custom line-by-line award" framing. If the
-// chosen supplier didn't price the line, the line becomes a gap (resolver
-// handles that — flagged-not-zeroed rule).
+// W1 / F4: per-line manual supplier override — STAGING ONLY.
+// Picking a supplier from a line's override <select> writes to
+// hardwareAward.lineSupplier[matchKey]; picking "" (Auto/cheapest) deletes
+// the entry. This does NOT flip the basis or status pill — staging the
+// pick is decoupled from confirming the award. The award is confirmed
+// only via:
+//   (a) the explicit "Award whole package" / "Award best line" buttons, or
+//   (b) Continue from the Comparison step (handled in _dhwStepNext →
+//       _dhwConfirmAwardOnContinue).
+// markDirty still fires on every pick so autosave persists the staged
+// choices and the user doesn't lose them on refresh.
+// If hardwareAward is null, we initialize it with basis:null so the
+// lineSupplier map has a home; resolveAward and the status pill both
+// already treat basis:null as "no award" (Unawarded). When the chosen
+// supplier didn't price this line, the line is a gap on confirmation
+// (resolver handles that — flagged-not-zeroed rule).
 function _dhwSetLineSupplier(matchKey, supplierName){
   if(matchKey == null) return;
   var award = doorHardware.hardwareAward;
-  if(!award || award.basis !== 'bestLine'){
-    award = { basis: 'bestLine', lineSupplier: (award && award.lineSupplier && typeof award.lineSupplier === 'object') ? award.lineSupplier : {} };
+  // Initialize a "staging" award shell — basis stays null until confirmed.
+  if(!award){
+    award = { basis: null, lineSupplier: {} };
     doorHardware.hardwareAward = award;
   }
   if(!award.lineSupplier || typeof award.lineSupplier !== 'object') award.lineSupplier = {};
