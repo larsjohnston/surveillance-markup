@@ -3885,7 +3885,7 @@ function _dhwRenderActiveStep(takeoff, quotes){
     case 2: return _dhwRenderStep2Hardware(takeoff, quotes);
     case 3: return _dhwRenderStep3AcOverlap(takeoff);
     case 4: return _dhwRenderStep4Labour(takeoff, quotes);
-    case 5: return _dhwRenderStep5SummaryPlaceholder();
+    case 5: return _dhwRenderStep5Summary(takeoff, quotes);
   }
   return '';
 }
@@ -3981,10 +3981,12 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
       ' placeholder="' + _dhwEsc(markupDefault) + '"' +
       ' title="Per-line override; blank = use project default (' + _dhwEsc(markupDefault) + '%)"' +
       ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
+    // W5: shared leading columns across all hardware-module step tables —
+    // Qty · SKU · Description · Finish · Supplier — then per-step extras.
     return '<tr' + rowCls + '>' +
       '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
-      '<td>' + _dhwEsc(t.description || '') + '</td>' +
       '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(t.description || '') + '</td>' +
       '<td>' + _dhwEsc(t.finish || '') + '</td>' +
       '<td>' + supplierLabel + '</td>' +
       '<td class="dhw-num">' + unitCostCell + '</td>' +
@@ -3999,8 +4001,8 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
   '</tr>';
   var header = '<tr>' +
     '<th class="dhw-num">Qty</th>' +
+    '<th>SKU</th>' +
     '<th>Description</th>' +
-    '<th>Catalog #</th>' +
     '<th>Finish</th>' +
     '<th>Supplier</th>' +
     '<th class="dhw-num">Unit cost</th>' +
@@ -4046,31 +4048,32 @@ function _dhwRenderStep3AcOverlap(takeoff){
   '</div>';
 }
 
-// Step 4 — Labour (W4). Dedicated per-line labour entry page. Top controls:
-//   • Hourly rate (hardwarePricing.hourlyRate)
-//   • Include-labour toggle (hardwarePricing.includeLabour)
-//   • Customer-display toggle: separate | combined (hardwarePricing.labourDisplay
-//     — NEW persisted field; INERT this milestone, feeds the M4 proposal
-//     Hardware Schedule renderer).
-// Per-line table: each awarded hardware line as a row with an editable
-// install-hours input. Hours are per LINE, not per unit — quantity is NOT a
-// multiplier (matches the existing hardwarePricing.lineInstallHours[matchKey]
-// shape from M3d). Labour total = Σ (per-line hours) × hourly rate via the
-// engine's dhwLabourTotal.
+// Step 4 — Labour (W4 + W5 fold-in). Per-line labour entry page.
+// Top control: hourly rate ONLY. Per-line table: each awarded hardware line
+// as a row with an editable install-hours input (per LINE, not per unit —
+// qty is NOT a multiplier). Labour total = Σ hours × rate via dhwLabourTotal.
 //
-// All math flows through M1 engine functions; the render layer only sums
-// per-line totals for the on-screen breakdown. Hardware pricing lives on
-// step 2 and is not duplicated here.
+// The include-labour toggle and customer-display radios moved to Step 5
+// (Summary) in the W5 fold-in — they affect totals presentation, which is
+// Summary's job. Hourly rate stays here because it's an input that drives
+// per-line numbers on THIS page.
+//
+// Helper paragraph removed in the W5 fold-in (per-line hours semantics are
+// adequately surfaced by the input's title tooltip).
+//
+// Column order matches the shared scheme across Step 2 / 4 / 5:
+//   Qty · SKU · Description · Finish · Supplier · [step extras]
+//
+// Install-hours input is widened (style="width:80px") so the number-input
+// stepper arrows aren't smooshed and are easily clickable.
 function _dhwRenderStep4Labour(takeoff, quotes){
   var award = doorHardware.hardwareAward;
   var pricing = doorHardware.hardwarePricing;
-  var hourlyRate    = (typeof pricing.hourlyRate === 'number') ? pricing.hourlyRate : 0;
-  var includeLabour = !!pricing.includeLabour;
-  var labourDisplay = (pricing.labourDisplay === 'combined') ? 'combined' : 'separate';
-  var hoursMap      = pricing.lineInstallHours || {};
+  var hourlyRate = (typeof pricing.hourlyRate === 'number') ? pricing.hourlyRate : 0;
+  var hoursMap   = pricing.lineInstallHours || {};
 
-  // --- Top controls (rendered in both no-award and awarded states) ---
-  var hourlyRow =
+  // Top control: hourly rate only (other toggles moved to Step 5).
+  var controls =
     '<div class="dhw-control-row">' +
       '<label><b>Hourly rate:</b> $ ' +
         '<input type="number" class="dhw-input" min="0" step="1"' +
@@ -4079,35 +4082,7 @@ function _dhwRenderStep4Labour(takeoff, quotes){
       '</label>' +
       '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every line\'s install hours.</span>' +
     '</div>';
-  var includeRow =
-    '<div class="dhw-control-row">' +
-      '<label><input type="checkbox" ' + (includeLabour ? 'checked' : '') +
-        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Include install labour in totals</b></label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">When off, the Summary step\'s grand total excludes labour.</span>' +
-    '</div>';
-  // W4: customer-display toggle. Two radios — labels match the brief's
-  // "Separate" / "Combined" phrasing. INERT this milestone (no consumer yet);
-  // the M4 proposal Hardware Schedule renderer will read this and choose
-  // whether to print labour as its own line group or fold it into hardware
-  // sell prices. markDirty fires so the choice survives autosave.
-  var displayRow =
-    '<div class="dhw-control-row">' +
-      '<label><b>On the customer proposal, show hardware and labour:</b></label>' +
-      '<label style="margin-left:6px;">' +
-        '<input type="radio" name="dhw-labour-display" value="separate"' +
-          (labourDisplay === 'separate' ? ' checked' : '') +
-          ' onchange="_dhwSetLabourDisplay(\'separate\')"> Separate' +
-      '</label>' +
-      '<label>' +
-        '<input type="radio" name="dhw-labour-display" value="combined"' +
-          (labourDisplay === 'combined' ? ' checked' : '') +
-          ' onchange="_dhwSetLabourDisplay(\'combined\')"> Combined' +
-      '</label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Controls how labour appears on the customer proposal (consumed by a later release).</span>' +
-    '</div>';
-  var controls = hourlyRow + includeRow + displayRow;
 
-  // No award yet → controls + hint pointing back to step 1.
   if(!award || !award.basis){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
@@ -4116,7 +4091,6 @@ function _dhwRenderStep4Labour(takeoff, quotes){
     '</div>';
   }
 
-  // Awarded → per-line table.
   var resolved = resolveAward(takeoff, quotes, award);
   var totalHrs = 0;
   var trs = resolved.map(function(r){
@@ -4136,7 +4110,8 @@ function _dhwRenderStep4Labour(takeoff, quotes){
       ? _dhwEsc(r.awardedSupplierName)
       : '<span class="dhw-gap">&mdash;</span>';
     var keyAttr = _dhwAttrJs(key);
-    var hoursInput = '<input type="number" class="dhw-input-inline" min="0" step="0.25"' +
+    // Widened input (style="width:80px") so the stepper arrows are clickable.
+    var hoursInput = '<input type="number" class="dhw-input-inline" style="width:80px;" min="0" step="0.25"' +
       ' value="' + _dhwEsc(hasHoursOverride ? hoursVal : '') + '"' +
       ' placeholder="0"' +
       ' title="Install hours for this line (NOT per unit). Quantity is not a multiplier."' +
@@ -4146,8 +4121,8 @@ function _dhwRenderStep4Labour(takeoff, quotes){
       : '<span class="dhw-gap">&mdash;</span>';
     return '<tr' + rowCls + '>' +
       '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
-      '<td>' + _dhwEsc(t.description || '') + '</td>' +
       '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(t.description || '') + '</td>' +
       '<td>' + _dhwEsc(t.finish || '') + '</td>' +
       '<td>' + supplierLabel + '</td>' +
       '<td class="dhw-num">' + hoursInput + '</td>' +
@@ -4162,12 +4137,12 @@ function _dhwRenderStep4Labour(takeoff, quotes){
   '</tr>';
   var header = '<tr>' +
     '<th class="dhw-num">Qty</th>' +
+    '<th>SKU</th>' +
     '<th>Description</th>' +
-    '<th>Catalog #</th>' +
     '<th>Finish</th>' +
     '<th>Supplier</th>' +
     '<th class="dhw-num">Install hrs</th>' +
-    '<th class="dhw-num">Line labour</th>' +
+    '<th class="dhw-num">Labour</th>' +
   '</tr>';
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
@@ -4178,11 +4153,6 @@ function _dhwRenderStep4Labour(takeoff, quotes){
         '<tbody>' + trs + subtotalRow + '</tbody>' +
       '</table>' +
     '</div>' +
-    '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
-      'Install hours are per LINE, not per unit — quantity is not a multiplier. ' +
-      'Lines with blank hours show <span class="dhw-gap">&mdash;</span> and contribute nothing to the labour subtotal. ' +
-      'The "Include install labour in totals" toggle controls whether labour flows into the Summary step\'s grand total.' +
-    '</p>' +
   '</div>';
 }
 
@@ -4198,14 +4168,168 @@ function _dhwSetLabourDisplay(value){
 }
 
 // Step 5 — Summary (W5 will build the real page). Placeholder for W1.
-function _dhwRenderStep5SummaryPlaceholder(){
-  return '<div class="dhw-step-placeholder">' +
-    '<b>Internal Summary — coming in W5.</b>' +
-    '<br><span style="font:500 11px var(--font-ui); color:var(--text-muted);">' +
-      'Final internal summary table — per-line cost / markup / sell / install hours / ' +
-      'labour, plus the equipment / labour / grand totals (respecting the ' +
-      'include-labour toggle). All numbers flow through the M1 engine.' +
-    '</span>' +
+// Step 5 — Summary (W5). Internal full-detail per-awarded-line table:
+// Qty · SKU · Description · Finish · Supplier · Unit cost · Markup% · Unit sell ·
+// Ext sell · Install hrs · Labour. All read-only — edits happen on the
+// upstream steps (markup on step 2, hours on step 4).
+//
+// Top controls (moved here from Step 4 in the W5 fold-in):
+//   • Include-labour toggle — drives whether the grand total = equipment +
+//     labour OR equipment only. Label on the grand-total row reflects.
+//   • Customer-display radios (separate / combined) — persisted via
+//     _dhwSetLabourDisplay; INERT this milestone, feeds M4 proposal render.
+//
+// Totals: equipment sell subtotal, labour total (always shown so the user
+// sees the labour magnitude even when excluded), grand total (label reflects
+// the include-labour toggle). All numbers come from M1 engine functions;
+// the render layer only sums per-line totals for the on-screen breakdown.
+//
+// Gaps shown as "not priced" (never $0.00); flagged-supplier-TOTAL markers
+// preserved. Per the brief's flagged-not-zeroed rule.
+function _dhwRenderStep5Summary(takeoff, quotes){
+  var award = doorHardware.hardwareAward;
+  var pricing = doorHardware.hardwarePricing;
+  var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 0;
+  var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
+  var includeLabour = !!pricing.includeLabour;
+  var labourDisplay = (pricing.labourDisplay === 'combined') ? 'combined' : 'separate';
+  var overrides     = pricing.lineMarkupOverrides || {};
+  var hoursMap      = pricing.lineInstallHours    || {};
+
+  // Top controls (relocated from Step 4): include-labour + display radios.
+  var includeRow =
+    '<div class="dhw-control-row">' +
+      '<label><input type="checkbox" ' + (includeLabour ? 'checked' : '') +
+        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Include install labour in totals</b></label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">When off, the grand total below excludes labour.</span>' +
+    '</div>';
+  var displayRow =
+    '<div class="dhw-control-row">' +
+      '<label><b>On the customer proposal, show hardware and labour:</b></label>' +
+      '<label style="margin-left:6px;">' +
+        '<input type="radio" name="dhw-labour-display" value="separate"' +
+          (labourDisplay === 'separate' ? ' checked' : '') +
+          ' onchange="_dhwSetLabourDisplay(\'separate\')"> Separate' +
+      '</label>' +
+      '<label>' +
+        '<input type="radio" name="dhw-labour-display" value="combined"' +
+          (labourDisplay === 'combined' ? ' checked' : '') +
+          ' onchange="_dhwSetLabourDisplay(\'combined\')"> Combined' +
+      '</label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Controls how labour appears on the customer proposal (consumed by a later release).</span>' +
+    '</div>';
+  var controls = includeRow + displayRow;
+
+  if(!award || !award.basis){
+    return '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
+      controls +
+      '<div class="dhw-empty" style="margin-top:12px;">Award a basis on the Comparison step to see the full summary.</div>' +
+    '</div>';
+  }
+
+  var resolved = resolveAward(takeoff, quotes, award);
+  var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
+  var equipmentSell = 0;
+  var totalHrs = 0;
+  var trs = resolved.map(function(r){
+    var t = r.takeoffLine || {};
+    var key = r.matchKey;
+    var qty = (typeof t.qty === 'number') ? t.qty : 0;
+    var unitCost = r.priced ? r.awardedUnitCost : null;
+    var override = overrides[key];
+    var hasOverride = (typeof override === 'number' && isFinite(override));
+    var effectiveMarkup = hasOverride ? override : markupDefault;
+    var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, effectiveMarkup);
+    var extSell  = (unitSell == null) ? null : qty * unitSell;
+    if(extSell != null) equipmentSell += extSell;
+    var hoursVal = hoursMap[key];
+    var hasHoursOverride = (typeof hoursVal === 'number' && isFinite(hoursVal));
+    var hours = hasHoursOverride ? hoursVal : 0;
+    totalHrs += hours;
+    var lineLabour = hours * hourlyRate;
+    var flagged = !!flaggedByKey[key];
+    var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
+    var flagMark = flagged
+      ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>'
+      : '';
+    var gapMark = !r.priced
+      ? '<span class="dhw-warn" title="No awarded supplier priced this line">&#9888;</span> '
+      : '';
+    var supplierLabel = r.awardedSupplierName
+      ? _dhwEsc(r.awardedSupplierName)
+      : '<span class="dhw-gap">&mdash;</span>';
+    var unitCostCell = (unitCost == null)
+      ? '<span class="dhw-gap">not priced</span>'
+      : (_dhwFmtMoney(unitCost) + flagMark);
+    var unitSellCell = (unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(unitSell);
+    var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
+    var markupCell = _dhwEsc(effectiveMarkup) + ' %' +
+      (hasOverride ? ' <span class="dhw-best-supp" style="display:inline; font:500 9px var(--font-ui); color:var(--text-muted);">(override)</span>' : '');
+    var hoursCell = hasHoursOverride ? (hoursVal + ' hr') : '<span class="dhw-gap">&mdash;</span>';
+    var labourCell = hasHoursOverride ? _dhwFmtMoney(lineLabour) : '<span class="dhw-gap">&mdash;</span>';
+    return '<tr' + rowCls + '>' +
+      '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
+      '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(t.description || '') + '</td>' +
+      '<td>' + _dhwEsc(t.finish || '') + '</td>' +
+      '<td>' + supplierLabel + '</td>' +
+      '<td class="dhw-num">' + unitCostCell + '</td>' +
+      '<td class="dhw-num">' + markupCell + '</td>' +
+      '<td class="dhw-num">' + unitSellCell + '</td>' +
+      '<td class="dhw-num">' + extSellCell  + '</td>' +
+      '<td class="dhw-num">' + hoursCell + '</td>' +
+      '<td class="dhw-num">' + labourCell + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var labourTotal = dhwLabourTotal(hoursMap, hourlyRate);
+  var grandTotal  = equipmentSell + (includeLabour ? labourTotal : 0);
+  var grandLabel  = includeLabour
+    ? 'Grand total (hardware + labour):'
+    : 'Grand total (hardware only):';
+
+  // Subtotal rows. Equipment subtotal aligns under the Ext sell column;
+  // Labour subtotal aligns under the Labour column; Grand total spans the
+  // line columns and lands its value at the far right.
+  var equipRow = '<tr>' +
+    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Equipment sell subtotal:</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(equipmentSell) + '</td>' +
+    '<td class="dhw-num" style="padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(labourTotal) + '</td>' +
+  '</tr>';
+  var grandRow = '<tr>' +
+    '<td colspan="10" style="text-align:right; font-weight:800; padding-top:6px;">' + grandLabel + '</td>' +
+    '<td class="dhw-num" style="font-weight:800; font-size:13px; color:var(--primary); padding-top:6px;">' + _dhwFmtMoney(grandTotal) + '</td>' +
+  '</tr>';
+
+  var header = '<tr>' +
+    '<th class="dhw-num">Qty</th>' +
+    '<th>SKU</th>' +
+    '<th>Description</th>' +
+    '<th>Finish</th>' +
+    '<th>Supplier</th>' +
+    '<th class="dhw-num">Unit cost</th>' +
+    '<th class="dhw-num">Markup %</th>' +
+    '<th class="dhw-num">Unit sell</th>' +
+    '<th class="dhw-num">Ext sell</th>' +
+    '<th class="dhw-num">Install hrs</th>' +
+    '<th class="dhw-num">Labour</th>' +
+  '</tr>';
+
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
+    controls +
+    '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
+      '<table class="dhw-table">' +
+        '<thead>' + header + '</thead>' +
+        '<tbody>' + trs + equipRow + grandRow + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
+      'Internal review. The customer proposal will show sell prices only — never cost, markup, or supplier names. ' +
+      'Edits to markup live on the Hardware step; edits to install hours live on the Labour step.' +
+    '</p>' +
   '</div>';
 }
 
