@@ -4264,6 +4264,7 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   var resolved = resolveAward(takeoff, quotes, award);
   var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
   var equipmentSell = 0;
+  var hardwareCost  = 0;   // W6+: Σ (qty × awarded unit cost) over priced lines — pre-markup, for the Project Totals margin row.
   var totalHrs = 0;
   var totalLabour = 0;
   var totalCombined = 0;
@@ -4273,6 +4274,7 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     var key = r.matchKey;
     var qty = (typeof t.qty === 'number') ? t.qty : 0;
     var unitCost = r.priced ? r.awardedUnitCost : null;
+    if(unitCost != null) hardwareCost += qty * unitCost;
     var override = overrides[key];
     var hasOverride = (typeof override === 'number' && isFinite(override));
     var effectiveMarkup = hasOverride ? override : markupDefault;
@@ -4392,6 +4394,45 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     unpricedCount + ' item' + (unpricedCount === 1 ? '' : 's') + ' not priced' +
   '</p>';
 
+  // W6+: Project Totals box — internal bordered card aggregating the
+  // numbers needed for a project at-a-glance: hardware sell, labour,
+  // total, project hours, expected margin (sell − hardware cost; labour
+  // has no cost basis so it's pure margin), and expected gross margin %.
+  // Divide-by-zero guard on the margin %: if total revenue is 0, show "—"
+  // instead of NaN/Infinity. Internal-only — never appears on the proposal.
+  var projectTotal     = equipmentSell + labourTotalEngine;
+  var expectedMargin   = projectTotal - hardwareCost;
+  var grossMarginPct   = (projectTotal > 0) ? (expectedMargin / projectTotal * 100) : null;
+  var grossMarginCell  = (grossMarginPct == null)
+    ? '<span class="dhw-gap">&mdash;</span>'
+    : grossMarginPct.toFixed(1) + '%';
+  function _projectRow(label, value){
+    return '<tr>' +
+      '<td style="padding:5px 12px 5px 0; font:600 11px var(--font-ui); color:var(--text-muted); letter-spacing:.04em; text-transform:uppercase; white-space:nowrap;">' + label + '</td>' +
+      '<td style="padding:5px 0; font:700 13px var(--font-mono); text-align:right;">' + value + '</td>' +
+    '</tr>';
+  }
+  function _projectRowEmphasis(label, value){
+    return '<tr>' +
+      '<td style="padding:8px 12px 5px 0; font:700 11px var(--font-ui); color:var(--text); letter-spacing:.04em; text-transform:uppercase; white-space:nowrap; border-top:1px solid var(--border);">' + label + '</td>' +
+      '<td style="padding:8px 0 5px; font:800 14px var(--font-mono); text-align:right; color:var(--primary); border-top:1px solid var(--border);">' + value + '</td>' +
+    '</tr>';
+  }
+  var projectTotalsBox =
+    '<div style="margin-top:18px; padding:16px 18px; background:#fff; border:1.5px solid var(--border); border-radius:6px; max-width:520px;">' +
+      '<div style="font:700 12px var(--font-ui); color:var(--text); text-transform:uppercase; letter-spacing:.10em; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">Project Totals</div>' +
+      '<table style="width:100%; border-collapse:collapse;">' +
+        '<tbody>' +
+          _projectRow('Hardware',               _dhwFmtMoney(equipmentSell)) +
+          _projectRow('Labour',                 _dhwFmtMoney(labourTotalEngine)) +
+          _projectRowEmphasis('Total',          _dhwFmtMoney(projectTotal)) +
+          _projectRow('Expected Project Hours', totalHrs.toFixed(2) + ' hr') +
+          _projectRow('Expected Margin',        _dhwFmtMoney(expectedMargin)) +
+          _projectRow('Expected Gross Margin',  grossMarginCell) +
+        '</tbody>' +
+      '</table>' +
+    '</div>';
+
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
     '<div style="overflow-x:auto; max-width:100%;">' +
@@ -4406,6 +4447,7 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       'Edits to markup live on the Hardware step; edits to install hours live on the Labour step.' +
     '</p>' +
     combineRow +
+    projectTotalsBox +
   '</div>';
 }
 
