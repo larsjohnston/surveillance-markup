@@ -3971,6 +3971,82 @@ function _dhwSetSummaryQuickFilter(name){
   renderDoorHardwareModal();
 }
 
+// W6+++++: column-down navigation for editable table fields.
+// Tab (forward) and Enter advance focus to the same field on the next row;
+// Shift+Tab goes back. One shared handler used by every navigable input/
+// select via data-dhw-colnav="<col>" + data-dhw-colnav-key="<matchKey>"
+// + onkeydown="_dhwColNavKey(event)". Rows missing the field (gap lines,
+// no-input cells) are skipped automatically — querySelectorAll returns
+// only elements that actually render, in document order.
+//
+// Re-render hazard: changing a value (typing in markup, sell, install hrs)
+// triggers onchange → setter → renderDoorHardwareModal, which replaces
+// the table body and destroys the focus target before .focus() can land.
+// Fix: store the target {col, key} in _dhwPendingFocus before triggering
+// blur, then apply the focus AFTER the next render in
+// _dhwApplyPendingFocus (called from renderDoorHardwareModal's tail).
+// When no value changed (no re-render), the post-blur call lands on the
+// still-existing DOM element directly.
+var _dhwPendingFocus = null;
+
+function _dhwColNavKey(e){
+  if(e.key !== 'Tab' && e.key !== 'Enter') return;
+  var el = e.target;
+  if(!el || !el.getAttribute) return;
+  var col = el.getAttribute('data-dhw-colnav');
+  if(!col) return;
+  var forward = (e.key === 'Enter') ? true : !e.shiftKey;
+  // Find all navigable elements in this column, in document (row) order.
+  var nodes = document.querySelectorAll('[data-dhw-colnav="' + col + '"]');
+  var all = [];
+  for(var i = 0; i < nodes.length; i++) all.push(nodes[i]);
+  var idx = all.indexOf(el);
+  if(idx === -1) return;
+  var targetIdx = forward ? idx + 1 : idx - 1;
+  if(targetIdx < 0 || targetIdx >= all.length){
+    // First-or-last row: don't trap. Let default behavior tab out naturally.
+    // For Enter we just consume it (no further default to allow); for Tab
+    // we allow the browser to move focus to the next focusable element.
+    if(e.key === 'Enter') e.preventDefault();
+    return;
+  }
+  e.preventDefault();
+  var target = all[targetIdx];
+  // Stash the {col, key} target so a re-render triggered by blur→change
+  // can apply the focus to the new DOM element after the table rebuilds.
+  _dhwPendingFocus = {
+    col: col,
+    key: target.getAttribute('data-dhw-colnav-key') || ''
+  };
+  // Trigger blur on the current element so any pending value change
+  // commits via the existing onchange handler (and a re-render fires).
+  if(typeof el.blur === 'function') el.blur();
+  // If no re-render happened (value unchanged, no setter called), the
+  // post-render hook never fired — focus the still-existing target now.
+  // If re-render DID fire, _dhwPendingFocus was already cleared inside
+  // renderDoorHardwareModal and this call is a no-op.
+  _dhwApplyPendingFocus();
+}
+
+function _dhwApplyPendingFocus(){
+  if(!_dhwPendingFocus) return;
+  var f = _dhwPendingFocus;
+  // Backslash-escape backslashes and double quotes for the CSS attribute
+  // selector. Match keys are uppercase alphanumeric + space + pipe in
+  // practice; quoted attribute values handle those fine.
+  var keyEsc = String(f.key).replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+  var sel = '[data-dhw-colnav="' + f.col + '"][data-dhw-colnav-key="' + keyEsc + '"]';
+  var el;
+  try { el = document.querySelector(sel); } catch(_){ el = null; }
+  _dhwPendingFocus = null;
+  if(el){
+    el.focus();
+    if(typeof el.select === 'function'){
+      try { el.select(); } catch(_){}
+    }
+  }
+}
+
 // W1: 5-step wizard state. Module-local, not persisted — resets to 1 on
 // every modal open (per the brief). Range 1..5:
 //   1 = Comparison (this milestone; full content)
@@ -4003,6 +4079,10 @@ function renderDoorHardwareModal(){
     _dhwRenderStepper() +
     '<div class="dhw-step-content">' + _dhwRenderActiveStep(takeoff, quotes) + '</div>';
   if(nav) nav.innerHTML = _dhwRenderWizardNav();
+  // W6+++++: column-down nav has a deferred-focus path. If a Tab/Enter
+  // mid-edit triggered a re-render via blur→change, apply the queued
+  // focus now that the new DOM is in place. No-op when no pending focus.
+  _dhwApplyPendingFocus();
 }
 
 // W1: render the 5-step indicator. Each step is a clickable button that
@@ -4123,14 +4203,13 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
     var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
     var keyAttr = _dhwAttrJs(key);
     // Per-line markup override; blank = fall back to project default.
-    // W6++ : display 2-decimal precision (50.01 instead of 50.0102 — the
-    // back-calc from Unit sell now stores at 2dp, but other entry paths
-    // might still produce fractional input; .toFixed(2) normalizes the
-    // visible value either way).
+    // W6+++++: data-dhw-colnav attributes wire Tab/Enter column-down nav.
     var markupInput = '<input type="number" class="dhw-input-inline" min="0" step="5"' +
       ' value="' + (hasOverride ? Number(override).toFixed(2) : '') + '"' +
       ' placeholder="' + Number(markupDefault).toFixed(2) + '"' +
       ' title="Per-line override; blank = use project default (' + Number(markupDefault).toFixed(2) + '%)"' +
+      ' data-dhw-colnav="markup" data-dhw-colnav-key="' + _dhwEsc(key) + '"' +
+      ' onkeydown="_dhwColNavKey(event)"' +
       ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
     // W6+: Unit sell is editable on priced lines — two-way bound with the
     // Markup % cell. Both write to lineMarkupOverrides[matchKey]; editing
@@ -4143,6 +4222,8 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
       unitSellCell = '<input type="number" class="dhw-input-inline" style="width:90px;" min="0" step="0.01"' +
         ' value="' + _dhwEsc(unitSell.toFixed(2)) + '"' +
         ' title="Type a unit sell value — markup % recalculates from cost."' +
+        ' data-dhw-colnav="unitSell" data-dhw-colnav-key="' + _dhwEsc(key) + '"' +
+        ' onkeydown="_dhwColNavKey(event)"' +
         ' onchange="_dhwSetLineUnitSell(' + keyAttr + ', this.value, ' + unitCost + ')">';
     }
     // W5: shared leading columns across all hardware-module step tables —
@@ -4275,10 +4356,13 @@ function _dhwRenderStep4Labour(takeoff, quotes){
       : '<span class="dhw-gap">&mdash;</span>';
     var keyAttr = _dhwAttrJs(key);
     // Widened input (style="width:80px") so the stepper arrows are clickable.
+    // W6+++++: data-dhw-colnav wires Tab/Enter column-down nav.
     var hoursInput = '<input type="number" class="dhw-input-inline" style="width:80px;" min="0" step="0.25"' +
       ' value="' + _dhwEsc(hasHoursOverride ? hoursVal : '') + '"' +
       ' placeholder="0"' +
       ' title="Install hours for this line (NOT per unit). Quantity is not a multiplier."' +
+      ' data-dhw-colnav="hours" data-dhw-colnav-key="' + _dhwEsc(key) + '"' +
+      ' onkeydown="_dhwColNavKey(event)"' +
       ' onchange="_dhwSetLineHours(' + keyAttr + ', this.value)">';
     var labourCell = hasHoursOverride
       ? _dhwFmtMoney(lineLabour)
@@ -5087,7 +5171,13 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
         '<span class="dhw-best-supp">' + _dhwEsc(chosen.supplierName || '') + '</span>'
       : '<span class="dhw-gap">not priced</span>' +
         (chosen.supplierName ? '<span class="dhw-best-supp">' + _dhwEsc(chosen.supplierName) + '</span>' : '');
-    var selectEl = '<select class="dhw-line-override" onchange="_dhwSetLineSupplier(' + matchKeyAttr + ', this.value)" title="Force a specific supplier for this line, or leave on Auto (cheapest).">' +
+    // W6+++++: data-dhw-colnav wires Tab/Enter column-down nav across all
+    // Best-cell supplier selects.
+    var selectEl = '<select class="dhw-line-override"' +
+      ' data-dhw-colnav="supplier" data-dhw-colnav-key="' + _dhwEsc(L.matchKey) + '"' +
+      ' onkeydown="_dhwColNavKey(event)"' +
+      ' onchange="_dhwSetLineSupplier(' + matchKeyAttr + ', this.value)"' +
+      ' title="Force a specific supplier for this line, or leave on Auto (cheapest).">' +
       supplierOptions(override) +
     '</select>';
     var bestCell = '<td class="dhw-best-cell">' + bestInner + selectEl + '</td>';
