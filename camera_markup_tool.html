@@ -654,6 +654,14 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 .dhw-tab:hover:not(.active) { color:var(--text); background:#fff; }
 .dhw-best { background:#ecfdf5; color:#065f46; font-weight:700; }
+/* W8a: click-to-select supplier cells in the Best-by-Line view. Every
+   priced supplier cell gets .dhw-pick-cell for the clickable cue (cursor
+   + subtle hover tint hinting at the selected-state green). The currently
+   selected cell keeps .dhw-best for the green fill — same green as before
+   (was keyed on "cheapest"; now keyed on "selected", which defaults to
+   cheapest). Gap cells don't get .dhw-pick-cell and stay non-interactive. */
+.dhw-pick-cell { cursor:pointer; transition:background .12s; }
+.dhw-pick-cell:hover:not(.dhw-best) { background:#f0fdf4; }
 .dhw-award-summary { padding:10px 12px; background:var(--primary-faint); border:1px solid var(--primary-soft); border-radius:5px; font:500 12px var(--font-ui); color:var(--text); line-height:1.5; }
 .dhw-award-summary.dhw-award-none { background:var(--surface-soft); border-color:var(--border); color:var(--text-muted); }
 .dhw-award-active { font-weight:700; color:var(--primary); }
@@ -5514,17 +5522,13 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
     supplierCols +
     '<th class="dhw-best-cell">Best</th>' +
   '</tr>';
-  // Pre-render the override <option> list once (same supplier set for every
-  // line). "" maps to auto-cheapest. JSON.stringify on the supplier name
-  // gives a safe quoted string literal for the JS-in-attribute call site.
-  function supplierOptions(currentOverride){
-    var opts = ['<option value=""' + (currentOverride ? '' : ' selected') + '>Auto (cheapest)</option>'];
-    supplierNames.forEach(function(n){
-      var sel = (currentOverride === n) ? ' selected' : '';
-      opts.push('<option value="' + _dhwEsc(n) + '"' + sel + '>' + _dhwEsc(n || '(unnamed)') + '</option>');
-    });
-    return opts.join('');
-  }
+  // W8a: per-row supplier <select> dropdown removed. The Best-by-Line
+  // view now uses click-to-select on each supplier's price cell — see
+  // _dhwPickLineSupplier below. The supplierOptions() helper and the
+  // selectEl construction are gone with it. Award still confirms on
+  // Continue (staging unchanged); the green tint key shifted from
+  // "cheapest" to "selected" (defaults to cheapest via the implicit-
+  // fallback path).
   var unpricedCount = 0;
   var trs = lines.map(function(L){
     var t = L.takeoffLine || {};
@@ -5546,34 +5550,44 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       chosen = { unitCost: null, supplierName: null, priced: false };
     }
     if(!chosen.priced) unpricedCount++;
-    // Per-supplier cells. Green highlight on the AUTO-cheapest (unchanged).
+    // W8a: per-supplier cells, click-to-select.
+    //   - Gap cells (no unit cost from this supplier) stay non-interactive.
+    //   - Priced cells get .dhw-pick-cell (cursor + hover tint).
+    //   - The SELECTED cell additionally gets .dhw-best (green fill). The
+    //     selection is chosen.supplierName, which is the override when set
+    //     and falls back to the cheapest via the resolver. On an all-gap
+    //     row chosen.supplierName is null and no cell is green.
+    //   - On an override-to-a-gap row (rare: user picked a supplier that
+    //     didn't price this line) the override's cell is a gap and no
+    //     cell is green — the user recovers by clicking any priced cell.
+    var matchKeyAttr = _dhwAttrJs(L.matchKey);
+    var bestNameAttr = _dhwAttrJs(L.bestSupplierName || '');
+    var selectedSupplier = chosen.supplierName || null;
     var cells = supplierNames.map(function(_n, sIdx){
       var ps = L.perSupplier[sIdx];
       if(!ps || ps.unitCost == null){
         return '<td class="dhw-num dhw-gap">&mdash;</td>';
       }
-      var isBest = (ps.unitCost === L.bestUnitCost);
-      var cls = 'dhw-num' + (isBest ? ' dhw-best' : '');
+      var isSelected = (ps.supplierName === selectedSupplier);
+      var cls = 'dhw-num dhw-pick-cell' + (isSelected ? ' dhw-best' : '');
       var flag = ps.flagged ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>' : '';
-      return '<td class="' + cls + '">' + _dhwFmtMoney(ps.unitCost) + flag + '</td>';
+      var supplierAttr = _dhwAttrJs(ps.supplierName);
+      var title = isSelected
+        ? 'Selected supplier for this line — click another cell to switch.'
+        : 'Click to select ' + (ps.supplierName || '(unnamed)') + ' for this line.';
+      return '<td class="' + cls + '"' +
+        ' title="' + _dhwEsc(title) + '"' +
+        ' onclick="_dhwPickLineSupplier(' + matchKeyAttr + ', ' + supplierAttr + ', ' + bestNameAttr + ')">' +
+        _dhwFmtMoney(ps.unitCost) + flag +
+      '</td>';
     }).join('');
-    // Best column: chosen price + supplier label, then the override <select>.
-    var matchKeyAttr = _dhwAttrJs(L.matchKey);
+    // Best column: chosen price + supplier label (no dropdown — W8a).
     var bestInner = chosen.priced
       ? '<b>' + _dhwFmtMoney(chosen.unitCost) + '</b>' +
         '<span class="dhw-best-supp">' + _dhwEsc(chosen.supplierName || '') + '</span>'
       : '<span class="dhw-gap">not priced</span>' +
         (chosen.supplierName ? '<span class="dhw-best-supp">' + _dhwEsc(chosen.supplierName) + '</span>' : '');
-    // W6+++++: data-dhw-colnav wires Tab/Enter column-down nav across all
-    // Best-cell supplier selects.
-    var selectEl = '<select class="dhw-line-override"' +
-      ' data-dhw-colnav="supplier" data-dhw-colnav-key="' + _dhwEsc(L.matchKey) + '"' +
-      ' onkeydown="_dhwColNavKey(event)"' +
-      ' onchange="_dhwSetLineSupplier(' + matchKeyAttr + ', this.value)"' +
-      ' title="Force a specific supplier for this line, or leave on Auto (cheapest).">' +
-      supplierOptions(override) +
-    '</select>';
-    var bestCell = '<td class="dhw-best-cell">' + bestInner + selectEl + '</td>';
+    var bestCell = '<td class="dhw-best-cell">' + bestInner + '</td>';
     return '<tr' + (!chosen.priced ? ' class="dhw-row-flagged"' : '') + '>' +
       '<td class="dhw-num">' + _dhwEsc(t.qty == null ? '' : String(t.qty)) + '</td>' +
       '<td>' + _dhwEsc(t.description || '') + '</td>' +
@@ -5686,6 +5700,30 @@ function _dhwSetLineSupplier(matchKey, supplierName){
   }
   markDirty();
   renderDoorHardwareModal();
+}
+
+// W8a: click-to-select wrapper for the Best-by-Line price cells.
+//   - Click on the already-selected cell → no-op (per the brief: NOT
+//     click-to-clear; reverting a manual pick is "click the cheapest").
+//   - Click on the cheapest cell → DELETE the lineSupplier entry rather
+//     than write the explicit cheapest value. Keeps the save minimal and
+//     lets the resolver's implicit-cheapest fallback do its job. Picks
+//     that happen to match cheapest don't churn state.
+//   - Otherwise → write the explicit override via _dhwSetLineSupplier.
+// bestSupplierName is encoded at render time per row (the resolver's
+// "cheapest valid supplier"); passing it via the onclick avoids having
+// to recompute compareBestLine inside the click handler.
+function _dhwPickLineSupplier(matchKey, supplierName, bestSupplierName){
+  if(matchKey == null || !supplierName) return;
+  var award = doorHardware.hardwareAward;
+  var override = (award && award.lineSupplier) ? award.lineSupplier[matchKey] : null;
+  var currentSelected = override || bestSupplierName || null;
+  if(currentSelected === supplierName) return;
+  if(bestSupplierName && supplierName === bestSupplierName){
+    _dhwSetLineSupplier(matchKey, '');
+  } else {
+    _dhwSetLineSupplier(matchKey, supplierName);
+  }
 }
 
 // W7a: per-line Exclude — a display/filter layer on top of resolveAward.
