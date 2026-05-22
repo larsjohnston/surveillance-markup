@@ -623,6 +623,13 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-table td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .dhw-table tr:last-child td { border-bottom:0; }
 .dhw-table tr.dhw-row-flagged td { background:#fffaf2; }
+/* W7a: Excluded rows on Step 2 stay in place visually but read as set-aside —
+   greyed fill + muted text + line-through. Form controls (the Include
+   button, markup/sell inputs) keep their normal text-decoration so the
+   row remains operable for un-exclude and value preservation. */
+.dhw-table tr.dhw-row-excluded td { background:#f3f4f6; color:#9ca3af; text-decoration:line-through; }
+.dhw-table tr.dhw-row-excluded button,
+.dhw-table tr.dhw-row-excluded input { text-decoration:none; }
 .dhw-warn { color:#b45309; font-weight:700; }
 .dhw-gap  { color:#b45309; font-style:italic; }
 .dhw-num  { font:600 11px var(--font-mono); text-align:right; }
@@ -3028,6 +3035,14 @@ function dhwNormalizeState(obj){
   if(empty.hardwareAward && (!empty.hardwareAward.lineSupplier || typeof empty.hardwareAward.lineSupplier !== 'object')){
     empty.hardwareAward.lineSupplier = {};
   }
+  // W7a: additive backfill for the per-line Exclude map. Always an object
+  // (possibly empty) when an award exists so render code can index without
+  // null-checks. Exclude is a display/filter layer ON TOP of resolveAward —
+  // the resolver itself ignores the map; the per-step renderers filter
+  // excluded matchKeys out of their displayed/totalled line sets.
+  if(empty.hardwareAward && (!empty.hardwareAward.excluded || typeof empty.hardwareAward.excluded !== 'object')){
+    empty.hardwareAward.excluded = {};
+  }
   if(obj.hardwarePricing && typeof obj.hardwarePricing === 'object'){
     var p = obj.hardwarePricing;
     // W6 bug fix: the empty-state default for defaultMarkupPct was bumped
@@ -4244,9 +4259,15 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
     var effectiveMarkup = hasOverride ? override : markupDefault;
     var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, effectiveMarkup);
     var extSell  = (unitSell == null) ? null : qty * unitSell;
-    if(extSell != null) totalSell += extSell;
+    // W7a: Exclude is a filter layer ON TOP of resolveAward. Excluded
+    // lines contribute to NO totals (here: skip the totalSell accumulation)
+    // and render with the dhw-row-excluded class (strike-through + grey
+    // fill) so the row reads as set-aside but stays in place — the user
+    // can un-exclude via the action cell at the right.
+    var excluded = _dhwIsExcluded(key);
+    if(extSell != null && !excluded) totalSell += extSell;
     var flagged = !!flaggedByKey[key];
-    var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
+    var rowCls = excluded ? ' class="dhw-row-excluded"' : (!r.priced ? ' class="dhw-row-flagged"' : '');
     var flagMark = flagged
       ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>'
       : '';
@@ -4288,8 +4309,19 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
         ' onkeydown="_dhwColNavKey(event)"' +
         ' onchange="_dhwSetLineUnitSell(' + keyAttr + ', this.value, ' + unitCost + ')">';
     }
+    // W7a: per-line Exclude action cell. Excluded lines show "Include" so
+    // the same control reverses the state; priced/gap/flagged lines all
+    // get the button (the brief: "ANY line — priced, flagged, or gap").
+    var excludeBtn = '<button class="dhw-btn-small' + (excluded ? '' : ' dhw-btn-danger') + '"' +
+      ' onclick="_dhwToggleExclude(' + keyAttr + ')"' +
+      ' title="' + (excluded
+        ? 'Restore this line to the hardware schedule and all totals.'
+        : 'Drop this line from the hardware schedule and all totals; it will list on the Summary&#39;s Excluded section.') + '">' +
+      (excluded ? 'Include' : 'Exclude') +
+    '</button>';
     // W5: shared leading columns across all hardware-module step tables —
     // Qty · SKU · Description · Finish · Supplier — then per-step extras.
+    // W7a: trailing Exclude column.
     return '<tr' + rowCls + '>' +
       '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
       '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
@@ -4300,11 +4332,16 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
       '<td class="dhw-num">' + markupInput + ' %</td>' +
       '<td class="dhw-num">' + unitSellCell + '</td>' +
       '<td class="dhw-num">' + extSellCell  + '</td>' +
+      '<td style="text-align:center;">' + excludeBtn + '</td>' +
     '</tr>';
   }).join('');
+  // W7a: subtotal label colspan unchanged at 8 (Qty through Unit sell);
+  // Ext sell value lands in col 9 as before; trailing blank cell sits
+  // under the new Exclude column.
   var subtotalRow = '<tr>' +
     '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Hardware sell subtotal:</td>' +
     '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalSell) + '</td>' +
+    '<td style="padding-top:12px; border-top:1.5px solid var(--border);"></td>' +
   '</tr>';
   var header = '<tr>' +
     '<th class="dhw-num">Qty</th>' +
@@ -4316,6 +4353,7 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
     '<th class="dhw-num">Markup %</th>' +
     '<th class="dhw-num">Unit sell</th>' +
     '<th class="dhw-num">Ext sell</th>' +
+    '<th style="text-align:center;">Exclude</th>' +
   '</tr>';
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Hardware</span></div>' +
@@ -4399,8 +4437,12 @@ function _dhwRenderStep4Labour(takeoff, quotes){
   }
 
   var resolved = resolveAward(takeoff, quotes, award);
+  // W7a: drop excluded lines from the labour table entirely (they get no
+  // labour, contribute to no labour total). The brief: "Dropped from the
+  // Step 4 labour table (no labour on an excluded line) and labour totals."
+  var activeResolved = resolved.filter(function(r){ return !_dhwIsExcluded(r.matchKey); });
   var totalHrs = 0;
-  var trs = resolved.map(function(r){
+  var trs = activeResolved.map(function(r){
     var t = r.takeoffLine || {};
     var key = r.matchKey;
     var qty = (typeof t.qty === 'number') ? t.qty : 0;
@@ -4439,7 +4481,14 @@ function _dhwRenderStep4Labour(takeoff, quotes){
       '<td class="dhw-num">' + labourCell + '</td>' +
     '</tr>';
   }).join('');
-  var labourTotal = dhwLabourTotal(hoursMap, hourlyRate);
+  // W7a: feed the engine an excluded-key-filtered hoursMap so the labour
+  // subtotal mirrors the displayed rows. Equivalent to totalHrs * hourlyRate
+  // but routes through dhwLabourTotal so the engine call stays meaningful.
+  var activeHoursMap = {};
+  Object.keys(hoursMap).forEach(function(k){
+    if(!_dhwIsExcluded(k)) activeHoursMap[k] = hoursMap[k];
+  });
+  var labourTotal = dhwLabourTotal(activeHoursMap, hourlyRate);
   var subtotalRow = '<tr>' +
     '<td colspan="5" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Labour subtotal:</td>' +
     '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
@@ -4543,15 +4592,26 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   var resolved = resolveAward(takeoff, quotes, award);
   var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
 
+  // W7a: exclude is a filter layer ON TOP of resolveAward. Split here:
+  //   activeResolved  — feeds the main table, Sums, Grand Total, Project
+  //                     Totals box (the totals scope, per the W7 brief).
+  //   excludedResolved — feeds the Excluded section (identifiers only).
+  // The viewing-lens filters (filter/sort/hide) operate further down on
+  // activeResolved's rowData; "totals reflect all lines" in the caption
+  // continues to mean "all non-excluded awarded lines" — exclusion is a
+  // SCOPE change, viewing lenses are a DISPLAY-only change.
+  var activeResolved   = resolved.filter(function(r){ return !_dhwIsExcluded(r.matchKey); });
+  var excludedResolved = resolved.filter(function(r){ return  _dhwIsExcluded(r.matchKey); });
+
   // First pass: compute per-row data + accumulate totals over ALL priced
-  // lines (filter/hide do NOT change these — decision B).
+  // non-excluded lines (filter/hide do NOT change these — decision B).
   var equipmentSell = 0;
   var hardwareCost  = 0;
   var totalHrs      = 0;
   var totalLabour   = 0;
   var totalCombined = 0;
   var unpricedCount = 0;
-  var rowData = resolved.map(function(r){
+  var rowData = activeResolved.map(function(r){
     var t = r.takeoffLine || {};
     var qty = (typeof t.qty === 'number') ? t.qty : 0;
     var unitCost = r.priced ? r.awardedUnitCost : null;
@@ -4595,10 +4655,16 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       hasHoursOverride:hasHoursOverride
     };
   });
-  // labourTotalEngine = dhwLabourTotal(hoursMap, rate). Equal to totalLabour
-  // computed above (same Σ); use the engine call for the Project Totals box
-  // so it's clearly the engine-derived value.
-  var labourTotalEngine = dhwLabourTotal(hoursMap, hourlyRate);
+  // labourTotalEngine = dhwLabourTotal(filtered hoursMap, rate). Equal to
+  // totalLabour computed above (same Σ); the engine call is fed a hoursMap
+  // with excluded keys removed (W7a) so it stays the canonical engine-
+  // derived value for the Project Totals box without double-counting
+  // excluded lines.
+  var activeHoursMap = {};
+  Object.keys(hoursMap).forEach(function(k){
+    if(!_dhwIsExcluded(k)) activeHoursMap[k] = hoursMap[k];
+  });
+  var labourTotalEngine = dhwLabourTotal(activeHoursMap, hourlyRate);
   var grandTotal        = equipmentSell + labourTotalEngine;
 
   // Cell-text accessor for filter substring matching. Returns the same
@@ -4893,6 +4959,41 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       '</table>' +
     '</div>';
 
+  // W7a: Excluded section — identifiers only (Qty/SKU/Description/Finish),
+  // no pricing/cost/labour. Sits at the BOTTOM of Step 5, ABOVE the
+  // Project Totals box. Hidden entirely when nothing is excluded.
+  var excludedSection = '';
+  if(excludedResolved.length > 0){
+    var excludedRows = excludedResolved.map(function(r){
+      var t = r.takeoffLine || {};
+      var qty = (typeof t.qty === 'number') ? t.qty : 0;
+      return '<tr>' +
+        '<td class="dhw-num">' + _dhwEsc(qty) + '</td>' +
+        '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
+        '<td>' + _dhwEsc(t.description || '') + '</td>' +
+        '<td>' + _dhwEsc(t.finish || '') + '</td>' +
+      '</tr>';
+    }).join('');
+    excludedSection =
+      '<div style="margin-top:18px;">' +
+        '<div style="font:700 12px var(--font-ui); color:var(--text); text-transform:uppercase; letter-spacing:.10em; margin-bottom:8px;">' +
+          'Excluded (' + excludedResolved.length + ') &mdash; not in totals' +
+        '</div>' +
+        '<table class="dhw-table">' +
+          '<thead><tr>' +
+            '<th class="dhw-num">Qty</th>' +
+            '<th>SKU</th>' +
+            '<th>Description</th>' +
+            '<th>Finish</th>' +
+          '</tr></thead>' +
+          '<tbody>' + excludedRows + '</tbody>' +
+        '</table>' +
+        '<p style="margin-top:6px; font:500 11px var(--font-ui); color:var(--text-muted);">' +
+          'Excluded on the Hardware step. Restore on Hardware to bring them back into the totals.' +
+        '</p>' +
+      '</div>';
+  }
+
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
     toolbar +
@@ -4909,6 +5010,7 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       'Edits to markup live on the Hardware step; edits to install hours live on the Labour step.' +
     '</p>' +
     combineRow +
+    excludedSection +
     projectTotalsBox +
   '</div>';
 }
@@ -5380,7 +5482,10 @@ function _dhwAwardWhole(quoteIdx){
   doorHardware.hardwareAward = {
     basis: 'whole',
     supplierId: supplierName,
-    lineSupplier: (existing.lineSupplier && typeof existing.lineSupplier === 'object') ? existing.lineSupplier : {}
+    lineSupplier: (existing.lineSupplier && typeof existing.lineSupplier === 'object') ? existing.lineSupplier : {},
+    // W7a: preserve excluded across re-awards (matchKey is stable, so an
+    // excluded line stays excluded regardless of the awarded supplier).
+    excluded: (existing.excluded && typeof existing.excluded === 'object') ? existing.excluded : {}
   };
   markDirty();
   renderDoorHardwareModal();
@@ -5392,7 +5497,9 @@ function _dhwAwardBestLine(){
   var existing = doorHardware.hardwareAward || {};
   doorHardware.hardwareAward = {
     basis: 'bestLine',
-    lineSupplier: (existing.lineSupplier && typeof existing.lineSupplier === 'object') ? existing.lineSupplier : {}
+    lineSupplier: (existing.lineSupplier && typeof existing.lineSupplier === 'object') ? existing.lineSupplier : {},
+    // W7a: preserve excluded across re-awards (see _dhwAwardWhole).
+    excluded: (existing.excluded && typeof existing.excluded === 'object') ? existing.excluded : {}
   };
   markDirty();
   renderDoorHardwareModal();
@@ -5428,6 +5535,35 @@ function _dhwSetLineSupplier(matchKey, supplierName){
     delete award.lineSupplier[matchKey];
   } else {
     award.lineSupplier[matchKey] = s;
+  }
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+// W7a: per-line Exclude — a display/filter layer on top of resolveAward.
+// The resolver and the rest of the M1 engine stay untouched (per the W7
+// brief): each per-step renderer (Step 2 Hardware / Step 4 Labour / Step 5
+// Summary) filters excluded matchKeys out of its displayed and totalled
+// line set. Step 5 additionally renders the excluded entries as
+// identifiers-only at the bottom of the step so the deliberate exclusions
+// are visible. The map keys matchKey → true; absence (or false) means
+// included. Reversible (the user can un-exclude).
+function _dhwIsExcluded(matchKey){
+  var award = doorHardware.hardwareAward;
+  if(!award || !award.excluded) return false;
+  return !!award.excluded[matchKey];
+}
+function _dhwToggleExclude(matchKey){
+  if(matchKey == null) return;
+  var award = doorHardware.hardwareAward;
+  // Exclude UI only renders on Step 2 with a basis confirmed — defensive
+  // bail keeps the global accessible without creating a phantom award.
+  if(!award || !award.basis) return;
+  if(!award.excluded || typeof award.excluded !== 'object') award.excluded = {};
+  if(award.excluded[matchKey]){
+    delete award.excluded[matchKey];
+  } else {
+    award.excluded[matchKey] = true;
   }
   markDirty();
   renderDoorHardwareModal();
