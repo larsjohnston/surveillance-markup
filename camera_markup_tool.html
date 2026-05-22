@@ -650,12 +650,29 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    filter input row, hide-row button, hidden-rows banner. All state
    session-only (module-local), reset on modal open. Filter/hide is a
    viewing lens — never changes the totals, never affects export. */
-.dhw-summary-toolbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+.dhw-summary-toolbar { position:relative; display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
 .dhw-summary-toolbar button { padding:5px 10px; font:600 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; border-radius:3px; border:1px solid var(--border); background:#fff; color:var(--text); cursor:pointer; }
 .dhw-summary-toolbar button:hover { background:var(--surface-soft); }
 .dhw-summary-toolbar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 .dhw-summary-toolbar .dhw-toolbar-spacer { flex:1 1 auto; }
 .dhw-summary-toolbar .dhw-toolbar-caption { font:500 11px var(--font-ui); color:var(--text-muted); }
+/* W6+++++++: tools button + popover — consolidates column show/hide,
+   filter toggle, quick filters, and Clear all into one home. Icon is
+   inline SVG matching the tool's stroke convention. */
+.dhw-tools-btn { display:inline-flex; align-items:center; gap:6px; }
+.dhw-tools-btn svg { display:block; }
+.dhw-tools-popover { position:absolute; top:calc(100% + 4px); left:0; z-index:10; min-width:260px; max-width:340px; background:#fff; border:1px solid var(--border); border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.12); padding:14px 16px; }
+.dhw-tools-popover .dhw-popover-section { margin-bottom:12px; }
+.dhw-tools-popover .dhw-popover-section:last-child { margin-bottom:0; }
+.dhw-tools-popover .dhw-popover-hdr { font:700 9px var(--font-ui); color:var(--text-muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; padding-bottom:4px; border-bottom:1px solid var(--border); }
+.dhw-tools-popover label.dhw-col-toggle { display:flex; align-items:center; gap:6px; padding:3px 0; font:500 11px var(--font-ui); color:var(--text); cursor:pointer; }
+.dhw-tools-popover label.dhw-col-toggle input { margin:0; }
+.dhw-tools-popover .dhw-popover-actions { display:flex; flex-direction:column; gap:4px; }
+.dhw-tools-popover .dhw-popover-actions button { padding:6px 10px; font:600 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; border-radius:3px; border:1px solid var(--border); background:#fff; color:var(--text); cursor:pointer; text-align:left; }
+.dhw-tools-popover .dhw-popover-actions button:hover:not(.active):not(.dhw-popover-clear) { background:var(--surface-soft); }
+.dhw-tools-popover .dhw-popover-actions button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.dhw-tools-popover .dhw-popover-clear { color:#b45309; border-color:#fcd34d; }
+.dhw-tools-popover .dhw-popover-clear:hover { background:#fffbeb; }
 .dhw-table thead th.dhw-sortable { cursor:pointer; user-select:none; }
 .dhw-table thead th.dhw-sortable:hover { color:var(--text); }
 .dhw-table thead th .dhw-sort-mark { color:var(--primary); margin-left:4px; font-weight:700; }
@@ -3878,6 +3895,8 @@ function openDoorHardwareModal(){
   _dhwSummaryHidden       = {};
   _dhwSummaryFilterUiOpen = false;
   _dhwSummaryQuickFilter  = null;
+  _dhwSummaryHiddenCols   = {};
+  _dhwSummaryToolsOpen    = false;
   renderDoorHardwareModal();
   var modal = document.getElementById('door-hardware-modal');
   if(modal) modal.classList.add('show');
@@ -3927,6 +3946,13 @@ var _dhwSummaryFilters      = {};
 var _dhwSummaryHidden       = {};
 var _dhwSummaryFilterUiOpen = false;
 var _dhwSummaryQuickFilter  = null;
+// W6+++++++: column show/hide + tools-popover state.
+//   _dhwSummaryHiddenCols = { <columnKey>: true } — hidden data columns.
+//   _dhwSummaryToolsOpen  = bool — whether the tools popover is visible.
+// Both session-only, reset on modal open. Column hide is a viewing lens
+// only — totals and underlying data always reflect ALL lines and ALL data.
+var _dhwSummaryHiddenCols   = {};
+var _dhwSummaryToolsOpen    = false;
 
 // W6+++++ setters. Tri-state sort cycle (none → asc → desc → none) on
 // repeated clicks of the same column; switching columns starts at asc.
@@ -3968,6 +3994,31 @@ function _dhwToggleSummaryFilterUi(){
 function _dhwSetSummaryQuickFilter(name){
   // Toggle off when clicking the active one; otherwise switch to the new one.
   _dhwSummaryQuickFilter = (_dhwSummaryQuickFilter === name) ? null : name;
+  renderDoorHardwareModal();
+}
+// W6+++++++: column show/hide. Toggles one column key in the hidden set.
+// Hiding a column removes its header + every cell in that column from the
+// rendered table. Sums row, Grand total, Project Totals box, AND the
+// underlying data are unaffected (display-only lens).
+function _dhwToggleSummaryHiddenCol(colKey){
+  if(_dhwSummaryHiddenCols[colKey]) delete _dhwSummaryHiddenCols[colKey];
+  else _dhwSummaryHiddenCols[colKey] = true;
+  renderDoorHardwareModal();
+}
+// W6+++++++: toggle the tools popover open/closed.
+function _dhwToggleSummaryTools(){
+  _dhwSummaryToolsOpen = !_dhwSummaryToolsOpen;
+  renderDoorHardwareModal();
+}
+// W6+++++++: clear ALL summary view lenses at once — per-column filters,
+// quick filter, hidden rows, hidden columns. Sort and the filter-UI-open
+// state are intentionally NOT reset (they aren't "filters"). Popover
+// stays open so the user can keep adjusting.
+function _dhwClearSummaryAll(){
+  _dhwSummaryFilters    = {};
+  _dhwSummaryQuickFilter = null;
+  _dhwSummaryHidden     = {};
+  _dhwSummaryHiddenCols = {};
   renderDoorHardwareModal();
 }
 
@@ -4472,6 +4523,11 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   var cols = combined
     ? colsAll.filter(function(c){ return c.key !== 'extSell' && c.key !== 'labour'; })
     : colsAll;
+  // W6+++++++: column show/hide is a session-only viewing lens. Apply it
+  // here to derive visibleCols. cols (the mode-appropriate set) is still
+  // used for the popover's column-toggle list so the user sees and can
+  // restore any column they hid earlier this session.
+  var visibleCols = cols.filter(function(c){ return !_dhwSummaryHiddenCols[c.key]; });
 
   var resolved = resolveAward(takeoff, quotes, award);
   var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
@@ -4587,34 +4643,88 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     }
   }
 
-  // Toolbar: Filter toggle + quick filters + (Clear filters when active) +
-  // optional "Showing N of M lines" caption.
+  // W6+++++++: lens state for the toolbar caption + Clear all button.
   var activeFilterCount = filterKeys.filter(function(k){ return !!_dhwSummaryFilters[k]; }).length;
-  var hiddenCount = Object.keys(_dhwSummaryHidden).length;
-  var lensActive  = activeFilterCount > 0 || hiddenCount > 0 || _dhwSummaryQuickFilter != null;
-  var clearBtn = (activeFilterCount > 0 || _dhwSummaryQuickFilter)
-    ? '<button onclick="_dhwClearSummaryFilters()" title="Clear all column filters and the quick filter">Clear filters</button>'
+  var hiddenCount       = Object.keys(_dhwSummaryHidden).length;
+  var hiddenColsCount   = cols.filter(function(c){ return !!_dhwSummaryHiddenCols[c.key]; }).length;
+
+  // W6+++++++: tools popover lives in the toolbar — column show/hide
+  // checkboxes + row filter toggle + quick filters + Clear all. Single
+  // home for every view tool. Toolbar itself is just the Columns button
+  // and the lens-active caption.
+  var colsIconSvg = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="3" y="4" width="18" height="16" rx="1"/>' +
+    '<line x1="9" y1="4" x2="9" y2="20"/>' +
+    '<line x1="15" y1="4" x2="15" y2="20"/>' +
+  '</svg>';
+  var toolsBtn = '<button class="dhw-tools-btn' + (_dhwSummaryToolsOpen ? ' active' : '') + '"' +
+    ' onclick="_dhwToggleSummaryTools()"' +
+    ' title="Show / hide columns, filter rows, isolate flagged or gap lines, clear all view lenses">' +
+    colsIconSvg + 'Columns</button>';
+  var popover = '';
+  if(_dhwSummaryToolsOpen){
+    // Show toggles only for cols that exist in the current mode (combined
+    // mode drops extSell + labour — they fold into Total — so we drop
+    // their checkboxes too to avoid offering hides on absent columns).
+    var colChecks = cols.map(function(c){
+      var checked = !_dhwSummaryHiddenCols[c.key];
+      return '<label class="dhw-col-toggle">' +
+        '<input type="checkbox" ' + (checked ? 'checked' : '') +
+        ' onchange="_dhwToggleSummaryHiddenCol(\'' + c.key + '\')"> ' + _dhwEsc(c.label) +
+      '</label>';
+    }).join('');
+    popover = '<div class="dhw-tools-popover">' +
+      '<div class="dhw-popover-section">' +
+        '<div class="dhw-popover-hdr">Columns</div>' +
+        colChecks +
+      '</div>' +
+      '<div class="dhw-popover-section">' +
+        '<div class="dhw-popover-hdr">Rows</div>' +
+        '<div class="dhw-popover-actions">' +
+          '<button class="' + (_dhwSummaryFilterUiOpen ? 'active' : '') + '"' +
+            ' onclick="_dhwToggleSummaryFilterUi()"' +
+            ' title="Show or hide the per-column filter inputs in the table header">Filter rows</button>' +
+          '<button class="' + (_dhwSummaryQuickFilter === 'flagged' ? 'active' : '') + '"' +
+            ' onclick="_dhwSetSummaryQuickFilter(\'flagged\')"' +
+            ' title="Isolate rows whose supplier had a TOTAL math error">Show only flagged</button>' +
+          '<button class="' + (_dhwSummaryQuickFilter === 'gaps' ? 'active' : '') + '"' +
+            ' onclick="_dhwSetSummaryQuickFilter(\'gaps\')"' +
+            ' title="Isolate rows no supplier priced">Show only gaps</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dhw-popover-section">' +
+        '<div class="dhw-popover-actions">' +
+          '<button class="dhw-popover-clear" onclick="_dhwClearSummaryAll()"' +
+            ' title="Reset every view lens — restore all columns, clear filters, unhide rows">Clear all</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // Caption: surfaces what's lensed when something is active. Row-side
+  // and column-side counts joined into one sentence.
+  var captionParts = [];
+  if(visibleRows.length !== rowData.length){
+    captionParts.push('Showing ' + visibleRows.length + ' of ' + rowData.length + ' lines');
+  }
+  if(hiddenColsCount > 0){
+    captionParts.push(hiddenColsCount + ' column' + (hiddenColsCount === 1 ? '' : 's') + ' hidden');
+  }
+  var captionHtml = (captionParts.length > 0)
+    ? '<span class="dhw-toolbar-caption">' + captionParts.join(', ') + ' &mdash; viewing lens; totals reflect all data.</span>'
     : '';
+
   var toolbar =
     '<div class="dhw-summary-toolbar">' +
-      '<button class="' + (_dhwSummaryFilterUiOpen ? 'active' : '') + '"' +
-        ' onclick="_dhwToggleSummaryFilterUi()"' +
-        ' title="Show or hide the per-column filter inputs">Filter rows</button>' +
-      '<button class="' + (_dhwSummaryQuickFilter === 'flagged' ? 'active' : '') + '"' +
-        ' onclick="_dhwSetSummaryQuickFilter(\'flagged\')"' +
-        ' title="Isolate rows whose supplier had a TOTAL math error">Show only flagged</button>' +
-      '<button class="' + (_dhwSummaryQuickFilter === 'gaps' ? 'active' : '') + '"' +
-        ' onclick="_dhwSetSummaryQuickFilter(\'gaps\')"' +
-        ' title="Isolate rows no supplier priced">Show only gaps</button>' +
-      clearBtn +
+      toolsBtn +
       '<div class="dhw-toolbar-spacer"></div>' +
-      (lensActive
-        ? '<span class="dhw-toolbar-caption">Showing ' + visibleRows.length + ' of ' + rowData.length + ' lines &mdash; filter/hide is a viewing lens; totals reflect all lines.</span>'
-        : '') +
+      captionHtml +
+      popover +
     '</div>';
 
-  // Header row — clickable sort, indicator arrows.
-  var headerCells = cols.map(function(c){
+  // Header row — clickable sort + indicator. Iterates visibleCols so
+  // hidden cols disappear entirely.
+  var headerCells = visibleCols.map(function(c){
     var cls = (c.align === 'right' ? 'dhw-num ' : '') + 'dhw-sortable';
     var mark = '';
     if(_dhwSummarySort.column === c.key && _dhwSummarySort.dir){
@@ -4625,10 +4735,12 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   var hideHeader = '<th class="dhw-hide-col"></th>';
   var header = '<tr>' + hideHeader + headerCells + '</tr>';
 
-  // Optional filter input row (toggleable).
+  // Optional filter input row (toggleable). One filter input per VISIBLE
+  // column. Hidden-column filters persist in state but the input is
+  // unreachable until the column is re-shown.
   var filterRow = '';
   if(_dhwSummaryFilterUiOpen){
-    var filterCells = cols.map(function(c){
+    var filterCells = visibleCols.map(function(c){
       var cur = _dhwSummaryFilters[c.key] || '';
       return '<th><input class="dhw-filter-input" type="text" placeholder="Filter…"' +
         ' value="' + _dhwEsc(cur) + '"' +
@@ -4637,7 +4749,9 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     filterRow = '<tr class="dhw-filter-row"><th class="dhw-hide-col"></th>' + filterCells + '</tr>';
   }
 
-  // Body rows (visibleRows).
+  // Body rows. Per-key cell HTML built up-front so visibleCols.map can
+  // pluck only the cells the user has not hidden. New columns added in
+  // the future just need a new entry in this dict.
   var trs = visibleRows.map(function(row){
     var t = row.r.takeoffLine || {};
     var flagMark = row.flagged
@@ -4655,48 +4769,66 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     var hoursCell  = (row.installHrs == null) ? '<span class="dhw-gap">&mdash;</span>' : (row.installHrs + ' hr');
     var labourCell = (row.labour     == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.labour);
     var totalCell  = (row.total      == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.total);
+    var cellByKey = {
+      qty:         '<td class="dhw-num">' + gapMark + _dhwEsc(row.qty) + '</td>',
+      sku:         '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>',
+      description: '<td>' + _dhwEsc(t.description || '') + '</td>',
+      finish:      '<td>' + _dhwEsc(t.finish || '') + '</td>',
+      supplier:    '<td>' + supplierLabel + '</td>',
+      unitCost:    '<td class="dhw-num">' + unitCostCell + '</td>',
+      markup:      '<td class="dhw-num">' + markupCell + '</td>',
+      unitSell:    '<td class="dhw-num">' + unitSellCell + '</td>',
+      extSell:     '<td class="dhw-num">' + extSellCell + '</td>',
+      installHrs:  '<td class="dhw-num">' + hoursCell + '</td>',
+      labour:      '<td class="dhw-num">' + labourCell + '</td>',
+      total:       '<td class="dhw-num">' + totalCell + '</td>'
+    };
+    var dataCells = visibleCols.map(function(c){ return cellByKey[c.key] || ''; }).join('');
     var hideBtn = '<button class="dhw-hide-btn" onclick="_dhwToggleSummaryHidden(' + _dhwAttrJs(row.matchKey) + ')" title="Hide this row from the view">&times;</button>';
     var rowCls = !row.priced ? ' class="dhw-row-flagged"' : '';
-    var tailCells = combined
-      ? '<td class="dhw-num">' + hoursCell + '</td>' +
-        '<td class="dhw-num">' + totalCell + '</td>'
-      : '<td class="dhw-num">' + extSellCell + '</td>' +
-        '<td class="dhw-num">' + hoursCell  + '</td>' +
-        '<td class="dhw-num">' + labourCell + '</td>' +
-        '<td class="dhw-num">' + totalCell  + '</td>';
     return '<tr' + rowCls + '>' +
       '<td class="dhw-hide-col">' + hideBtn + '</td>' +
-      '<td class="dhw-num">' + gapMark + _dhwEsc(row.qty) + '</td>' +
-      '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
-      '<td>' + _dhwEsc(t.description || '') + '</td>' +
-      '<td>' + _dhwEsc(t.finish || '') + '</td>' +
-      '<td>' + supplierLabel + '</td>' +
-      '<td class="dhw-num">' + unitCostCell + '</td>' +
-      '<td class="dhw-num">' + markupCell + '</td>' +
-      '<td class="dhw-num">' + unitSellCell + '</td>' +
-      tailCells +
+      dataCells +
     '</tr>';
   }).join('');
 
-  // Sums + Grand rows. Colspan accounts for the new Hide column. Sums label
-  // spans Hide + 8 leading data cells = 9. Trailing sum cells: 4 in separate
-  // mode (extSell, hours, labour, total), 2 in combined mode (hours, total).
-  var sumsRowSeparate = '<tr>' +
-    '<td colspan="9" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(equipmentSell) + '</td>' +
-    '<td class="dhw-num" style="padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalLabour) + '</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalCombined) + '</td>' +
-  '</tr>';
-  var sumsRowCombined = '<tr>' +
-    '<td colspan="9" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>' +
-    '<td class="dhw-num" style="padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalCombined) + '</td>' +
-  '</tr>';
-  var sumsRow = combined ? sumsRowCombined : sumsRowSeparate;
-  // Grand row spans all but the final cell. Total DOM cols = Hide + data.
-  // Separate: 1 + 12 = 13 → label colspan 12. Combined: 1 + 10 = 11 → 10.
-  var grandColspan = combined ? 10 : 12;
+  // Sums row. Walks visibleCols left-to-right; cells before the first
+  // column-with-a-sum collapse into a single right-aligned "Sums:" label
+  // (colspan = Hide + leading cols). After that point, each visible col
+  // emits its own cell — either a sum value or blank.
+  var SUM_KEYS = { extSell:true, installHrs:true, labour:true, total:true };
+  var sumValueFor = {
+    extSell:    { html: _dhwFmtMoney(equipmentSell), bold:true  },
+    installHrs: { html: totalHrs.toFixed(2) + ' hr', bold:false },
+    labour:     { html: _dhwFmtMoney(totalLabour),   bold:true  },
+    total:      { html: _dhwFmtMoney(totalCombined), bold:true  }
+  };
+  var firstSumIdx = -1;
+  for(var sci = 0; sci < visibleCols.length; sci++){
+    if(SUM_KEYS[visibleCols[sci].key]){ firstSumIdx = sci; break; }
+  }
+  var sumRowCells;
+  if(firstSumIdx === -1){
+    sumRowCells = '<td colspan="' + (1 + visibleCols.length) + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>';
+  } else {
+    sumRowCells = '<td colspan="' + (1 + firstSumIdx) + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>';
+    for(var sj = firstSumIdx; sj < visibleCols.length; sj++){
+      var sc = visibleCols[sj];
+      var sv = sumValueFor[sc.key];
+      var fw = (sv && sv.bold) ? 'font-weight:700;' : '';
+      var html = sv ? sv.html : '';
+      sumRowCells += '<td class="dhw-num" style="' + fw + ' padding-top:12px; border-top:1.5px solid var(--border);">' + html + '</td>';
+    }
+  }
+  var sumsRow = '<tr>' + sumRowCells + '</tr>';
+
+  // Grand total row. Label spans every cell except the last visible one;
+  // the grand total value lands in the rightmost cell. When 0 data cols
+  // are visible (user hid everything), label spans just the Hide col and
+  // a value cell follows — Project Totals box remains the canonical
+  // home for the headline number.
+  var totalCellsCount = 1 + visibleCols.length;
+  var grandColspan    = Math.max(1, totalCellsCount - 1);
   var grandRow = '<tr>' +
     '<td colspan="' + grandColspan + '" style="text-align:right; font-weight:800; padding-top:6px;">Grand total (hardware + labour):</td>' +
     '<td class="dhw-num" style="font-weight:800; font-size:13px; color:var(--primary); padding-top:6px;">' + _dhwFmtMoney(grandTotal) + '</td>' +
