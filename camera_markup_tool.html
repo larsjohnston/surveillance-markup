@@ -553,9 +553,41 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-status-pill { font:700 10px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; border-radius:3px; }
 .dhw-status-pill.dhw-status-unawarded { color:#92400e; background:#fef3c7; border:1px solid #fcd34d; }
 .dhw-status-pill.dhw-status-awarded   { color:#065f46; background:#d1fae5; border:1px solid #6ee7b7; }
-/* Polish: info icon (ⓘ) for collapsed explanatory text — hover/title tooltip. */
-.dhw-info { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; background:var(--surface-soft); border:1px solid var(--border); font:700 10px var(--font-ui); color:var(--text-muted); cursor:help; line-height:1; flex-shrink:0; }
+/* Polish + W6: info icon (ⓘ) for collapsed explanatory text. Native title
+   tooltips were unreliable (browser-dependent delay; brief reported them
+   not firing at all), so the visible tooltip is now driven by a CSS
+   pseudo-element on data-tooltip — fires immediately on hover, consistent
+   navy popover, max-width capped. aria-label preserves accessibility. */
+.dhw-info { position:relative; display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; background:var(--surface-soft); border:1px solid var(--border); font:700 10px var(--font-ui); color:var(--text-muted); cursor:help; line-height:1; flex-shrink:0; }
 .dhw-info:hover { background:var(--primary-faint); color:var(--primary); border-color:var(--primary-soft); }
+.dhw-info[data-tooltip]:hover::after,
+.dhw-info[data-tooltip]:focus::after {
+  content: attr(data-tooltip);
+  position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+  background:#1f2937; color:#fff;
+  padding:8px 12px; border-radius:4px;
+  font:500 11px var(--font-ui); line-height:1.5; letter-spacing:normal; text-transform:none;
+  white-space:normal; width:max-content; max-width:320px; text-align:left;
+  z-index:100; pointer-events:none;
+  box-shadow:0 4px 12px rgba(0,0,0,.15);
+}
+/* W6 item 9: tinted section bands across all wizard steps. Each .dhw-section
+   inside .dhw-step-content renders as a light surface card on the white
+   modal background, so the user reads each section as a distinct block. The
+   M3-polish pass added stronger separators (2px border-top + bold section
+   headers) but no tinted backgrounds; this rule supplies the bands. The
+   first-child override from W1 (which neutralized the M3-polish separator
+   on the leading section of each step) is replaced here with a full-card
+   border + uniform tint, so first / non-first sections look identical. */
+.dhw-step-content .dhw-section {
+  background:var(--surface-soft);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:14px 18px;
+  margin-top:16px;
+}
+.dhw-step-content .dhw-section:first-child { margin-top:0; padding-top:14px; border-top:1px solid var(--border); }
+.dhw-step-content .dhw-section-hdr { padding-top:0; margin-top:0; }
 .dhw-summary-line { font:500 12px var(--font-ui); color:var(--text); margin:0 0 4px; line-height:1.5; }
 .dhw-summary-line .lbl { font:600 10px var(--font-ui); color:var(--text-muted); letter-spacing:.04em; text-transform:uppercase; margin-right:8px; display:inline-block; min-width:80px; }
 .dhw-empty { padding:18px; background:var(--surface-soft); border:1px dashed var(--border); border-radius:6px; font:500 12px var(--font-ui); color:var(--text-muted); text-align:center; line-height:1.5; }
@@ -2893,14 +2925,13 @@ function dhwEmptyState(){
       // backfills when the field is missing entirely.
       defaultMarkupPct: 50,
       lineMarkupOverrides: {},
+      // W6: includeLabour repurposed — was "include labour in grand total",
+      // now "combine hardware + labour into one Summary column". Grand
+      // total ALWAYS includes labour regardless of this flag. Default
+      // false = separate columns (Ext sell + Labour + Total visible).
       includeLabour: false,
       hourlyRate: 0,
-      lineInstallHours: {},
-      // W4: how labour is shown on the customer-facing proposal — either
-      // "separate" lines under the hardware section, or "combined" into
-      // the hardware sell prices. INERT in this milestone; the M4 proposal
-      // Hardware Schedule renderer will consume this. Default 'separate'.
-      labourDisplay: 'separate'
+      lineInstallHours: {}
     },
     doorScheduleRef: null
   };
@@ -2929,15 +2960,23 @@ function dhwNormalizeState(obj){
   }
   if(obj.hardwarePricing && typeof obj.hardwarePricing === 'object'){
     var p = obj.hardwarePricing;
-    empty.hardwarePricing.defaultMarkupPct    = (typeof p.defaultMarkupPct    === 'number') ? p.defaultMarkupPct    : 0;
+    // W6 bug fix: the empty-state default for defaultMarkupPct was bumped
+    // to 50 in M3-polish, but this normalizer's fallback was left at 0.
+    // The normalizer runs on EVERY project load (including new projects
+    // via applyProjectState), so the empty-state 50 was being overwritten
+    // by the 0 fallback whenever the saved hardwarePricing object existed
+    // without the defaultMarkupPct field. Root cause: missed fallback
+    // update in M3-polish. Existing saves with an explicit number (incl.
+    // 0) keep their saved value because of the typeof === 'number' check.
+    empty.hardwarePricing.defaultMarkupPct    = (typeof p.defaultMarkupPct    === 'number') ? p.defaultMarkupPct    : 50;
     empty.hardwarePricing.lineMarkupOverrides = (p.lineMarkupOverrides && typeof p.lineMarkupOverrides === 'object') ? p.lineMarkupOverrides : {};
     empty.hardwarePricing.includeLabour       = !!p.includeLabour;
     empty.hardwarePricing.hourlyRate          = (typeof p.hourlyRate === 'number') ? p.hourlyRate : 0;
     empty.hardwarePricing.lineInstallHours    = (p.lineInstallHours && typeof p.lineInstallHours === 'object') ? p.lineInstallHours : {};
-    // W4: additive backfill. Older saves predate labourDisplay → default
-    // to 'separate' (also the empty-state default). Only the two known
-    // string values are accepted; anything else snaps back to 'separate'.
-    empty.hardwarePricing.labourDisplay       = (p.labourDisplay === 'combined') ? 'combined' : 'separate';
+    // W6: labourDisplay field removed. The W4-era separate/combined radios
+    // are gone; the (repurposed) includeLabour toggle is now the single
+    // source of truth for separate-vs-combined Summary columns. Any
+    // legacy labourDisplay value in older saves is silently dropped here.
   }
   empty.doorScheduleRef = obj.doorScheduleRef || null;
   return empty;
@@ -4156,75 +4195,57 @@ function _dhwRenderStep4Labour(takeoff, quotes){
   '</div>';
 }
 
-// W4: setter for the customer-display toggle. Accepts only the two known
-// values; anything else falls back to 'separate' (the safe default).
-// INERT in M3.5 — no UI consumer yet — but markDirty fires so the choice
-// survives autosave and load.
-function _dhwSetLabourDisplay(value){
-  var v = (value === 'combined') ? 'combined' : 'separate';
-  doorHardware.hardwarePricing.labourDisplay = v;
-  markDirty();
-  renderDoorHardwareModal();
-}
+// W4 setter _dhwSetLabourDisplay removed in W6. The (repurposed)
+// includeLabour toggle is now the single source of truth for the
+// separate-vs-combined Summary column structure.
 
 // Step 5 — Summary (W5 will build the real page). Placeholder for W1.
-// Step 5 — Summary (W5). Internal full-detail per-awarded-line table:
-// Qty · SKU · Description · Finish · Supplier · Unit cost · Markup% · Unit sell ·
-// Ext sell · Install hrs · Labour. All read-only — edits happen on the
-// upstream steps (markup on step 2, hours on step 4).
+// Step 5 — Summary (W5 + W6 redesign). Internal read-only review of the
+// whole quote, full per-line detail + footer sums + grand total + a count
+// of any unpriced gaps.
 //
-// Top controls (moved here from Step 4 in the W5 fold-in):
-//   • Include-labour toggle — drives whether the grand total = equipment +
-//     labour OR equipment only. Label on the grand-total row reflects.
-//   • Customer-display radios (separate / combined) — persisted via
-//     _dhwSetLabourDisplay; INERT this milestone, feeds M4 proposal render.
+// includeLabour is REPURPOSED in W6: it no longer controls whether labour
+// enters the grand total — labour ALWAYS enters the grand total. Instead it
+// controls Summary COLUMN STRUCTURE:
+//   • OFF (separate): Ext sell · Labour · Total as three distinct columns
+//     (Total = Ext sell + Line labour).
+//   • ON  (combined): hardware and labour fold into a single Total column;
+//     Ext sell and Labour columns disappear. Same numbers, merged display.
 //
-// Totals: equipment sell subtotal, labour total (always shown so the user
-// sees the labour magnitude even when excluded), grand total (label reflects
-// the include-labour toggle). All numbers come from M1 engine functions;
-// the render layer only sums per-line totals for the on-screen breakdown.
+// The includeLabour toggle lives at the BOTTOM of the step, near the
+// totals it affects (moved from the top in W6 item 8).
 //
-// Gaps shown as "not priced" (never $0.00); flagged-supplier-TOTAL markers
-// preserved. Per the brief's flagged-not-zeroed rule.
+// W4-era customer-display radios + labourDisplay field removed entirely —
+// includeLabour is the single source of truth for separate-vs-combined.
+//
+// All math via M1 engine (resolveAward, dhwUnitSell, dhwLabourTotal).
+// Gaps shown as "not priced" (never $0.00); flagged-supplier markers
+// preserved. Grand total ALWAYS = Σ Ext sell + Σ Line labour.
 function _dhwRenderStep5Summary(takeoff, quotes){
   var award = doorHardware.hardwareAward;
   var pricing = doorHardware.hardwarePricing;
-  var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 0;
+  var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 50;
   var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
-  var includeLabour = !!pricing.includeLabour;
-  var labourDisplay = (pricing.labourDisplay === 'combined') ? 'combined' : 'separate';
+  var combined      = !!pricing.includeLabour;  // W6 repurpose: includeLabour now = "combine columns"
   var overrides     = pricing.lineMarkupOverrides || {};
   var hoursMap      = pricing.lineInstallHours    || {};
 
-  // Top controls (relocated from Step 4): include-labour + display radios.
-  var includeRow =
-    '<div class="dhw-control-row">' +
-      '<label><input type="checkbox" ' + (includeLabour ? 'checked' : '') +
-        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Include install labour in totals</b></label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">When off, the grand total below excludes labour.</span>' +
+  // Bottom toggle (rendered LATER in the return value, but defined here
+  // so the empty-state branch can also include it). New label per W6:
+  // "Combine hardware + labour into one column" — semantics flipped from
+  // the prior "include labour in totals".
+  var combineRow =
+    '<div class="dhw-control-row" style="margin-top:14px;">' +
+      '<label><input type="checkbox" ' + (combined ? 'checked' : '') +
+        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Combine hardware + labour into one column</b></label>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Merges Ext sell + Labour into a single Total column. Grand total below is unchanged either way (always hardware + labour).</span>' +
     '</div>';
-  var displayRow =
-    '<div class="dhw-control-row">' +
-      '<label><b>On the customer proposal, show hardware and labour:</b></label>' +
-      '<label style="margin-left:6px;">' +
-        '<input type="radio" name="dhw-labour-display" value="separate"' +
-          (labourDisplay === 'separate' ? ' checked' : '') +
-          ' onchange="_dhwSetLabourDisplay(\'separate\')"> Separate' +
-      '</label>' +
-      '<label>' +
-        '<input type="radio" name="dhw-labour-display" value="combined"' +
-          (labourDisplay === 'combined' ? ' checked' : '') +
-          ' onchange="_dhwSetLabourDisplay(\'combined\')"> Combined' +
-      '</label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Controls how labour appears on the customer proposal (consumed by a later release).</span>' +
-    '</div>';
-  var controls = includeRow + displayRow;
 
   if(!award || !award.basis){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
-      controls +
-      '<div class="dhw-empty" style="margin-top:12px;">Award a basis on the Comparison step to see the full summary.</div>' +
+      '<div class="dhw-empty">Award a basis on the Comparison step to see the full summary.</div>' +
+      combineRow +
     '</div>';
   }
 
@@ -4232,6 +4253,9 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
   var equipmentSell = 0;
   var totalHrs = 0;
+  var totalLabour = 0;
+  var totalCombined = 0;
+  var unpricedCount = 0;
   var trs = resolved.map(function(r){
     var t = r.takeoffLine || {};
     var key = r.matchKey;
@@ -4248,6 +4272,16 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     var hours = hasHoursOverride ? hoursVal : 0;
     totalHrs += hours;
     var lineLabour = hours * hourlyRate;
+    if(hasHoursOverride) totalLabour += lineLabour;
+    // Per-line Total = Ext sell + Line labour. Gaps stay null so the cell
+    // shows the same "—" as Ext sell rather than synthesizing a value
+    // out of nothing.
+    var lineTotal = null;
+    if(extSell != null || hasHoursOverride){
+      lineTotal = (extSell != null ? extSell : 0) + (hasHoursOverride ? lineLabour : 0);
+      totalCombined += lineTotal;
+    }
+    if(!r.priced) unpricedCount++;
     var flagged = !!flaggedByKey[key];
     var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
     var flagMark = flagged
@@ -4268,6 +4302,16 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       (hasOverride ? ' <span class="dhw-best-supp" style="display:inline; font:500 9px var(--font-ui); color:var(--text-muted);">(override)</span>' : '');
     var hoursCell = hasHoursOverride ? (hoursVal + ' hr') : '<span class="dhw-gap">&mdash;</span>';
     var labourCell = hasHoursOverride ? _dhwFmtMoney(lineLabour) : '<span class="dhw-gap">&mdash;</span>';
+    var totalCell = (lineTotal == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(lineTotal);
+    // Column structure forks here. Separate (default): Ext sell · Install hrs · Labour · Total.
+    // Combined: Install hrs · Total only (Ext sell + Labour folded into Total).
+    var tailCells = combined
+      ? '<td class="dhw-num">' + hoursCell + '</td>' +
+        '<td class="dhw-num">' + totalCell + '</td>'
+      : '<td class="dhw-num">' + extSellCell + '</td>' +
+        '<td class="dhw-num">' + hoursCell  + '</td>' +
+        '<td class="dhw-num">' + labourCell + '</td>' +
+        '<td class="dhw-num">' + totalCell  + '</td>';
     return '<tr' + rowCls + '>' +
       '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
       '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
@@ -4277,32 +4321,47 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       '<td class="dhw-num">' + unitCostCell + '</td>' +
       '<td class="dhw-num">' + markupCell + '</td>' +
       '<td class="dhw-num">' + unitSellCell + '</td>' +
-      '<td class="dhw-num">' + extSellCell  + '</td>' +
-      '<td class="dhw-num">' + hoursCell + '</td>' +
-      '<td class="dhw-num">' + labourCell + '</td>' +
+      tailCells +
     '</tr>';
   }).join('');
 
-  var labourTotal = dhwLabourTotal(hoursMap, hourlyRate);
-  var grandTotal  = equipmentSell + (includeLabour ? labourTotal : 0);
-  var grandLabel  = includeLabour
-    ? 'Grand total (hardware + labour):'
-    : 'Grand total (hardware only):';
+  // Grand total: ALWAYS hardware + labour, regardless of column toggle.
+  var labourTotalEngine = dhwLabourTotal(hoursMap, hourlyRate);
+  var grandTotal = equipmentSell + labourTotalEngine;
 
-  // Subtotal rows. Equipment subtotal aligns under the Ext sell column;
-  // Labour subtotal aligns under the Labour column; Grand total spans the
-  // line columns and lands its value at the far right.
-  var equipRow = '<tr>' +
-    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Equipment sell subtotal:</td>' +
+  // Footer SUMS row: column totals under Ext sell / Labour / Total in
+  // separate mode; just Total in combined mode.
+  var sumsRowSeparate = '<tr>' +
+    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>' +
     '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(equipmentSell) + '</td>' +
     '<td class="dhw-num" style="padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(labourTotal) + '</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalLabour) + '</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalCombined) + '</td>' +
   '</tr>';
+  var sumsRowCombined = '<tr>' +
+    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>' +
+    '<td class="dhw-num" style="padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
+    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalCombined) + '</td>' +
+  '</tr>';
+  var sumsRow = combined ? sumsRowCombined : sumsRowSeparate;
+
+  // Grand total row. Always "hardware + labour" (no toggle-dependent
+  // label switching anymore). Spans all but the final cell so the value
+  // lands at the far right under either column structure.
+  var grandColspan = combined ? 9 : 11;
   var grandRow = '<tr>' +
-    '<td colspan="10" style="text-align:right; font-weight:800; padding-top:6px;">' + grandLabel + '</td>' +
+    '<td colspan="' + grandColspan + '" style="text-align:right; font-weight:800; padding-top:6px;">Grand total (hardware + labour):</td>' +
     '<td class="dhw-num" style="font-weight:800; font-size:13px; color:var(--primary); padding-top:6px;">' + _dhwFmtMoney(grandTotal) + '</td>' +
   '</tr>';
 
+  // Header — column structure forks here too.
+  var tailHeader = combined
+    ? '<th class="dhw-num">Install hrs</th>' +
+      '<th class="dhw-num">Total</th>'
+    : '<th class="dhw-num">Ext sell</th>' +
+      '<th class="dhw-num">Install hrs</th>' +
+      '<th class="dhw-num">Labour</th>' +
+      '<th class="dhw-num">Total</th>';
   var header = '<tr>' +
     '<th class="dhw-num">Qty</th>' +
     '<th>SKU</th>' +
@@ -4312,24 +4371,29 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     '<th class="dhw-num">Unit cost</th>' +
     '<th class="dhw-num">Markup %</th>' +
     '<th class="dhw-num">Unit sell</th>' +
-    '<th class="dhw-num">Ext sell</th>' +
-    '<th class="dhw-num">Install hrs</th>' +
-    '<th class="dhw-num">Labour</th>' +
+    tailHeader +
   '</tr>';
+
+  // W6 item 7: items-not-priced count line at the bottom. Just the count.
+  var unpricedLine = '<p style="margin:10px 0 0; font:600 11px var(--font-ui); color:' +
+    (unpricedCount > 0 ? '#b45309' : 'var(--text-muted)') + ';">' +
+    unpricedCount + ' item' + (unpricedCount === 1 ? '' : 's') + ' not priced' +
+  '</p>';
 
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
-    controls +
-    '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
+    '<div style="overflow-x:auto; max-width:100%;">' +
       '<table class="dhw-table">' +
         '<thead>' + header + '</thead>' +
-        '<tbody>' + trs + equipRow + grandRow + '</tbody>' +
+        '<tbody>' + trs + sumsRow + grandRow + '</tbody>' +
       '</table>' +
     '</div>' +
+    unpricedLine +
     '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
       'Internal review. The customer proposal will show sell prices only — never cost, markup, or supplier names. ' +
       'Edits to markup live on the Hardware step; edits to install hours live on the Labour step.' +
     '</p>' +
+    combineRow +
   '</div>';
 }
 
@@ -4425,23 +4489,24 @@ function _dhwRenderQuoteList(quotes){
         'Use <b>File &rarr; Import Hardware Quote (CSV)</b> to add one.</div>' +
       '</div>';
   }
-  // Polish item 4: the "N flagged" cell carries a tooltip explaining what
-  // flagged means. Uses the native title attribute (same convention used
-  // throughout the tool) — no click-to-annotate / note-taking UI here;
-  // that's a deferred feature requiring design.
-  var flagTooltip = 'Flagged lines are rows where the supplier\'s TOTAL column ' +
-                    'disagreed with qty × unit cost beyond a rounding tolerance — ' +
-                    'the tool recomputed the correct extended cost.';
+  // Polish item 4 / W6: humanized flag-explanation tooltip on quote rows.
+  // M3-polish used the native title attribute which (per the W6 brief)
+  // wasn't reliably firing — switched to data-tooltip with a CSS pseudo-
+  // element popover (see .dhw-info[data-tooltip]:hover::after) that shows
+  // immediately on hover with consistent styling. The aria-label preserves
+  // accessibility for screen readers.
+  var flagTooltip = 'These lines had a total on the supplier’s sheet that didn’t match quantity × unit price. ' +
+                    'We caught the error and used the correct amount.';
   var rows = quotes.map(function(q, idx){
     var lines = q.lines || [];
     var priced = lines.filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
     var flagged = lines.filter(function(l){ return l.flagged; }).length;
     var importedAt = q.importedAt ? new Date(q.importedAt).toLocaleString() : '';
     var flaggedCell = flagged > 0
-      ? '<span class="dhw-warn" title="' + _dhwEsc(flagTooltip) + '">' + flagged + ' flagged</span> ' +
-        '<span class="dhw-info" title="' + _dhwEsc(flagTooltip) + '">i</span>'
-      : '<span title="' + _dhwEsc(flagTooltip) + '">0 flagged</span> ' +
-        '<span class="dhw-info" title="' + _dhwEsc(flagTooltip) + '">i</span>';
+      ? '<span class="dhw-warn">' + flagged + ' flagged</span> ' +
+        '<span class="dhw-info" data-tooltip="' + _dhwEsc(flagTooltip) + '" aria-label="' + _dhwEsc(flagTooltip) + '">i</span>'
+      : '<span>0 flagged</span> ' +
+        '<span class="dhw-info" data-tooltip="' + _dhwEsc(flagTooltip) + '" aria-label="' + _dhwEsc(flagTooltip) + '">i</span>';
     // Polish item 3: render the source CSV filename on the supplier row.
     // Old saved quotes (pre-M3-polish) lack sourceFileName — render a
     // neutral "—" so the column doesn't look broken.
@@ -4513,15 +4578,14 @@ function _dhwRenderComparison(takeoff, quotes){
   var statusPill = hasAward
     ? '<span class="dhw-status-pill dhw-status-awarded">Awarded</span>'
     : '<span class="dhw-status-pill dhw-status-unawarded">Unawarded</span>';
-  // Polish item 7: the comparison-explanation paragraph moves behind an ⓘ
-  // icon in the section header. Hover to read. Same pattern as item 11
-  // (AC Overlap) and item 4 (flagged-count tooltip).
-  var compareTooltip = 'Package cost is recomputed (Σ qty × unit cost). ' +
-                       'Supplier TOTAL columns are ignored. ' +
-                       'Coverage shows how many takeoff lines each supplier priced; ' +
-                       'gaps stay visible rather than zeroed. ' +
-                       'Flagged lines are rows whose supplier TOTAL disagreed with ' +
-                       'qty × unit cost beyond a rounding tolerance.';
+  // Polish item 7 / W6 item 11: humanized comparison-explanation tooltip.
+  // CSS-driven popover via data-tooltip attribute (see the styling below
+  // on .dhw-info[data-tooltip]:hover::after) — same approach as the FLAGS
+  // and AC-overlap tooltips. aria-label mirrors for accessibility.
+  var compareTooltip = 'We recalculate each supplier’s cost ourselves — quantity × unit price — ' +
+                       'rather than trusting the totals on their quote, which are often off. ' +
+                       'Coverage shows how many lines they actually priced. ' +
+                       'Flagged lines are where their total didn’t match the math; we use the corrected figure.';
   var summary = _dhwRenderAwardSummary(takeoff, quotes);
   var tabs =
     '<div class="dhw-tabs">' +
@@ -4536,7 +4600,7 @@ function _dhwRenderComparison(takeoff, quotes){
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr">' +
       '<span class="dhw-section-hdr-title">Comparison &amp; Award ' +
-        '<span class="dhw-info" title="' + _dhwEsc(compareTooltip) + '">i</span>' +
+        '<span class="dhw-info" data-tooltip="' + _dhwEsc(compareTooltip) + '" aria-label="' + _dhwEsc(compareTooltip) + '">i</span>' +
       '</span>' +
       statusPill +
     '</div>' +
@@ -4642,9 +4706,8 @@ function _dhwRenderCompareBySupplier(takeoff, quotes){
     '<td style="text-align:center; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
       _dhwFmtMoney(bestPriceTotal) +
     '</td>' +
-    '<td colspan="3" style="padding-top:12px; border-top:1.5px solid var(--border); font:500 10px var(--font-ui); color:var(--text-muted);">' +
-      'Cheapest valid unit cost per line, summed across all priced lines. See View 2 to award.' +
-    '</td>' +
+    // W6 item 1: caption removed.
+    '<td colspan="3" style="padding-top:12px; border-top:1.5px solid var(--border);"></td>' +
   '</tr>';
   return '<table class="dhw-table">' +
     '<thead><tr>' +
@@ -4761,10 +4824,12 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
   var awardBtn = isActiveBestLine
     ? '<button class="dhw-btn-small" disabled style="opacity:0.7; cursor:default;">Awarded</button>'
     : '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardBestLine()">Award best line</button>';
+  // W6 item 10: humanized gap warning.
   var unpricedNote = (unpricedCount > 0)
     ? '<p style="margin:0 0 10px;" class="dhw-warn">&#9888; ' +
-      unpricedCount + ' line' + (unpricedCount === 1 ? '' : 's') + ' priced by no supplier &mdash; ' +
-      'awarding best-line will leave these as gaps (not zeroed).</p>'
+      unpricedCount + ' line' + (unpricedCount === 1 ? '' : 's') +
+      ' weren’t priced by any supplier. Award best-line and they’ll stay open as gaps &mdash; ' +
+      'we won’t pretend they’re free.</p>'
     : '';
   return unpricedNote +
     '<div style="overflow-x:auto; max-width:100%;">' +
@@ -5114,18 +5179,17 @@ function _dhwRenderAcOverlap(takeoff){
       '<td><b>' + _dhwEsc(h.matchedToken || '') + '</b></td>' +
     '</tr>';
   }).join('');
-  // Polish item 11: collapse the advisory paragraph behind an ⓘ icon in the
-  // section header (same pattern as item 7). The flagged-overlap line list
-  // stays visible; the line-count moves into the header as a quick reference.
-  // DELIBERATELY no remove/exclude toggle — that's a deferred feature.
-  var advisoryTooltip = hits.length + ' line' + (hits.length === 1 ? '' : 's') +
-                        ' look like Access Control / Division-28 hardware and may also be ' +
-                        'quoted by your Access Control mode. Review to avoid double-counting. ' +
-                        'This is advisory only — no automatic deduplication or linking.';
+  // Polish item 11 / W6 item 11: humanized AC-overlap advisory tooltip,
+  // CSS-driven popover via data-tooltip (same approach as the FLAGS and
+  // Comparison tooltips). DELIBERATELY no remove/exclude toggle — deferred.
+  var advisoryTooltip = 'Some of these lines look like access-control hardware — electric strikes, ' +
+                        'power supplies, door contacts — that you might also be quoting in Access Control mode. ' +
+                        'Worth a look so you don’t bill for them twice. ' +
+                        'This is just a heads-up; nothing’s been changed or removed.';
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr">' +
       '<span class="dhw-section-hdr-title">Access-Control overlap (advisory) ' +
-        '<span class="dhw-info" title="' + _dhwEsc(advisoryTooltip) + '">i</span>' +
+        '<span class="dhw-info" data-tooltip="' + _dhwEsc(advisoryTooltip) + '" aria-label="' + _dhwEsc(advisoryTooltip) + '">i</span>' +
       '</span>' +
       '<span style="font:500 11px var(--font-ui); color:var(--text-muted); text-transform:none; letter-spacing:0;">' +
         hits.length + ' line' + (hits.length === 1 ? '' : 's') + ' flagged' +
