@@ -662,6 +662,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    cheapest). Gap cells don't get .dhw-pick-cell and stay non-interactive. */
 .dhw-pick-cell { cursor:pointer; transition:background .12s; }
 .dhw-pick-cell:hover:not(.dhw-best) { background:#f0fdf4; }
+/* W8b: non-cheapest flag at the top of the Best-by-Line view. Amber banner
+   matching the W7c zero-labour warning palette so the two warn-class
+   callouts read as the same severity language. Clickable (cursor + hover
+   tint) — W8c wires the notes list it opens; until then the onclick is
+   a stub. The muted "all at lowest" variant has no border or fill — it's
+   a quiet positive confirmation, not a callout. */
+.dhw-noncheapest-flag { margin:0 0 10px; padding:10px 14px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:5px; color:#92400e; font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; cursor:pointer; }
+.dhw-noncheapest-flag:hover { background:#fde68a; }
+.dhw-noncheapest-allgood { margin:0 0 10px; font:500 11px var(--font-ui); color:var(--text-muted); }
 .dhw-award-summary { padding:10px 12px; background:var(--primary-faint); border:1px solid var(--primary-soft); border-radius:5px; font:500 12px var(--font-ui); color:var(--text); line-height:1.5; }
 .dhw-award-summary.dhw-award-none { background:var(--surface-soft); border-color:var(--border); color:var(--text-muted); }
 .dhw-award-active { font-weight:700; color:var(--primary); }
@@ -5530,9 +5539,26 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
   // Continue (staging unchanged); the green tint key shifted from
   // "cheapest" to "selected" (defaults to cheapest via the implicit-
   // fallback path).
+  // W8b: accumulators populated in the lines.map loop below.
+  //   colSums[sIdx] — Σ qty × unitCost across all lines this supplier
+  //                   priced (the supplier's effective whole-package
+  //                   number; parallel to By Supplier's package cost).
+  //   nonCheapestCount / nonCheapestExtra — selections strictly above
+  //                   cheapest. Ties (selected supplier matches cheapest
+  //                   cost) and gap-overrides (selected didn't price the
+  //                   line) don't count — the extra-cost math only makes
+  //                   sense for priced selections strictly above the
+  //                   cheapest valid alternative.
+  var colSums = supplierNames.map(function(){ return 0; });
+  var nonCheapestCount = 0;
+  var nonCheapestExtra = 0;
   var unpricedCount = 0;
   var trs = lines.map(function(L){
     var t = L.takeoffLine || {};
+    // W8b: numeric qty for the sum/extra-cost math. Display in the cell
+    // still uses the existing t.qty preserve-as-string path so a missing
+    // qty renders empty rather than "0".
+    var qty = (typeof t.qty === 'number' && isFinite(t.qty)) ? t.qty : 0;
     var override = overrideMap[L.matchKey] || null;
     // The "current" chosen price/supplier for this row reflects the
     // override (if any), otherwise the auto-cheapest from compareBestLine.
@@ -5551,6 +5577,14 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       chosen = { unitCost: null, supplierName: null, priced: false };
     }
     if(!chosen.priced) unpricedCount++;
+    // W8b: count strictly-above-cheapest selections and the dollar delta.
+    // Skip gap-overrides (chosen.priced=false) — no priced unit cost to
+    // diff. Skip ties (chosen.unitCost === L.bestUnitCost) — same price,
+    // different supplier name shouldn't read as "not at lowest price".
+    if(chosen.priced && L.pricedByAnyone && chosen.unitCost > L.bestUnitCost){
+      nonCheapestCount++;
+      nonCheapestExtra += qty * (chosen.unitCost - L.bestUnitCost);
+    }
     // W8a: per-supplier cells, click-to-select.
     //   - Gap cells (no unit cost from this supplier) stay non-interactive.
     //   - Priced cells get .dhw-pick-cell (cursor + hover tint).
@@ -5569,6 +5603,9 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       if(!ps || ps.unitCost == null){
         return '<td class="dhw-num dhw-gap">&mdash;</td>';
       }
+      // W8b: accumulate this supplier's whole-package sum (only priced
+      // cells contribute; gaps short-circuit above).
+      colSums[sIdx] += qty * ps.unitCost;
       var isSelected = (ps.supplierName === selectedSupplier);
       var cls = 'dhw-num dhw-pick-cell' + (isSelected ? ' dhw-best' : '');
       var flag = ps.flagged ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>' : '';
@@ -5598,6 +5635,22 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       bestCell +
     '</tr>';
   }).join('');
+  // W8b: per-supplier column sums footer row. Sits above the blended
+  // best-line total so the table reads: rows → per-supplier whole-package
+  // sums → blended cheapest. Muted text + dashed top border keep this
+  // visually subordinate to the headline blended-total row below. A
+  // supplier who priced zero lines shows "—" rather than "$0.00".
+  var colSumsRow = '<tr>' +
+    '<td colspan="4" style="text-align:right; font-weight:700; padding-top:10px; border-top:1px dashed var(--border); color:var(--text-muted);">' +
+      '&Sigma; per supplier (priced lines only):' +
+    '</td>' +
+    colSums.map(function(s){
+      return '<td class="dhw-num" style="font-weight:700; padding-top:10px; border-top:1px dashed var(--border); color:var(--text-muted);">' +
+        (s > 0 ? _dhwFmtMoney(s) : '<span class="dhw-gap">&mdash;</span>') +
+      '</td>';
+    }).join('') +
+    '<td class="dhw-best-cell" style="padding-top:10px; border-top:1px dashed var(--border);"></td>' +
+  '</tr>';
   var totalSpan = 4 + supplierNames.length;
   var totalRow = '<tr>' +
     '<td colspan="' + totalSpan + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
@@ -5607,6 +5660,23 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       _dhwFmtMoney(cmp.bestLineTotal) +
     '</td>' +
   '</tr>';
+  // W8b: non-cheapest summary flag, rendered above the table next to
+  // the unpriced-lines note. Clickable target (cursor + stub onclick);
+  // W8c populates _dhwOpenNonCheapestNotes with the notes-list UI. If
+  // every priced selection is at the cheapest, show a muted "all at
+  // lowest" confirmation; if nothing is priced at all, render nothing.
+  var anyPricedSelections = (lines.length - unpricedCount) > 0;
+  var nonCheapestFlag = '';
+  if(nonCheapestCount > 0){
+    var nLabel = (nonCheapestCount === 1) ? '1 line' : (nonCheapestCount + ' lines');
+    nonCheapestFlag = '<div class="dhw-noncheapest-flag"' +
+      ' onclick="_dhwOpenNonCheapestNotes()"' +
+      ' title="Click to review the lines priced above cheapest and add notes (notes panel opens in W8c).">' +
+      '&#9888; ' + nLabel + ' not at lowest price &mdash; ' + _dhwFmtMoney(nonCheapestExtra) + ' above cheapest.' +
+    '</div>';
+  } else if(anyPricedSelections){
+    nonCheapestFlag = '<div class="dhw-noncheapest-allgood">All lines at lowest price.</div>';
+  }
   var isActiveBestLine = (award && award.basis === 'bestLine');
   var awardBtn = isActiveBestLine
     ? '<button class="dhw-btn-small" disabled style="opacity:0.7; cursor:default;">Awarded</button>'
@@ -5619,10 +5689,11 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       'we won’t pretend they’re free.</p>'
     : '';
   return unpricedNote +
+    nonCheapestFlag +
     '<div>' +
       '<table class="dhw-table">' +
         '<thead>' + hdr + '</thead>' +
-        '<tbody>' + trs + totalRow + '</tbody>' +
+        '<tbody>' + trs + colSumsRow + totalRow + '</tbody>' +
       '</table>' +
     '</div>' +
     '<div style="margin-top:12px; text-align:right;">' + awardBtn + '</div>';
@@ -5725,6 +5796,15 @@ function _dhwPickLineSupplier(matchKey, supplierName, bestSupplierName){
   } else {
     _dhwSetLineSupplier(matchKey, supplierName);
   }
+}
+
+// W8b: stub click handler for the non-cheapest flag in the Best-by-Line
+// view. The flag is wired now (cursor + onclick) so W8c only needs to
+// fill in the body — the notes-list UI that opens to let the user
+// annotate each non-cheapest selection. Inert in W8b per the brief.
+function _dhwOpenNonCheapestNotes(){
+  // W8c will replace this body with the notes list. Inert today —
+  // clicking the flag is harmless (the title tooltip says so).
 }
 
 // W7a: per-line Exclude — a display/filter layer on top of resolveAward.
