@@ -680,6 +680,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-toggle input:checked + .dhw-toggle-slider { background:var(--primary); }
 .dhw-toggle input:checked + .dhw-toggle-slider::before { transform:translateX(16px); }
 .dhw-toggle input:focus-visible + .dhw-toggle-slider { box-shadow:0 0 0 2px var(--primary-soft); }
+/* W7b: Supply-only notice panel — shown on Step 4 when supply-only is ON,
+   in place of the hourly rate input + labour table. Soft primary-blue tint
+   to read as a deliberate-state badge (not an error), with a left accent
+   bar so it scans as a banner rather than a paragraph. */
+.dhw-supply-notice { margin-top:12px; padding:14px 16px; background:var(--primary-faint); border:1px solid var(--primary-soft); border-left:4px solid var(--primary); border-radius:5px; color:var(--text); font:500 12px var(--font-ui); line-height:1.5; }
+.dhw-supply-notice b { color:var(--primary-dark); }
 .dhw-advisory { padding:12px 14px; background:#fffbeb; border:1px solid #fcd34d; border-radius:5px; font:500 11px var(--font-ui); color:#92400e; line-height:1.5; }
 .dhw-advisory b { color:#78350f; }
 /* W6+++++: Step 5 Summary table tools — toolbar, sortable headers,
@@ -3026,7 +3032,15 @@ function dhwEmptyState(){
       // false = separate columns (Ext sell + Labour + Total visible).
       includeLabour: false,
       hourlyRate: 0,
-      lineInstallHours: {}
+      lineInstallHours: {},
+      // W7b: supply-only mode. When true, the Step 4 labour UI (hourly rate
+      // input + per-line table) hides and labour is excluded from ALL totals
+      // (Step 5 grand total = hardware only; Project Totals' Labour line
+      // and Expected Project Hours hidden; margin math uses hardware only).
+      // Filter layer on top of dhwLabourTotal — the engine stays untouched.
+      // Per-line install hours stay in lineInstallHours so toggling supply-
+      // only OFF restores everything.
+      supplyOnly: false
     },
     doorScheduleRef: null
   };
@@ -3076,6 +3090,10 @@ function dhwNormalizeState(obj){
     empty.hardwarePricing.includeLabour       = !!p.includeLabour;
     empty.hardwarePricing.hourlyRate          = (typeof p.hourlyRate === 'number') ? p.hourlyRate : 0;
     empty.hardwarePricing.lineInstallHours    = (p.lineInstallHours && typeof p.lineInstallHours === 'object') ? p.lineInstallHours : {};
+    // W7b: additive backfill for supply-only mode. Missing → false, matching
+    // empty-state. Boolean coerce via !! so any truthy legacy value is
+    // captured but no other values are interpreted.
+    empty.hardwarePricing.supplyOnly          = !!p.supplyOnly;
     // W6: labourDisplay field removed. The W4-era separate/combined radios
     // are gone; the (repurposed) includeLabour toggle is now the single
     // source of truth for separate-vs-combined Summary columns. Any
@@ -4440,6 +4458,42 @@ function _dhwRenderStep4Labour(takeoff, quotes){
   var pricing = doorHardware.hardwarePricing;
   var hourlyRate = (typeof pricing.hourlyRate === 'number') ? pricing.hourlyRate : 0;
   var hoursMap   = pricing.lineInstallHours || {};
+  var supplyOnly = !!pricing.supplyOnly;
+
+  // W7b: supply-only toggle, always visible at the top of Step 4. Pill
+  // toggle (.dhw-toggle, introduced in W7a-fix). When ON, the rate input
+  // and the per-line labour table both hide; a "Supply Only" notice
+  // explains that labour is excluded from all totals. Mode is meaningful
+  // independent of award state, so the toggle renders whether or not a
+  // basis is set.
+  var supplyOnlyTitle = supplyOnly
+    ? 'Currently in Supply Only mode. Toggle off to enter install labour for the hardware lines.'
+    : 'Toggle on for supply-only jobs (integrator supplies hardware only; install labour is performed by others). Hides the hourly rate + per-line labour table and excludes labour from every total.';
+  var supplyOnlyControl =
+    '<div class="dhw-control-row">' +
+      '<label class="dhw-toggle" title="' + supplyOnlyTitle + '">' +
+        '<input type="checkbox" ' + (supplyOnly ? 'checked' : '') +
+          ' onchange="_dhwSetSupplyOnly(this.checked)">' +
+        '<span class="dhw-toggle-slider"></span>' +
+      '</label>' +
+      '<b>Supply only</b>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">For jobs where the integrator supplies hardware only &mdash; install labour is performed by others.</span>' +
+    '</div>';
+
+  // Supply-only ON: short-circuit. The labour notice stands in for both
+  // the rate input and the per-line table. Award state irrelevant here —
+  // labour is excluded regardless of whether a basis has been picked.
+  if(supplyOnly){
+    return '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
+      supplyOnlyControl +
+      '<div class="dhw-supply-notice">' +
+        '<b>Supply Only.</b> Install labour is excluded from all totals. ' +
+        'Grand Total = hardware only; the Project Totals box hides Labour and Expected Project Hours. ' +
+        'Per-line install hours stay saved &mdash; toggle off to restore.' +
+      '</div>' +
+    '</div>';
+  }
 
   // Top control: hourly rate only (other toggles moved to Step 5).
   var controls =
@@ -4455,6 +4509,7 @@ function _dhwRenderStep4Labour(takeoff, quotes){
   if(!award || !award.basis){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
+      supplyOnlyControl +
       controls +
       '<div class="dhw-empty" style="margin-top:12px;">Award a basis on the Comparison step to enter labour for the hardware lines.</div>' +
     '</div>';
@@ -4529,6 +4584,7 @@ function _dhwRenderStep4Labour(takeoff, quotes){
   '</tr>';
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
+    supplyOnlyControl +
     controls +
     '<div style="margin-top:12px;">' +
       '<table class="dhw-table">' +
@@ -4568,11 +4624,19 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   var pricing = doorHardware.hardwarePricing;
   var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 50;
   var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
-  var combined      = !!pricing.includeLabour;
+  var supplyOnly    = !!pricing.supplyOnly;
+  // W7b: supply-only forces separate-column logic internally — there's no
+  // labour to fold, so "combine" is meaningless. includeLabour's saved
+  // value is preserved (so toggling supply-only OFF restores the prior
+  // combine state); we just override the live `combined` flag here.
+  var combined      = !supplyOnly && !!pricing.includeLabour;
   var overrides     = pricing.lineMarkupOverrides || {};
   var hoursMap      = pricing.lineInstallHours    || {};
 
-  var combineRow =
+  // W7b: hide the Combine toggle entirely under supply-only. With no
+  // labour there is nothing to combine; showing the toggle would imply
+  // labour exists. Toggle reappears when supply-only is OFF.
+  var combineRow = supplyOnly ? '' :
     '<div class="dhw-control-row" style="margin-top:14px;">' +
       '<label><input type="checkbox" ' + (combined ? 'checked' : '') +
         ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Combine hardware + labour into one column</b></label>' +
@@ -4603,10 +4667,19 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     { key:'labour',      label:'Labour',      numeric:true,  align:'right' },
     { key:'total',       label:'Total',       numeric:true,  align:'right' }
   ];
-  // In combined mode, Ext sell and Labour fold into Total — hide both columns.
-  var cols = combined
-    ? colsAll.filter(function(c){ return c.key !== 'extSell' && c.key !== 'labour'; })
-    : colsAll;
+  // W7b: column set depends on mode:
+  //   supply-only — drop Install hrs / Labour / Total entirely (no labour
+  //                 to display; Ext sell IS the line total).
+  //   combined    — drop Ext sell + Labour (they fold into Total).
+  //   default     — show every column.
+  var cols;
+  if(supplyOnly){
+    cols = colsAll.filter(function(c){ return c.key !== 'installHrs' && c.key !== 'labour' && c.key !== 'total'; });
+  } else if(combined){
+    cols = colsAll.filter(function(c){ return c.key !== 'extSell' && c.key !== 'labour'; });
+  } else {
+    cols = colsAll;
+  }
   // W6+++++++: column show/hide is a session-only viewing lens. Apply it
   // here to derive visibleCols. cols (the mode-appropriate set) is still
   // used for the popover's column-toggle list so the user sees and can
@@ -4647,7 +4720,11 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     var extSell  = (unitSell == null) ? null : qty * unitSell;
     if(extSell != null) equipmentSell += extSell;
     var hoursVal = hoursMap[r.matchKey];
-    var hasHoursOverride = (typeof hoursVal === 'number' && isFinite(hoursVal));
+    // W7b: under supply-only, force hasHoursOverride=false so each row's
+    // labour cell shows nothing and the per-row hours/labour/lineTotal
+    // accumulate zero labour. The underlying hoursMap is preserved
+    // unchanged — toggling supply-only OFF restores everything.
+    var hasHoursOverride = !supplyOnly && (typeof hoursVal === 'number' && isFinite(hoursVal));
     var hours = hasHoursOverride ? hoursVal : 0;
     totalHrs += hours;
     var lineLabour = hours * hourlyRate;
@@ -4684,11 +4761,13 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   // with excluded keys removed (W7a) so it stays the canonical engine-
   // derived value for the Project Totals box without double-counting
   // excluded lines.
+  // W7b: short-circuit to 0 under supply-only — labour is excluded from
+  // every total. The engine itself stays untouched (filter layer on top).
   var activeHoursMap = {};
   Object.keys(hoursMap).forEach(function(k){
     if(!_dhwIsExcluded(k)) activeHoursMap[k] = hoursMap[k];
   });
-  var labourTotalEngine = dhwLabourTotal(activeHoursMap, hourlyRate);
+  var labourTotalEngine = supplyOnly ? 0 : dhwLabourTotal(activeHoursMap, hourlyRate);
   var grandTotal        = equipmentSell + labourTotalEngine;
 
   // Cell-text accessor for filter substring matching. Returns the same
@@ -4931,7 +5010,9 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   var totalCellsCount = 1 + visibleCols.length;
   var grandColspan    = Math.max(1, totalCellsCount - 1);
   var grandRow = '<tr>' +
-    '<td colspan="' + grandColspan + '" style="text-align:right; font-weight:800; padding-top:6px;">Grand total (hardware + labour):</td>' +
+    '<td colspan="' + grandColspan + '" style="text-align:right; font-weight:800; padding-top:6px;">' +
+      (supplyOnly ? 'Grand total (hardware only):' : 'Grand total (hardware + labour):') +
+    '</td>' +
     '<td class="dhw-num" style="font-weight:800; font-size:13px; color:var(--primary); padding-top:6px;">' + _dhwFmtMoney(grandTotal) + '</td>' +
   '</tr>';
 
@@ -4968,15 +5049,20 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       '<td style="padding:8px 0 5px; font:800 14px var(--font-mono); text-align:right; color:var(--primary); border-top:1px solid var(--border);">' + value + '</td>' +
     '</tr>';
   }
+  // W7b: under supply-only, hide the Labour line and Expected Project
+  // Hours row entirely. Margin math is already correct (labourTotalEngine
+  // = 0, totalHrs accumulates 0 across all rows because hasHoursOverride
+  // is forced false above); the row suppression is purely about not
+  // showing dangling "$0.00" / "0.00 hr" rows on a supply-only proposal.
   var projectTotalsBox =
     '<div style="margin-top:18px; padding:16px 18px; background:#fff; border:1.5px solid var(--border); border-radius:6px; max-width:520px;">' +
       '<div style="font:700 12px var(--font-ui); color:var(--text); text-transform:uppercase; letter-spacing:.10em; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">Project Totals</div>' +
       '<table style="width:100%; border-collapse:collapse;">' +
         '<tbody>' +
           _projectRow('Hardware',               _dhwFmtMoney(equipmentSell)) +
-          _projectRow('Labour',                 _dhwFmtMoney(labourTotalEngine)) +
+          (supplyOnly ? '' : _projectRow('Labour', _dhwFmtMoney(labourTotalEngine))) +
           _projectRowEmphasis('Total',          _dhwFmtMoney(projectTotal)) +
-          _projectRow('Expected Project Hours', totalHrs.toFixed(2) + ' hr') +
+          (supplyOnly ? '' : _projectRow('Expected Project Hours', totalHrs.toFixed(2) + ' hr')) +
           _projectRow('Expected Margin',        _dhwFmtMoney(expectedMargin)) +
           _projectRow('Expected Gross Margin',  grossMarginCell) +
         '</tbody>' +
@@ -5813,6 +5899,17 @@ function _dhwSetHourlyRate(raw){
 }
 function _dhwSetIncludeLabour(checked){
   doorHardware.hardwarePricing.includeLabour = !!checked;
+  markDirty();
+  renderDoorHardwareModal();
+}
+// W7b: supply-only mode setter. Mirrors _dhwSetIncludeLabour. When true,
+// Step 4's labour UI hides and Step 5 treats labour as zero across the
+// Sums row, Grand Total, and Project Totals box (the Labour and Expected
+// Project Hours rows are also hidden in Project Totals). Persisted under
+// hardwarePricing.supplyOnly; round-trips through dhwNormalizeState
+// (additive, no save-format version bump).
+function _dhwSetSupplyOnly(checked){
+  doorHardware.hardwarePricing.supplyOnly = !!checked;
   markDirty();
   renderDoorHardwareModal();
 }
