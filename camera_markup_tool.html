@@ -606,9 +606,20 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    ancestor — that's .dhw-modal-box (overflow:auto, per W6++++). z-index:5
    sits above table body rows; the wizard stepper isn't sticky so no overlap.
    W6+++++: sticky scoped to the FIRST thead row only (the column labels),
-   so the optional filter-input row below it scrolls with the body. */
+   so the optional filter-input row below it scrolls with the body.
+   W6++++++++: sticky header gets a navy-blue fill + white text + dark
+   bottom outline so it reads as a frozen chrome element distinct from the
+   scrolling white body. Uses --primary-dark (#1e40af, contrast 9.8:1 with
+   white) for the fill and --ink (#111827) for the 2px bottom outline. */
 .dhw-table th { text-align:left; padding:8px 10px; font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; border-bottom:1.5px solid var(--border); background:var(--surface-soft); }
-.dhw-table thead tr:first-child th { position:sticky; top:0; z-index:5; }
+.dhw-table thead tr:first-child th {
+  position:sticky; top:0; z-index:5;
+  background: var(--primary-dark);
+  color: #fff;
+  border-bottom: 2px solid var(--ink);
+}
+.dhw-table thead tr:first-child th .dhw-sort-mark { color: #fff; }
+.dhw-table thead tr:first-child th.dhw-sortable:hover { color: #fff; text-decoration: underline; }
 .dhw-table td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .dhw-table tr:last-child td { border-bottom:0; }
 .dhw-table tr.dhw-row-flagged td { background:#fffaf2; }
