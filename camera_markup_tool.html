@@ -541,7 +541,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    .big-modal / .modal-box / .modal-actions scaffolding; these rules
    only add the per-section dividers, table style, and small action
    buttons specific to the Door Hardware manager. */
-.dhw-modal-box { min-width:780px; max-width:1100px; }
+/* W6++ fix: scroll on both axes at the modal-box level (the parent
+   .big-modal-box only has overflow-y:auto). This is the real scroll
+   container for the wizard — sticky thead binds to it. The inner per-table
+   overflow-x wrappers (W1-era) were silently creating their own vertical
+   scroll containers per CSS Overflow Module L3 (overflow-x:auto reinterprets
+   overflow-y:visible as auto), which trapped sticky positioning to a
+   non-scrolling wrapper. Inner wrappers now drop the overflow-x and let
+   wide tables scroll at the modal-box level. */
+.dhw-modal-box { min-width:780px; max-width:1100px; overflow:auto; }
 /* Polish: stronger section separation — thicker top border, more breathing room,
    bolder section title with an under-bar. Each region reads as its own block. */
 .dhw-section { margin-top:26px; padding-top:18px; border-top:2px solid var(--border); }
@@ -3975,7 +3983,8 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
     '<div class="dhw-control-row">' +
       '<label><b>Project Markup:</b> ' +
         '<input type="number" class="dhw-input" min="0" step="5"' +
-          ' value="' + _dhwEsc(markupDefault) + '"' +
+          // W6++ : display markup default at 2dp.
+          ' value="' + Number(markupDefault).toFixed(2) + '"' +
           ' onchange="_dhwSetDefaultMarkup(this.value)"> %' +
       '</label>' +
       '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Markup applies to every priced line (can be manually overridden).</span>' +
@@ -4028,10 +4037,14 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
     var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
     var keyAttr = _dhwAttrJs(key);
     // Per-line markup override; blank = fall back to project default.
+    // W6++ : display 2-decimal precision (50.01 instead of 50.0102 — the
+    // back-calc from Unit sell now stores at 2dp, but other entry paths
+    // might still produce fractional input; .toFixed(2) normalizes the
+    // visible value either way).
     var markupInput = '<input type="number" class="dhw-input-inline" min="0" step="5"' +
-      ' value="' + _dhwEsc(hasOverride ? override : '') + '"' +
-      ' placeholder="' + _dhwEsc(markupDefault) + '"' +
-      ' title="Per-line override; blank = use project default (' + _dhwEsc(markupDefault) + '%)"' +
+      ' value="' + (hasOverride ? Number(override).toFixed(2) : '') + '"' +
+      ' placeholder="' + Number(markupDefault).toFixed(2) + '"' +
+      ' title="Per-line override; blank = use project default (' + Number(markupDefault).toFixed(2) + '%)"' +
       ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
     // W6+: Unit sell is editable on priced lines — two-way bound with the
     // Markup % cell. Both write to lineMarkupOverrides[matchKey]; editing
@@ -4078,7 +4091,7 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Hardware</span></div>' +
     markupControl +
-    '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
+    '<div style="margin-top:12px;">' +
       '<table class="dhw-table">' +
         '<thead>' + header + '</thead>' +
         '<tbody>' + trs + subtotalRow + '</tbody>' +
@@ -4212,7 +4225,7 @@ function _dhwRenderStep4Labour(takeoff, quotes){
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
     controls +
-    '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
+    '<div style="margin-top:12px;">' +
       '<table class="dhw-table">' +
         '<thead>' + header + '</thead>' +
         '<tbody>' + trs + subtotalRow + '</tbody>' +
@@ -4326,7 +4339,8 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       : (_dhwFmtMoney(unitCost) + flagMark);
     var unitSellCell = (unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(unitSell);
     var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
-    var markupCell = _dhwEsc(effectiveMarkup) + ' %' +
+    // W6++ : display markup at 2dp for visual cleanliness.
+    var markupCell = Number(effectiveMarkup).toFixed(2) + ' %' +
       (hasOverride ? ' <span class="dhw-best-supp" style="display:inline; font:500 9px var(--font-ui); color:var(--text-muted);">(override)</span>' : '');
     var hoursCell = hasHoursOverride ? (hoursVal + ' hr') : '<span class="dhw-gap">&mdash;</span>';
     var labourCell = hasHoursOverride ? _dhwFmtMoney(lineLabour) : '<span class="dhw-gap">&mdash;</span>';
@@ -4449,7 +4463,7 @@ function _dhwRenderStep5Summary(takeoff, quotes){
 
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
-    '<div style="overflow-x:auto; max-width:100%;">' +
+    '<div>' +
       '<table class="dhw-table">' +
         '<thead>' + header + '</thead>' +
         '<tbody>' + trs + sumsRow + grandRow + '</tbody>' +
@@ -4900,7 +4914,7 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       'we won’t pretend they’re free.</p>'
     : '';
   return unpricedNote +
-    '<div style="overflow-x:auto; max-width:100%;">' +
+    '<div>' +
       '<table class="dhw-table">' +
         '<thead>' + hdr + '</thead>' +
         '<tbody>' + trs + totalRow + '</tbody>' +
@@ -5164,7 +5178,7 @@ function _dhwRenderPricingAndLabour(takeoff, quotes){
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Pricing &amp; Labour</span></div>' +
     controls +
-    '<div style="overflow-x:auto; max-width:100%; margin-top:12px;">' +
+    '<div style="margin-top:12px;">' +
       '<table class="dhw-table">' +
         '<thead>' + header + '</thead>' +
         '<tbody>' + trs + subtotalRow + grandRow + '</tbody>' +
@@ -5183,6 +5197,9 @@ function _dhwRenderPricingAndLabour(takeoff, quotes){
 function _dhwSetDefaultMarkup(raw){
   var n = parseFloat(raw);
   if(!isFinite(n) || n < 0) n = 0;
+  // W6++ : store at 2-decimal precision so the displayed field is clean
+  // (matches the per-line markup and back-calc rounding).
+  n = Math.round(n * 100) / 100;
   doorHardware.hardwarePricing.defaultMarkupPct = n;
   markDirty();
   renderDoorHardwareModal();
@@ -5208,6 +5225,8 @@ function _dhwSetLineMarkup(matchKey, raw){
   } else {
     var n = parseFloat(s);
     if(!isFinite(n) || n < 0) n = 0;
+    // W6++ : store at 2-decimal precision for clean field display.
+    n = Math.round(n * 100) / 100;
     pricing.lineMarkupOverrides[matchKey] = n;
   }
   markDirty();
@@ -5245,6 +5264,10 @@ function _dhwSetLineUnitSell(matchKey, raw, unitCost){
   if(!isFinite(sell) || sell < 0) sell = 0;
   var markup = (sell / unitCost - 1) * 100;
   if(!isFinite(markup) || markup < 0) markup = 0;
+  // W6++ : round to 2dp so the markup field reads cleanly (50.01 not
+  // 50.0102). Round-trip: $49.11 × (1 + 50.01/100) = $73.6694 → $73.67
+  // formatted with .toFixed(2), within a cent of the user's typed sell.
+  markup = Math.round(markup * 100) / 100;
   pricing.lineMarkupOverrides[matchKey] = markup;
   markDirty();
   renderDoorHardwareModal();
@@ -5299,7 +5322,7 @@ function _dhwRenderAcOverlap(takeoff){
         hits.length + ' line' + (hits.length === 1 ? '' : 's') + ' flagged' +
       '</span>' +
     '</div>' +
-    '<div style="overflow-x:auto; max-width:100%;">' +
+    '<div>' +
       '<table class="dhw-table">' +
         '<thead><tr>' +
           '<th class="dhw-num">Qty</th>' +
