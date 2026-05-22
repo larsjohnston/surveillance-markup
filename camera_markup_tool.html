@@ -592,7 +592,16 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-summary-line .lbl { font:600 10px var(--font-ui); color:var(--text-muted); letter-spacing:.04em; text-transform:uppercase; margin-right:8px; display:inline-block; min-width:80px; }
 .dhw-empty { padding:18px; background:var(--surface-soft); border:1px dashed var(--border); border-radius:6px; font:500 12px var(--font-ui); color:var(--text-muted); text-align:center; line-height:1.5; }
 .dhw-table { width:100%; border-collapse:collapse; font:500 11px var(--font-ui); }
-.dhw-table th { text-align:left; padding:8px 10px; font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; border-bottom:1.5px solid var(--border); background:var(--surface-soft); }
+/* W6++: column headers stick to the top of the modal's scroll area so they
+   stay visible while paging through long tables (66-line Westmount takeoff).
+   position:sticky on <th> resolves relative to the nearest scrolling
+   ancestor — that's .big-modal-box (overflow-y:auto). The horizontal-scroll
+   wrappers around each table (overflow-x:auto only) don't intercept the
+   vertical sticky chain. Solid background is mandatory (sticky elements
+   don't get one by default and would show body content bleeding through);
+   var(--surface-soft) is what the header already had. z-index:5 sits above
+   table body rows; the wizard stepper isn't sticky so no overlap to manage. */
+.dhw-table th { text-align:left; padding:8px 10px; font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; border-bottom:1.5px solid var(--border); background:var(--surface-soft); position:sticky; top:0; z-index:5; }
 .dhw-table td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .dhw-table tr:last-child td { border-bottom:0; }
 .dhw-table tr.dhw-row-flagged td { background:#fffaf2; }
@@ -621,7 +630,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-control-row label { display:inline-flex; align-items:center; gap:6px; }
 .dhw-input { padding:5px 8px; border:1.5px solid var(--border); border-radius:4px; font:600 12px var(--font-mono); width:80px; box-sizing:border-box; }
 .dhw-input:focus { outline:none; border-color:var(--primary); }
-.dhw-input-inline { padding:3px 5px; border:1px solid var(--border); border-radius:3px; font:600 11px var(--font-mono); width:60px; box-sizing:border-box; text-align:right; }
+/* W6++: was padding:3px 5px / font 11px / radius 3px — the tight padding +
+   small font left native number-input stepper arrows clipped at the top
+   (~17px content height, Chromium needs ~20px to render both arrows in
+   full). Bumped padding/font/radius to match the tool's clean inputs
+   (.dhw-input, tab-edit-from, mailbox-cols all use 5-6px / 12px / 4px). */
+.dhw-input-inline { padding:5px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono); width:60px; box-sizing:border-box; text-align:right; }
 .dhw-input-inline:focus { outline:none; border-color:var(--primary); }
 .dhw-advisory { padding:12px 14px; background:#fffbeb; border:1px solid #fcd34d; border-radius:5px; font:500 11px var(--font-ui); color:#92400e; line-height:1.5; }
 .dhw-advisory b { color:#78350f; }
