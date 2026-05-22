@@ -668,9 +668,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    tint) — W8c wires the notes list it opens; until then the onclick is
    a stub. The muted "all at lowest" variant has no border or fill — it's
    a quiet positive confirmation, not a callout. */
-.dhw-noncheapest-flag { margin:0 0 10px; padding:10px 14px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:5px; color:#92400e; font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; cursor:pointer; }
+.dhw-noncheapest-flag { margin:12px 0 0; padding:10px 14px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:5px; color:#92400e; font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; cursor:pointer; }
 .dhw-noncheapest-flag:hover { background:#fde68a; }
-.dhw-noncheapest-allgood { margin:0 0 10px; font:500 11px var(--font-ui); color:var(--text-muted); }
+.dhw-noncheapest-allgood { margin:12px 0 0; font:500 11px var(--font-ui); color:var(--text-muted); }
 .dhw-award-summary { padding:10px 12px; background:var(--primary-faint); border:1px solid var(--primary-soft); border-radius:5px; font:500 12px var(--font-ui); color:var(--text); line-height:1.5; }
 .dhw-award-summary.dhw-award-none { background:var(--surface-soft); border-color:var(--border); color:var(--text-muted); }
 .dhw-award-active { font-weight:700; color:var(--primary); }
@@ -5635,36 +5635,32 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       bestCell +
     '</tr>';
   }).join('');
-  // W8b: per-supplier column sums footer row. Sits above the blended
-  // best-line total so the table reads: rows → per-supplier whole-package
-  // sums → blended cheapest. Muted text + dashed top border keep this
-  // visually subordinate to the headline blended-total row below. A
-  // supplier who priced zero lines shows "—" rather than "$0.00".
-  var colSumsRow = '<tr>' +
-    '<td colspan="4" style="text-align:right; font-weight:700; padding-top:10px; border-top:1px dashed var(--border); color:var(--text-muted);">' +
-      '&Sigma; per supplier (priced lines only):' +
+  // W8b: single merged footer row — "Totals:" label, then each supplier's
+  // whole-package sum under its column, then the blended best-line total
+  // in the Best column. "Priced lines only" meaning is preserved: a
+  // supplier who priced zero lines shows "—" not "$0.00"; the blended
+  // best-line total comes from cmp.bestLineTotal which is engine-derived
+  // over priced lines only. Solid top border + bold for the whole row,
+  // matching the headline-totals visual weight throughout the tool.
+  var totalRow = '<tr>' +
+    '<td colspan="4" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
+      'Totals:' +
     '</td>' +
     colSums.map(function(s){
-      return '<td class="dhw-num" style="font-weight:700; padding-top:10px; border-top:1px dashed var(--border); color:var(--text-muted);">' +
+      return '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
         (s > 0 ? _dhwFmtMoney(s) : '<span class="dhw-gap">&mdash;</span>') +
       '</td>';
     }).join('') +
-    '<td class="dhw-best-cell" style="padding-top:10px; border-top:1px dashed var(--border);"></td>' +
-  '</tr>';
-  var totalSpan = 4 + supplierNames.length;
-  var totalRow = '<tr>' +
-    '<td colspan="' + totalSpan + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
-      'Blended best-line total (priced lines only):' +
-    '</td>' +
     '<td class="dhw-best-cell" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' +
       _dhwFmtMoney(cmp.bestLineTotal) +
     '</td>' +
   '</tr>';
-  // W8b: non-cheapest summary flag, rendered above the table next to
-  // the unpriced-lines note. Clickable target (cursor + stub onclick);
-  // W8c populates _dhwOpenNonCheapestNotes with the notes-list UI. If
-  // every priced selection is at the cheapest, show a muted "all at
-  // lowest" confirmation; if nothing is priced at all, render nothing.
+  // W8b: non-cheapest summary flag, rendered BELOW the table (between
+  // the merged Totals row and the Award button) so it reads as a summary
+  // of the choices the user just made. Clickable target (cursor + stub
+  // onclick); W8c populates _dhwOpenNonCheapestNotes with the notes-list
+  // UI. If every priced selection is at the cheapest, show a muted "all
+  // at lowest" confirmation; if nothing is priced at all, render nothing.
   var anyPricedSelections = (lines.length - unpricedCount) > 0;
   var nonCheapestFlag = '';
   if(nonCheapestCount > 0){
@@ -5689,13 +5685,13 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       'we won’t pretend they’re free.</p>'
     : '';
   return unpricedNote +
-    nonCheapestFlag +
     '<div>' +
       '<table class="dhw-table">' +
         '<thead>' + hdr + '</thead>' +
-        '<tbody>' + trs + colSumsRow + totalRow + '</tbody>' +
+        '<tbody>' + trs + totalRow + '</tbody>' +
       '</table>' +
     '</div>' +
+    nonCheapestFlag +
     '<div style="margin-top:12px; text-align:right;">' + awardBtn + '</div>';
 }
 
