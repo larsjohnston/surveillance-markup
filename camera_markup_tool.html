@@ -603,13 +603,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 /* W6++: column headers stick to the top of the modal's scroll area so they
    stay visible while paging through long tables (66-line Westmount takeoff).
    position:sticky on <th> resolves relative to the nearest scrolling
-   ancestor — that's .big-modal-box (overflow-y:auto). The horizontal-scroll
-   wrappers around each table (overflow-x:auto only) don't intercept the
-   vertical sticky chain. Solid background is mandatory (sticky elements
-   don't get one by default and would show body content bleeding through);
-   var(--surface-soft) is what the header already had. z-index:5 sits above
-   table body rows; the wizard stepper isn't sticky so no overlap to manage. */
-.dhw-table th { text-align:left; padding:8px 10px; font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; border-bottom:1.5px solid var(--border); background:var(--surface-soft); position:sticky; top:0; z-index:5; }
+   ancestor — that's .dhw-modal-box (overflow:auto, per W6++++). z-index:5
+   sits above table body rows; the wizard stepper isn't sticky so no overlap.
+   W6+++++: sticky scoped to the FIRST thead row only (the column labels),
+   so the optional filter-input row below it scrolls with the body. */
+.dhw-table th { text-align:left; padding:8px 10px; font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; border-bottom:1.5px solid var(--border); background:var(--surface-soft); }
+.dhw-table thead tr:first-child th { position:sticky; top:0; z-index:5; }
 .dhw-table td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .dhw-table tr:last-child td { border-bottom:0; }
 .dhw-table tr.dhw-row-flagged td { background:#fffaf2; }
@@ -647,6 +646,27 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-input-inline:focus { outline:none; border-color:var(--primary); }
 .dhw-advisory { padding:12px 14px; background:#fffbeb; border:1px solid #fcd34d; border-radius:5px; font:500 11px var(--font-ui); color:#92400e; line-height:1.5; }
 .dhw-advisory b { color:#78350f; }
+/* W6+++++: Step 5 Summary table tools — toolbar, sortable headers,
+   filter input row, hide-row button, hidden-rows banner. All state
+   session-only (module-local), reset on modal open. Filter/hide is a
+   viewing lens — never changes the totals, never affects export. */
+.dhw-summary-toolbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+.dhw-summary-toolbar button { padding:5px 10px; font:600 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; border-radius:3px; border:1px solid var(--border); background:#fff; color:var(--text); cursor:pointer; }
+.dhw-summary-toolbar button:hover { background:var(--surface-soft); }
+.dhw-summary-toolbar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.dhw-summary-toolbar .dhw-toolbar-spacer { flex:1 1 auto; }
+.dhw-summary-toolbar .dhw-toolbar-caption { font:500 11px var(--font-ui); color:var(--text-muted); }
+.dhw-table thead th.dhw-sortable { cursor:pointer; user-select:none; }
+.dhw-table thead th.dhw-sortable:hover { color:var(--text); }
+.dhw-table thead th .dhw-sort-mark { color:var(--primary); margin-left:4px; font-weight:700; }
+.dhw-table thead tr.dhw-filter-row th { padding:4px 6px; background:#fff; border-bottom:1px solid var(--border); text-transform:none; letter-spacing:normal; }
+.dhw-filter-input { width:100%; padding:4px 6px; border:1px solid var(--border); border-radius:3px; font:500 10px var(--font-mono); background:#fff; box-sizing:border-box; }
+.dhw-filter-input:focus { outline:none; border-color:var(--primary); }
+.dhw-hide-col { width:28px; text-align:center; }
+.dhw-hide-btn { background:none; border:0; cursor:pointer; color:#9ca3af; font:700 14px var(--font-ui); padding:0 4px; line-height:1; }
+.dhw-hide-btn:hover { color:#dc2626; }
+.dhw-hidden-banner { margin:8px 0 0; padding:8px 12px; background:#fffbeb; border:1px solid #fcd34d; border-radius:4px; font:500 11px var(--font-ui); color:#92400e; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.dhw-hidden-banner button { background:none; border:0; color:#92400e; font:700 11px var(--font-ui); cursor:pointer; text-decoration:underline; padding:0; }
 /* W1: 5-step wizard. Stepper sits at the top of the modal body (above the
    step content). Active step gets the tool's red accent; inactive steps are
    muted/navy. Connectors are simple horizontal lines between dots. All
@@ -3848,8 +3868,16 @@ function _handleDoorScheduleFile(file){
 
 // Modal show/hide. W1: reset to step 1 (Comparison) on every open — the
 // wizard is a guided sequence and the user always starts at Comparison.
+// W6+++++: also reset Step 5 view-state (sort/filter/hide) on every open
+// — table-tools state is session-only, never persisted, never affects
+// totals or export.
 function openDoorHardwareModal(){
   _dhwCurrentStep = 1;
+  _dhwSummarySort         = { column:null, dir:null };
+  _dhwSummaryFilters      = {};
+  _dhwSummaryHidden       = {};
+  _dhwSummaryFilterUiOpen = false;
+  _dhwSummaryQuickFilter  = null;
   renderDoorHardwareModal();
   var modal = document.getElementById('door-hardware-modal');
   if(modal) modal.classList.add('show');
@@ -3884,6 +3912,64 @@ function _dhwFmtMoney(n){
 // 'bySupplier' each session. The two values match the dispatch keys used
 // by _dhwRenderComparison / _dhwSetCompareView below.
 var _dhwActiveCompareView = 'bySupplier';
+
+// W6+++++: Step 5 Summary table-tools view-state. All session-only, reset
+// on every modal open. Never persisted, never affects totals/export —
+// the Sums row and Project Totals always reflect ALL priced lines.
+//   _dhwSummarySort         = { column: <key|null>, dir: 'asc'|'desc'|null }
+//   _dhwSummaryFilters      = { <columnKey>: <text> }
+//   _dhwSummaryHidden       = { <matchKey>: true }
+//   _dhwSummaryFilterUiOpen = bool — controls whether the per-column
+//                             filter-input row is visible
+//   _dhwSummaryQuickFilter  = null | 'flagged' | 'gaps'
+var _dhwSummarySort         = { column:null, dir:null };
+var _dhwSummaryFilters      = {};
+var _dhwSummaryHidden       = {};
+var _dhwSummaryFilterUiOpen = false;
+var _dhwSummaryQuickFilter  = null;
+
+// W6+++++ setters. Tri-state sort cycle (none → asc → desc → none) on
+// repeated clicks of the same column; switching columns starts at asc.
+function _dhwSetSummarySort(column){
+  if(_dhwSummarySort.column === column){
+    if(_dhwSummarySort.dir === 'asc')      _dhwSummarySort.dir = 'desc';
+    else if(_dhwSummarySort.dir === 'desc'){ _dhwSummarySort.column = null; _dhwSummarySort.dir = null; }
+    else _dhwSummarySort.dir = 'asc';
+  } else {
+    _dhwSummarySort.column = column;
+    _dhwSummarySort.dir = 'asc';
+  }
+  renderDoorHardwareModal();
+}
+function _dhwSetSummaryFilter(column, value){
+  var s = String(value == null ? '' : value);
+  if(s === '') delete _dhwSummaryFilters[column];
+  else _dhwSummaryFilters[column] = s;
+  renderDoorHardwareModal();
+}
+function _dhwClearSummaryFilters(){
+  _dhwSummaryFilters     = {};
+  _dhwSummaryQuickFilter = null;
+  renderDoorHardwareModal();
+}
+function _dhwToggleSummaryHidden(matchKey){
+  if(_dhwSummaryHidden[matchKey]) delete _dhwSummaryHidden[matchKey];
+  else _dhwSummaryHidden[matchKey] = true;
+  renderDoorHardwareModal();
+}
+function _dhwClearSummaryHidden(){
+  _dhwSummaryHidden = {};
+  renderDoorHardwareModal();
+}
+function _dhwToggleSummaryFilterUi(){
+  _dhwSummaryFilterUiOpen = !_dhwSummaryFilterUiOpen;
+  renderDoorHardwareModal();
+}
+function _dhwSetSummaryQuickFilter(name){
+  // Toggle off when clicking the active one; otherwise switch to the new one.
+  _dhwSummaryQuickFilter = (_dhwSummaryQuickFilter === name) ? null : name;
+  renderDoorHardwareModal();
+}
 
 // W1: 5-step wizard state. Module-local, not persisted — resets to 1 on
 // every modal open (per the brief). Range 1..5:
@@ -4238,41 +4324,35 @@ function _dhwRenderStep4Labour(takeoff, quotes){
 // includeLabour toggle is now the single source of truth for the
 // separate-vs-combined Summary column structure.
 
-// Step 5 — Summary (W5 will build the real page). Placeholder for W1.
-// Step 5 — Summary (W5 + W6 redesign). Internal read-only review of the
+// Step 5 — Summary (W5 + W6 + W6+++++). Internal read-only review of the
 // whole quote, full per-line detail + footer sums + grand total + a count
-// of any unpriced gaps.
+// of any unpriced gaps + a Project Totals box.
 //
-// includeLabour is REPURPOSED in W6: it no longer controls whether labour
-// enters the grand total — labour ALWAYS enters the grand total. Instead it
-// controls Summary COLUMN STRUCTURE:
-//   • OFF (separate): Ext sell · Labour · Total as three distinct columns
-//     (Total = Ext sell + Line labour).
-//   • ON  (combined): hardware and labour fold into a single Total column;
-//     Ext sell and Labour columns disappear. Same numbers, merged display.
+// includeLabour: REPURPOSED in W6 — controls Summary COLUMN STRUCTURE:
+//   • OFF (separate, default): Ext sell · Labour · Total distinct columns.
+//   • ON  (combined): Ext sell + Labour fold into a single Total column.
+// Grand total ALWAYS = Σ Ext sell + Σ Line labour regardless of toggle.
 //
-// The includeLabour toggle lives at the BOTTOM of the step, near the
-// totals it affects (moved from the top in W6 item 8).
-//
-// W4-era customer-display radios + labourDisplay field removed entirely —
-// includeLabour is the single source of truth for separate-vs-combined.
+// W6+++++ adds table tools — sort, per-column filter, row hide, plus two
+// quick filters ("Show only flagged", "Show only gaps"). All session-only
+// (module-local), reset on modal open, never persisted, never affect the
+// Sums row, Grand Total, or Project Totals box (which ALWAYS reflect every
+// priced/awarded line in the resolved set). The "Showing N of M lines"
+// caption surfaces when any lens is active so the user sees that the table
+// view differs from the totals scope.
 //
 // All math via M1 engine (resolveAward, dhwUnitSell, dhwLabourTotal).
 // Gaps shown as "not priced" (never $0.00); flagged-supplier markers
-// preserved. Grand total ALWAYS = Σ Ext sell + Σ Line labour.
+// preserved.
 function _dhwRenderStep5Summary(takeoff, quotes){
   var award = doorHardware.hardwareAward;
   var pricing = doorHardware.hardwarePricing;
   var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 50;
   var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
-  var combined      = !!pricing.includeLabour;  // W6 repurpose: includeLabour now = "combine columns"
+  var combined      = !!pricing.includeLabour;
   var overrides     = pricing.lineMarkupOverrides || {};
   var hoursMap      = pricing.lineInstallHours    || {};
 
-  // Bottom toggle (rendered LATER in the return value, but defined here
-  // so the empty-state branch can also include it). New label per W6:
-  // "Combine hardware + labour into one column" — semantics flipped from
-  // the prior "include labour in totals".
   var combineRow =
     '<div class="dhw-control-row" style="margin-top:14px;">' +
       '<label><input type="checkbox" ' + (combined ? 'checked' : '') +
@@ -4288,65 +4368,211 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     '</div>';
   }
 
+  // W6+++++ : columns descriptor drives both sort/filter and rendering.
+  // 'numeric' tells the sort comparator to use numeric vs string compare.
+  var colsAll = [
+    { key:'qty',         label:'Qty',         numeric:true,  align:'right' },
+    { key:'sku',         label:'SKU',         numeric:false, align:'left'  },
+    { key:'description', label:'Description', numeric:false, align:'left'  },
+    { key:'finish',      label:'Finish',      numeric:false, align:'left'  },
+    { key:'supplier',    label:'Supplier',    numeric:false, align:'left'  },
+    { key:'unitCost',    label:'Unit cost',   numeric:true,  align:'right' },
+    { key:'markup',      label:'Markup %',    numeric:true,  align:'right' },
+    { key:'unitSell',    label:'Unit sell',   numeric:true,  align:'right' },
+    { key:'extSell',     label:'Ext sell',    numeric:true,  align:'right' },
+    { key:'installHrs',  label:'Install hrs', numeric:true,  align:'right' },
+    { key:'labour',      label:'Labour',      numeric:true,  align:'right' },
+    { key:'total',       label:'Total',       numeric:true,  align:'right' }
+  ];
+  // In combined mode, Ext sell and Labour fold into Total — hide both columns.
+  var cols = combined
+    ? colsAll.filter(function(c){ return c.key !== 'extSell' && c.key !== 'labour'; })
+    : colsAll;
+
   var resolved = resolveAward(takeoff, quotes, award);
   var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
+
+  // First pass: compute per-row data + accumulate totals over ALL priced
+  // lines (filter/hide do NOT change these — decision B).
   var equipmentSell = 0;
-  var hardwareCost  = 0;   // W6+: Σ (qty × awarded unit cost) over priced lines — pre-markup, for the Project Totals margin row.
-  var totalHrs = 0;
-  var totalLabour = 0;
+  var hardwareCost  = 0;
+  var totalHrs      = 0;
+  var totalLabour   = 0;
   var totalCombined = 0;
   var unpricedCount = 0;
-  var trs = resolved.map(function(r){
+  var rowData = resolved.map(function(r){
     var t = r.takeoffLine || {};
-    var key = r.matchKey;
     var qty = (typeof t.qty === 'number') ? t.qty : 0;
     var unitCost = r.priced ? r.awardedUnitCost : null;
     if(unitCost != null) hardwareCost += qty * unitCost;
-    var override = overrides[key];
+    var override = overrides[r.matchKey];
     var hasOverride = (typeof override === 'number' && isFinite(override));
     var effectiveMarkup = hasOverride ? override : markupDefault;
     var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, effectiveMarkup);
     var extSell  = (unitSell == null) ? null : qty * unitSell;
     if(extSell != null) equipmentSell += extSell;
-    var hoursVal = hoursMap[key];
+    var hoursVal = hoursMap[r.matchKey];
     var hasHoursOverride = (typeof hoursVal === 'number' && isFinite(hoursVal));
     var hours = hasHoursOverride ? hoursVal : 0;
     totalHrs += hours;
     var lineLabour = hours * hourlyRate;
     if(hasHoursOverride) totalLabour += lineLabour;
-    // Per-line Total = Ext sell + Line labour. Gaps stay null so the cell
-    // shows the same "—" as Ext sell rather than synthesizing a value
-    // out of nothing.
     var lineTotal = null;
     if(extSell != null || hasHoursOverride){
       lineTotal = (extSell != null ? extSell : 0) + (hasHoursOverride ? lineLabour : 0);
       totalCombined += lineTotal;
     }
     if(!r.priced) unpricedCount++;
-    var flagged = !!flaggedByKey[key];
-    var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
-    var flagMark = flagged
+    return {
+      r:               r,
+      matchKey:        r.matchKey,
+      qty:             qty,
+      sku:             t.catalogNumber || '',
+      description:     t.description || '',
+      finish:          t.finish || '',
+      supplier:        r.awardedSupplierName || '',
+      unitCost:        unitCost,
+      markup:          effectiveMarkup,
+      unitSell:        unitSell,
+      extSell:         extSell,
+      installHrs:      hasHoursOverride ? hoursVal : null,
+      labour:          hasHoursOverride ? lineLabour : null,
+      total:           lineTotal,
+      priced:          r.priced,
+      flagged:         !!flaggedByKey[r.matchKey],
+      hasOverride:     hasOverride,
+      hasHoursOverride:hasHoursOverride
+    };
+  });
+  // labourTotalEngine = dhwLabourTotal(hoursMap, rate). Equal to totalLabour
+  // computed above (same Σ); use the engine call for the Project Totals box
+  // so it's clearly the engine-derived value.
+  var labourTotalEngine = dhwLabourTotal(hoursMap, hourlyRate);
+  var grandTotal        = equipmentSell + labourTotalEngine;
+
+  // Cell-text accessor for filter substring matching. Returns the same
+  // text the user sees in the cell so "100" matches "$100.00" etc.
+  function cellText(row, key){
+    switch(key){
+      case 'qty':         return String(row.qty);
+      case 'sku':         return row.sku;
+      case 'description': return row.description;
+      case 'finish':      return row.finish;
+      case 'supplier':    return row.supplier || 'not awarded';
+      case 'unitCost':    return row.unitCost == null ? 'not priced' : _dhwFmtMoney(row.unitCost);
+      case 'markup':      return Number(row.markup).toFixed(2) + ' %';
+      case 'unitSell':    return row.unitSell == null ? '—' : _dhwFmtMoney(row.unitSell);
+      case 'extSell':     return row.extSell  == null ? '—' : _dhwFmtMoney(row.extSell);
+      case 'installHrs':  return row.installHrs == null ? '—' : (row.installHrs + ' hr');
+      case 'labour':      return row.labour     == null ? '—' : _dhwFmtMoney(row.labour);
+      case 'total':       return row.total      == null ? '—' : _dhwFmtMoney(row.total);
+    }
+    return '';
+  }
+
+  // Apply lenses: row-hide → quick filter → per-column filters.
+  var filterKeys = Object.keys(_dhwSummaryFilters);
+  var visibleRows = rowData.filter(function(row){
+    if(_dhwSummaryHidden[row.matchKey]) return false;
+    if(_dhwSummaryQuickFilter === 'flagged' && !row.flagged) return false;
+    if(_dhwSummaryQuickFilter === 'gaps'    &&  row.priced)  return false;
+    for(var i = 0; i < filterKeys.length; i++){
+      var k = filterKeys[i];
+      var f = _dhwSummaryFilters[k];
+      if(!f) continue;
+      if(cellText(row, k).toLowerCase().indexOf(String(f).toLowerCase()) === -1) return false;
+    }
+    return true;
+  });
+
+  // Sort visibleRows if a sort column is active.
+  if(_dhwSummarySort.column && _dhwSummarySort.dir){
+    var sortKey = _dhwSummarySort.column;
+    var sortCol = null;
+    for(var ci = 0; ci < cols.length; ci++){ if(cols[ci].key === sortKey){ sortCol = cols[ci]; break; } }
+    if(sortCol){
+      var dir = _dhwSummarySort.dir === 'desc' ? -1 : 1;
+      visibleRows.sort(function(a, b){
+        var va = a[sortKey], vb = b[sortKey];
+        if(va == null && vb == null) return 0;
+        if(va == null) return 1;   // nulls last regardless of direction
+        if(vb == null) return -1;
+        if(sortCol.numeric) return (va - vb) * dir;
+        return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
+      });
+    }
+  }
+
+  // Toolbar: Filter toggle + quick filters + (Clear filters when active) +
+  // optional "Showing N of M lines" caption.
+  var activeFilterCount = filterKeys.filter(function(k){ return !!_dhwSummaryFilters[k]; }).length;
+  var hiddenCount = Object.keys(_dhwSummaryHidden).length;
+  var lensActive  = activeFilterCount > 0 || hiddenCount > 0 || _dhwSummaryQuickFilter != null;
+  var clearBtn = (activeFilterCount > 0 || _dhwSummaryQuickFilter)
+    ? '<button onclick="_dhwClearSummaryFilters()" title="Clear all column filters and the quick filter">Clear filters</button>'
+    : '';
+  var toolbar =
+    '<div class="dhw-summary-toolbar">' +
+      '<button class="' + (_dhwSummaryFilterUiOpen ? 'active' : '') + '"' +
+        ' onclick="_dhwToggleSummaryFilterUi()"' +
+        ' title="Show or hide the per-column filter inputs">Filter rows</button>' +
+      '<button class="' + (_dhwSummaryQuickFilter === 'flagged' ? 'active' : '') + '"' +
+        ' onclick="_dhwSetSummaryQuickFilter(\'flagged\')"' +
+        ' title="Isolate rows whose supplier had a TOTAL math error">Show only flagged</button>' +
+      '<button class="' + (_dhwSummaryQuickFilter === 'gaps' ? 'active' : '') + '"' +
+        ' onclick="_dhwSetSummaryQuickFilter(\'gaps\')"' +
+        ' title="Isolate rows no supplier priced">Show only gaps</button>' +
+      clearBtn +
+      '<div class="dhw-toolbar-spacer"></div>' +
+      (lensActive
+        ? '<span class="dhw-toolbar-caption">Showing ' + visibleRows.length + ' of ' + rowData.length + ' lines &mdash; filter/hide is a viewing lens; totals reflect all lines.</span>'
+        : '') +
+    '</div>';
+
+  // Header row — clickable sort, indicator arrows.
+  var headerCells = cols.map(function(c){
+    var cls = (c.align === 'right' ? 'dhw-num ' : '') + 'dhw-sortable';
+    var mark = '';
+    if(_dhwSummarySort.column === c.key && _dhwSummarySort.dir){
+      mark = ' <span class="dhw-sort-mark">' + (_dhwSummarySort.dir === 'desc' ? '▼' : '▲') + '</span>';
+    }
+    return '<th class="' + cls + '" onclick="_dhwSetSummarySort(\'' + c.key + '\')">' + c.label + mark + '</th>';
+  }).join('');
+  var hideHeader = '<th class="dhw-hide-col"></th>';
+  var header = '<tr>' + hideHeader + headerCells + '</tr>';
+
+  // Optional filter input row (toggleable).
+  var filterRow = '';
+  if(_dhwSummaryFilterUiOpen){
+    var filterCells = cols.map(function(c){
+      var cur = _dhwSummaryFilters[c.key] || '';
+      return '<th><input class="dhw-filter-input" type="text" placeholder="Filter…"' +
+        ' value="' + _dhwEsc(cur) + '"' +
+        ' oninput="_dhwSetSummaryFilter(\'' + c.key + '\', this.value)"></th>';
+    }).join('');
+    filterRow = '<tr class="dhw-filter-row"><th class="dhw-hide-col"></th>' + filterCells + '</tr>';
+  }
+
+  // Body rows (visibleRows).
+  var trs = visibleRows.map(function(row){
+    var t = row.r.takeoffLine || {};
+    var flagMark = row.flagged
       ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>'
       : '';
-    var gapMark = !r.priced
+    var gapMark = !row.priced
       ? '<span class="dhw-warn" title="No awarded supplier priced this line">&#9888;</span> '
       : '';
-    var supplierLabel = r.awardedSupplierName
-      ? _dhwEsc(r.awardedSupplierName)
-      : '<span class="dhw-gap">&mdash;</span>';
-    var unitCostCell = (unitCost == null)
-      ? '<span class="dhw-gap">not priced</span>'
-      : (_dhwFmtMoney(unitCost) + flagMark);
-    var unitSellCell = (unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(unitSell);
-    var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
-    // W6++ : display markup at 2dp for visual cleanliness.
-    var markupCell = Number(effectiveMarkup).toFixed(2) + ' %' +
-      (hasOverride ? ' <span class="dhw-best-supp" style="display:inline; font:500 9px var(--font-ui); color:var(--text-muted);">(override)</span>' : '');
-    var hoursCell = hasHoursOverride ? (hoursVal + ' hr') : '<span class="dhw-gap">&mdash;</span>';
-    var labourCell = hasHoursOverride ? _dhwFmtMoney(lineLabour) : '<span class="dhw-gap">&mdash;</span>';
-    var totalCell = (lineTotal == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(lineTotal);
-    // Column structure forks here. Separate (default): Ext sell · Install hrs · Labour · Total.
-    // Combined: Install hrs · Total only (Ext sell + Labour folded into Total).
+    var supplierLabel = row.supplier ? _dhwEsc(row.supplier) : '<span class="dhw-gap">&mdash;</span>';
+    var unitCostCell = (row.unitCost == null) ? '<span class="dhw-gap">not priced</span>' : (_dhwFmtMoney(row.unitCost) + flagMark);
+    var unitSellCell = (row.unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.unitSell);
+    var extSellCell  = (row.extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.extSell);
+    var markupCell = Number(row.markup).toFixed(2) + ' %' +
+      (row.hasOverride ? ' <span class="dhw-best-supp" style="display:inline; font:500 9px var(--font-ui); color:var(--text-muted);">(override)</span>' : '');
+    var hoursCell  = (row.installHrs == null) ? '<span class="dhw-gap">&mdash;</span>' : (row.installHrs + ' hr');
+    var labourCell = (row.labour     == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.labour);
+    var totalCell  = (row.total      == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.total);
+    var hideBtn = '<button class="dhw-hide-btn" onclick="_dhwToggleSummaryHidden(' + _dhwAttrJs(row.matchKey) + ')" title="Hide this row from the view">&times;</button>';
+    var rowCls = !row.priced ? ' class="dhw-row-flagged"' : '';
     var tailCells = combined
       ? '<td class="dhw-num">' + hoursCell + '</td>' +
         '<td class="dhw-num">' + totalCell + '</td>'
@@ -4355,7 +4581,8 @@ function _dhwRenderStep5Summary(takeoff, quotes){
         '<td class="dhw-num">' + labourCell + '</td>' +
         '<td class="dhw-num">' + totalCell  + '</td>';
     return '<tr' + rowCls + '>' +
-      '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
+      '<td class="dhw-hide-col">' + hideBtn + '</td>' +
+      '<td class="dhw-num">' + gapMark + _dhwEsc(row.qty) + '</td>' +
       '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
       '<td>' + _dhwEsc(t.description || '') + '</td>' +
       '<td>' + _dhwEsc(t.finish || '') + '</td>' +
@@ -4367,67 +4594,45 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     '</tr>';
   }).join('');
 
-  // Grand total: ALWAYS hardware + labour, regardless of column toggle.
-  var labourTotalEngine = dhwLabourTotal(hoursMap, hourlyRate);
-  var grandTotal = equipmentSell + labourTotalEngine;
-
-  // Footer SUMS row: column totals under Ext sell / Labour / Total in
-  // separate mode; just Total in combined mode.
+  // Sums + Grand rows. Colspan accounts for the new Hide column. Sums label
+  // spans Hide + 8 leading data cells = 9. Trailing sum cells: 4 in separate
+  // mode (extSell, hours, labour, total), 2 in combined mode (hours, total).
   var sumsRowSeparate = '<tr>' +
-    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>' +
+    '<td colspan="9" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>' +
     '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(equipmentSell) + '</td>' +
     '<td class="dhw-num" style="padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
     '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalLabour) + '</td>' +
     '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalCombined) + '</td>' +
   '</tr>';
   var sumsRowCombined = '<tr>' +
-    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>' +
+    '<td colspan="9" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>' +
     '<td class="dhw-num" style="padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
     '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalCombined) + '</td>' +
   '</tr>';
   var sumsRow = combined ? sumsRowCombined : sumsRowSeparate;
-
-  // Grand total row. Always "hardware + labour" (no toggle-dependent
-  // label switching anymore). Spans all but the final cell so the value
-  // lands at the far right under either column structure.
-  var grandColspan = combined ? 9 : 11;
+  // Grand row spans all but the final cell. Total DOM cols = Hide + data.
+  // Separate: 1 + 12 = 13 → label colspan 12. Combined: 1 + 10 = 11 → 10.
+  var grandColspan = combined ? 10 : 12;
   var grandRow = '<tr>' +
     '<td colspan="' + grandColspan + '" style="text-align:right; font-weight:800; padding-top:6px;">Grand total (hardware + labour):</td>' +
     '<td class="dhw-num" style="font-weight:800; font-size:13px; color:var(--primary); padding-top:6px;">' + _dhwFmtMoney(grandTotal) + '</td>' +
   '</tr>';
 
-  // Header — column structure forks here too.
-  var tailHeader = combined
-    ? '<th class="dhw-num">Install hrs</th>' +
-      '<th class="dhw-num">Total</th>'
-    : '<th class="dhw-num">Ext sell</th>' +
-      '<th class="dhw-num">Install hrs</th>' +
-      '<th class="dhw-num">Labour</th>' +
-      '<th class="dhw-num">Total</th>';
-  var header = '<tr>' +
-    '<th class="dhw-num">Qty</th>' +
-    '<th>SKU</th>' +
-    '<th>Description</th>' +
-    '<th>Finish</th>' +
-    '<th>Supplier</th>' +
-    '<th class="dhw-num">Unit cost</th>' +
-    '<th class="dhw-num">Markup %</th>' +
-    '<th class="dhw-num">Unit sell</th>' +
-    tailHeader +
-  '</tr>';
+  // Hidden-rows banner (only when any rows are hidden).
+  var hiddenBanner = hiddenCount > 0
+    ? '<div class="dhw-hidden-banner">' +
+        '<span>' + hiddenCount + ' row' + (hiddenCount === 1 ? '' : 's') + ' hidden &mdash; ' +
+        'filter/hide is a viewing lens; totals below still reflect all lines.</span>' +
+        '<button onclick="_dhwClearSummaryHidden()" title="Show all hidden rows">Show all</button>' +
+      '</div>'
+    : '';
 
-  // W6 item 7: items-not-priced count line at the bottom. Just the count.
+  // Items-not-priced count + Project Totals box (unchanged W6+ behavior).
   var unpricedLine = '<p style="margin:10px 0 0; font:600 11px var(--font-ui); color:' +
     (unpricedCount > 0 ? '#b45309' : 'var(--text-muted)') + ';">' +
     unpricedCount + ' item' + (unpricedCount === 1 ? '' : 's') + ' not priced' +
   '</p>';
 
-  // W6+: Project Totals box — internal bordered card aggregating the
-  // numbers needed for a project at-a-glance: hardware sell, labour,
-  // total, project hours, expected margin (sell − hardware cost; labour
-  // has no cost basis so it's pure margin), and expected gross margin %.
-  // Divide-by-zero guard on the margin %: if total revenue is 0, show "—"
-  // instead of NaN/Infinity. Internal-only — never appears on the proposal.
   var projectTotal     = equipmentSell + labourTotalEngine;
   var expectedMargin   = projectTotal - hardwareCost;
   var grossMarginPct   = (projectTotal > 0) ? (expectedMargin / projectTotal * 100) : null;
@@ -4463,12 +4668,14 @@ function _dhwRenderStep5Summary(takeoff, quotes){
 
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
+    toolbar +
     '<div>' +
       '<table class="dhw-table">' +
-        '<thead>' + header + '</thead>' +
+        '<thead>' + header + filterRow + '</thead>' +
         '<tbody>' + trs + sumsRow + grandRow + '</tbody>' +
       '</table>' +
     '</div>' +
+    hiddenBanner +
     unpricedLine +
     '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
       'Internal review. The customer proposal will show sell prices only — never cost, markup, or supplier names. ' +
