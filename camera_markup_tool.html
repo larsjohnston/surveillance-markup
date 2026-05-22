@@ -630,6 +630,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-table tr.dhw-row-excluded td { background:#f3f4f6; color:#9ca3af; text-decoration:line-through; }
 .dhw-table tr.dhw-row-excluded button,
 .dhw-table tr.dhw-row-excluded input { text-decoration:none; }
+/* W7c: zero-labour warning. Amber row tint on priced lines with no install
+   hours entered, plus a matching amber banner under the labour table that
+   counts them. Stronger amber than the gap-row cream (#fffaf2) so the two
+   states stay distinguishable when both appear in the same table. */
+.dhw-table tr.dhw-row-nolabour td { background:#fef3c7; }
+.dhw-nolabour-warn { margin-top:10px; padding:10px 14px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:5px; color:#92400e; font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; }
 .dhw-warn { color:#b45309; font-weight:700; }
 .dhw-gap  { color:#b45309; font-style:italic; }
 .dhw-num  { font:600 11px var(--font-mono); text-align:right; }
@@ -4521,6 +4527,14 @@ function _dhwRenderStep4Labour(takeoff, quotes){
   // Step 4 labour table (no labour on an excluded line) and labour totals."
   var activeResolved = resolved.filter(function(r){ return !_dhwIsExcluded(r.matchKey); });
   var totalHrs = 0;
+  // W7c: count priced non-excluded lines with no labour entered. The
+  // supply-only branch returns before this loop, so we never reach here
+  // under supply-only — no explicit guard needed. Excluded lines are
+  // already filtered out via activeResolved. Gaps (!r.priced) are NOT
+  // counted — they have no hardware so they need no labour, per the
+  // brief. "No labour entered" = hours <= 0 (covers blank, 0, and any
+  // legacy negative which the setter clamps anyway).
+  var noLabourCount = 0;
   var trs = activeResolved.map(function(r){
     var t = r.takeoffLine || {};
     var key = r.matchKey;
@@ -4530,7 +4544,16 @@ function _dhwRenderStep4Labour(takeoff, quotes){
     var hours = hasHoursOverride ? hoursVal : 0;
     totalHrs += hours;
     var lineLabour = hours * hourlyRate;
-    var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
+    // W7c: per-row no-labour state — priced lines with no positive hours.
+    var noLabour = r.priced && hours <= 0;
+    if(noLabour) noLabourCount++;
+    // W7c: row-class priority — no-labour amber tint wins over gap-flagged
+    // cream for priced zero-hours lines; gaps stay flagged-cream. A line
+    // can't be both priced-no-labour AND a gap (priced=false → noLabour=
+    // false), so the cases are disjoint; the ternary makes priority
+    // explicit for any future contributor.
+    var rowCls = noLabour ? ' class="dhw-row-nolabour"' :
+                 (!r.priced ? ' class="dhw-row-flagged"' : '');
     var gapMark = !r.priced
       ? '<span class="dhw-warn" title="No awarded supplier priced this line">&#9888;</span> '
       : '';
@@ -4582,6 +4605,20 @@ function _dhwRenderStep4Labour(takeoff, quotes){
     '<th class="dhw-num">Install hrs</th>' +
     '<th class="dhw-num">Labour</th>' +
   '</tr>';
+  // W7c: zero-labour warning banner, rendered only when there's at least
+  // one qualifying priced non-excluded line with no hours entered. Live —
+  // _dhwSetLineHours re-renders the modal, so entering hours decrements
+  // N and clears the row tint automatically; reaching zero hides the
+  // banner. Suppressed under supply-only structurally (this code path
+  // is unreachable when supply-only is ON).
+  var noLabourWarn = '';
+  if(noLabourCount > 0){
+    var verb = noLabourCount === 1 ? 'has' : 'have';
+    var lineWord = noLabourCount === 1 ? 'line' : 'lines';
+    noLabourWarn = '<div class="dhw-nolabour-warn">' +
+      '&#9888; ' + noLabourCount + ' ' + lineWord + ' ' + verb + ' no labour entered' +
+    '</div>';
+  }
   return '<div class="dhw-section">' +
     '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
     supplyOnlyControl +
@@ -4592,6 +4629,7 @@ function _dhwRenderStep4Labour(takeoff, quotes){
         '<tbody>' + trs + subtotalRow + '</tbody>' +
       '</table>' +
     '</div>' +
+    noLabourWarn +
   '</div>';
 }
 
