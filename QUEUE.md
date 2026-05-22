@@ -1,157 +1,59 @@
-# Surveillance Markup Tool — Work Queue
+# Surveillance / Door Hardware Markup Tool — Work Queue
 
-> **This is the canonical backlog.** It lives in the project files so every chat in this
-> project can see it. To update it: ask Claude to produce a revised version, then paste
-> the result back into the project files (chats can't write to project files directly).
->
-> Last updated: 2026-05-20
+_Canonical manually-maintained queue. Last regenerated after the M3.5 wizard merge (`89cd2fe` on main)._
 
 ---
 
-## 🔴 Next session — do this first
+## JUST SHIPPED (on main)
 
-**Resume Door Hardware at M3.** M1 (data engine) and M2 (file pickers + parser) are
-shipped and validated against the real Westmount fixtures. The manager modal is next.
-
-Before starting M3:
-1. **Load the saved test-fixture project** (takeoff + CC Craig quote) instead of
-   re-importing the two CSVs. If a fixture project wasn't saved at the end of the
-   2026-05-20 session, re-import: real Allegion takeoff CSV, then CC Craig quote CSV
-   (supplier "CC Craig"), from `source-data/projects_demo/`.
-2. **Check commit ordering vs. the parallel Door Hardware chat.** A separate chat is
-   also working a Door Hardware workstream and edits the same file. `git pull` / `git
-   log` check before editing to avoid clobbering.
+- **Door Hardware M3.5 — 5-step Manager Wizard** (`89cd2fe`, merged from `dhw-wizard`, 17 commits `844a196`->`89cd2fe`).
+  - 5-step flow: Comparison -> Hardware -> AC Overlap -> Labour -> Summary. Clickable step indicator, Back/Continue/Save nav.
+  - Comparison: By Supplier (centered cost, Omissions count, Best Price blended-total row) + Best by Line (per-supplier columns, green-best, manual per-line supplier override). Award confirms on Continue; per-line picks stage without confirming; explicit Award buttons confirm instantly.
+  - Hardware: awarded list + Project Markup (default + per-line override) + editable Unit sell with two-way markup back-calc.
+  - AC Overlap: advisory relocated.
+  - Labour: per-line install hours, hourly rate, include-labour-as-column-combine toggle.
+  - Summary: full internal detail, per-line Total column, sums row, items-not-priced count, Project Totals box (Hardware/Labour/Total/Expected Hours/Expected Margin/Expected Gross Margin), table tools under a Columns popover (sort, per-column filter, row hide, show-only-flagged/gaps, column show/hide — all viewing lenses, totals always reflect all lines).
+  - Tab/Enter column-down keyboard nav across all editable fields. Sticky navy table headers. Tinted section bands. Humanized tooltips + fixed FLAGS info-icon. Markup default-50 bug fixed (root cause: normalizer fallback was 0).
 
 ---
 
-## 🟡 Recently shipped (2026-05-20 session)
+## NEXT UP
 
-| Item | State |
-| --- | --- |
-| Cleanup pass (M1–M6) | ✅ Shipped, tagged `cleanup` (`e26afb6`) |
-| Pricing Foundation (M1–M4) | ✅ Shipped, tagged `pricing-foundation` (`bfd5c36`) |
-| Door Hardware **M1** (data engine) | ✅ Shipped (`b78bd06`) |
-| Door Hardware **M2** (file pickers + parser) | ✅ Shipped (`95d9cee`), validated on real fixtures |
-
-**Cleanup pass** covered: left-pane header relabels (all modes, static `<Mode> <Tier>`
-pattern, styling unified), Camera Styles tile icons redrawn to match canvas markers,
-fisheye FOV cone fix (degenerate-tan reach bug + pre-fix save migration), Camera
-Accessories section (CMVR/NVR relocated; Switch tile deferred), Equipment Labels
-tri-state visibility group (persisted in `projectInfo.labelVisibility`), docs v1.6.
-
-**Pricing Foundation** covered: schema + localStorage helpers + status/banner (M1),
-File menu Load/Clear Pricing + file picker + error modal (M2), `source-data/`
-template + README + gitignore exceptions (M3), docs v1.7. The app can now load an
-external price book; cost *rendering* is a later pass (Take-Off Pricing, below).
-
-**Door Hardware M1+M2** covered: full DOM-free data engine (CSV parser handling both
-takeoff and priced-quote states, recompute+flag, dual comparison views, award
-resolution, pricing/labour math, RFQ builder, AC-overlap advisory), `doorHardware`
-state + persistence (save v17→v18, backfill), and the four File-menu actions (Import
-Takeoff, Import Quote, Export RFQ, Attach Door Schedule). **Two real-file parser fixes**
-landed during M2 validation: position-based price-column detection (Allegion puts
-LIST/COST/TOTAL offset on the first group-header row, not on per-block column headers)
-and currency-string parsing ($ signs, quoted thousands). Validated end-to-end against
-the real CC Craig quote: 57/66 lines priced, package cost **$138,020.21 recomputed**
-(vs. the sheet's understated total), **32 lines flagged** for broken `cost+qty` totals.
+### W7 — Supply-only + Exclude + Zero-labour warning (interdependent batch, brief drafted)
+Ship together — the zero-labour warning depends on exclude existing.
+1. **Supply-only toggle** (Step 4, above hourly rate): ON hides labour table + hourly rate, shows "Supply Only" notice, labour excluded from all totals. Persisted `hardwarePricing.supplyOnly`, default false.
+2. **Exclude** (Step 2 Hardware, per-line, ANY line, reversible): excluded lines removed from the hardware schedule + dropped entirely from cost/sell/labour totals. New "Excluded" section at the bottom of Step 5, ABOVE the Project Totals box, showing line identifiers only (Qty/SKU/Description/Finish). State on `hardwareAward.excluded` (Set/map of matchKeys, additive, backfill empty).
+3. **Zero-labour warning** (bottom of Step 4): warning + highlight those rows. Counts ONLY priced lines that are NOT excluded AND NOT supply-only. Suppressed entirely when supply-only is ON.
 
 ---
 
-## 🟢 Active pass — Door Hardware (in progress)
+## DEFERRED — DOOR HARDWARE
 
-Spec: `HARDWARE_SPEC.md`. Import → quote → compare → award → markup → labour →
-proposal. No on-canvas placement (deferred future module).
-
-**Remaining milestones:**
-
-- **M3 — Manager modal** (Proposal → Door Hardware…). Takeoff list; quote list +
-  delete; View 1 (by-supplier: package cost, coverage, flag count) + View 2 (best-by-
-  line); award selector (whole-package | best-line); markup controls (project-default %
-  + per-line override); labour controls (hourly rate + per-line install hours +
-  include toggle); AC-overlap advisory display. `window.prompt`/`confirm` from M2 can
-  upgrade to styled inputs here.
-- **M4 — BOM section + proposal pages.** New DOOR HARDWARE BOM section (equipment-only,
-  after accessControl). Hardware Schedule proposal page (customer-facing sell pricing,
-  reuse riser table/overflow helpers). Door Schedule reference page (rasterize attached
-  PDF via pdf.js — mirror the floor-plan `sourceDocument` approach). Two new
-  `proposalSections` toggles (hardwareSchedule, doorSchedule; default ON).
-- **M5 — User guide v1.8.**
-
-**⚠️ M4 reconciliation decisions still pending** (spec predates recent passes):
-- **Proposal page order.** Spec's order is stale. Real order is Cover → BOM → Take-Off
-  → Riser → Plans. Where does the Hardware Schedule page sit? (Likely near BOM/Take-Off
-  since it's customer-facing pricing.) Where does the Door Schedule reference page sit?
-  (Likely late, near the floor plans — both are reference imagery.)
-- **Door-hardware labour rendering.** BOM is equipment-only now (no LABOR section), so
-  labour can't go "in/under DOOR HARDWARE" in the BOM as the spec says. Options: feed
-  the Take-Off page's Labor Summary, or render on the Hardware Schedule page itself.
-
-**Deferred within Door Hardware (per spec):** XLSX import (CSV-only v1; fast-follow),
-supplier ERP-format quote parsing (BG Distribution PDF — attach as reference only),
-master-BOM merge, placement/authoring, supplier portal.
+- **M4 — Door Hardware proposal pages.** Customer-facing Hardware Schedule page (sell only — never cost/markup/supplier; reuse riser table/overflow), Door Schedule reference page (rasterize attached PDF via pdf.js, mirroring sourceDocument). 2 proposalSections toggles. The includeLabour column-combine toggle drives separate-vs-combined labour presentation on the customer proposal. Open Q: where the Hardware Schedule sits in proposal order.
+- **PO consolidation / tie-break** (NEW this session). When best-line awarding finds two suppliers tied on a line's unit cost, default toward the supplier receiving the larger overall dollar share of the job (consolidate POs vs split for no savings). Surfaces at PO-generation. Design Qs: define "larger share" (total $ / line count / coverage); handle circularity (tie-break depends on totals which depend on tie-breaks); interaction with manual per-line override. Part of a future PO pass.
+- **Zero-match import guard.** When an imported quote matches zero takeoff lines (e.g. BG ERP-format file), warn "unsupported format — attach as reference" instead of creating a confusing 0.00 / 0-coverage row.
+- **Supplier ERP-format quote import (BG).** Fuzzy SKU reconciliation across vendor formats. Real BG fixture is supplier ERP format (different columns, SKU notation like FALC-T581P6DAN626 vs takeoff's T581CP6 DAN). Substantial own pass.
+- **"Priced by others" -> Overlap subsection.** Move by-others lines out of the main hardware flow into a subsection under AC Overlap. Pairs with the unpriced-warning below.
+- **Unpriced-hardware warning on step indicator.** Hover: "WARNING: Not all pieces have been priced!" Fires on any genuinely-unpriced line. Largely subsumed by W7 exclude (a line is then either priced or excluded), but the by-others subsection split still wanted.
+- **AC-overlap line removal/exclude** (M3-polish deferral) — may be subsumed by W7 exclude; revisit after W7.
+- **Flag-annotation notes** (M3-polish deferral). Click-to-annotate notes on flagged lines. Needs storage/persistence/UI design.
+- **Take-Off Pricing pass** (big). Cost columns/totals on the Take-Off page, consuming the Pricing Foundation. Build real `source-data/pricing.json` from vendor books FIRST.
 
 ---
 
-## 📋 Backlog (after Door Hardware)
+## DEFERRED — OTHER MODULES
 
-### 1. Take-Off Pricing  *(the big one — turns Take-Off into a priced quote)*
-Cost columns + totals on the Take-Off page, consuming the Pricing Foundation. New
-sections: Equipment Subtotal / Cabling / Labor / Tax / Margin / Grand Total. Labour
-composes `LABOR_RATES` (hrs/task) × pricing book's `labor_rate_per_hour` ($/hr).
-**Recommendation:** build a real `source-data/pricing.json` from the vendor books
-FIRST so cost rendering is verifiable against real numbers, not template zeros.
-
-### 2. Switch Topology  *(spun off from Cleanup #9B)*
-Placed switches replace auto-derived ones. Two-tier cabling: camera → switch → CMVR.
-Switch appears in the riser as an intermediate tier. Camera-to-switch assignment
-(nearest? manual?). BOM replacement of auto-derived switch rows. **Likely merges with
-Manual Cable Routing + Conduit** (same domain: real cable topology vs. straight-line
-approximation). The Camera Accessories section (shipped in Cleanup M4) already exists
-to hold the Switch tile when this pass builds it.
-
-### 3. Manual cable routing + conduit  *(quoting-accuracy pass)*
-Replace the straight-line × multiplier cable model with **user-drawn polyline paths**
-(waypoints camera → head-end, sum segments). Add **conduit** as a per-segment flag
-feeding a new BOM conduit auto-row. Open questions: click-vs-draw UX, wall-snap, conduit
-catalog, cable tray, multiplier as fallback, backwards compat (default current behavior
-until a path is drawn).
-
-### 4. Camera Details Panel Redesign  *(spun off from Cleanup #8)*
-Field reorder: Label → Manufacturer/Model → Spec & DORI (combined) → Reach slider →
-Mount Height slider → Angle slider → Notes. DORI relocated from left pane to right.
-Three sliders with **two-way sync** to the existing canvas arrowhead-drag manipulation
-(reach is spec-defaulted but user-adjustable; angle is the aim). FOV cone updates live.
-Spun off from Cleanup because the two-way slider↔canvas sync is real engineering.
-
-### 5. PDF scale-marker auto-recognition
-Let the user select a scale bar on an imported PDF; extract calibration, replacing
-manual entry. **Design TBD.** Open questions: OCR library (Tesseract.js?), scale bars
-vs. ratios (`1:100`), graphic-only bars with no label, per-page scales in multi-page
-PDFs, user-assisted (click 2 endpoints + OCR) vs. full auto.
-
-### 6. Catalog / rules work (smaller items)
-- Rules Page editor (per-bedroom-type IoT rules)
-- LuxerOne SKU import
-- Doorbird full catalog
-- Hanwha import
+- **Switch Topology** (Cleanup #9B). Placed switches, two-tier camera->switch->CMVR cabling. Likely merges with Manual Cable Routing + Conduit.
+- **Manual Cable Routing + Conduit.** Replace straight-line x multiplier cable model with user-drawn polyline paths. Add conduit as per-segment flag feeding a BOM conduit auto-row. Open Qs: click-vs-draw UX, wall-snap, conduit catalog, cable tray, multiplier fallback, backwards compat.
+- **Camera Details Panel Redesign** (Cleanup #8). Sliders with two-way canvas sync.
+- **PDF scale-marker auto-recognition.** User selects scale bar on imported PDF, tool extracts calibration. Open Qs: OCR library (Tesseract.js?), scale bars vs ratios, graphic-only bars, per-page scales, user-assisted vs full auto.
+- **Rules Page editor.**
+- **Catalog imports** — LuxerOne / Doorbird / Hanwha.
 
 ---
 
-## 🧹 Housekeeping (do opportunistically)
-- **Dead-code sweep.** Orphaned `.lp-breadcrumb` CSS (Cleanup M1 left it; surgical-
-  changes rule). `computeAutoCableRows()` orphaned since BOM Restructure. Sweep when
-  convenient.
-- **Install LibreOffice on the Windows machine.** The docs build script can't
-  auto-regenerate the PDF without `soffice` on PATH — docx is canonical, PDF is built
-  manually in Word for now. Recurring caveat; install kills it.
+## HOUSEKEEPING
 
----
-
-## Notes
-- Project conventions: vanilla JS, `var` declarations, single HTML file, no new
-  dependencies (CDN libs are pdf.js and jsPDF only).
-- **No real users on shipped builds yet** → save-format/backwards-compat breaks are
-  acceptable. Revisit when distribution begins.
-- A **parallel chat** is working a separate Door Hardware workstream on the same file.
-  Watch commit ordering: `git pull` / `git log` before editing on resume.
-- This file is for tracking only — it does not change tool behavior.
+- **Dead-code sweep.** Orphaned: `.lp-breadcrumb`, `.dhw-advisory`, `.dhw-award-summary.dhw-award-none`, `computeAutoCableRows()`, `_dhwRenderPricingAndLabour` (W1-orphaned, definitively dead post-wizard).
+- **Install LibreOffice** on the Windows machine — kills the recurring docs-PDF regen caveat (docx is canonical; PDF stale).
+- **User guide** currently v1.7. Door Hardware wizard layout not yet documented — update when stable.
