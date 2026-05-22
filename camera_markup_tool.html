@@ -4004,9 +4004,11 @@ function _dhwFmtMoney(n){
 }
 
 // Comparison view state (M3b). Module-local, not persisted; resets to
-// 'bySupplier' each session. The two values match the dispatch keys used
-// by _dhwRenderComparison / _dhwSetCompareView below.
-var _dhwActiveCompareView = 'bySupplier';
+// 'bestLine' each session (default switched from 'bySupplier' on dhw-w8 —
+// the click-to-select grid is the primary working view post-W8a). The two
+// values match the dispatch keys used by _dhwRenderComparison /
+// _dhwSetCompareView below. By Supplier remains available via its tab.
+var _dhwActiveCompareView = 'bestLine';
 
 // W6+++++: Step 5 Summary table-tools view-state. All session-only, reset
 // on every modal open. Never persisted, never affects totals/export —
@@ -4287,13 +4289,14 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
     '</div>';
 
   // No award yet → markup default control + hint pointing back to step 1.
-  // The brief is explicit on the wording: "Award a basis on the Comparison
-  // step to price the hardware."
+  // dhw-w8 wording: explicit instruction that supplier selection on the
+  // previous (Comparison) step is the prerequisite. Rendered bold so it
+  // reads as a hard gate, not a suggestion.
   if(!award || !award.basis){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Hardware</span></div>' +
       markupControl +
-      '<div class="dhw-empty" style="margin-top:12px;">Award a basis on the Comparison step to price the hardware.</div>' +
+      '<div class="dhw-empty" style="margin-top:12px;"><b>Choose supplier for each hardware line item before you can price hardware (previous step).</b></div>' +
     '</div>';
   }
 
@@ -5343,15 +5346,14 @@ function _dhwRenderComparison(takeoff, quotes){
   // No quotes yet → the quote-list section already shows the empty-state
   // advice, no need for an empty comparison panel.
   if(!quotes || quotes.length === 0) return '';
-  // Polish item 5: bold "Awarded" / "Unawarded" status pill beside the
-  // section header. Replaces the verbose "No award yet. Pick a basis below…"
-  // paragraph the section opened with — the pill is the primary cue; the
-  // detailed resolved-award summary still appears below when an award is set.
+  // hasAward gates the bit of header spacing below the award summary +
+  // tabs (when an award is set, the resolved-award summary block sits
+  // above the tabs and needs a small separator). The Awarded/Unawarded
+  // status pill that used to sit beside the section header was removed
+  // — the underlying staging/confirm gate is unchanged (Hardware step
+  // still requires award.basis), this is a visual-only removal.
   var award = doorHardware.hardwareAward;
   var hasAward = !!(award && award.basis);
-  var statusPill = hasAward
-    ? '<span class="dhw-status-pill dhw-status-awarded">Awarded</span>'
-    : '<span class="dhw-status-pill dhw-status-unawarded">Unawarded</span>';
   // Polish item 7 / W6 item 11: humanized comparison-explanation tooltip.
   // CSS-driven popover via data-tooltip attribute (see the styling below
   // on .dhw-info[data-tooltip]:hover::after) — same approach as the FLAGS
@@ -5376,7 +5378,6 @@ function _dhwRenderComparison(takeoff, quotes){
       '<span class="dhw-section-hdr-title">Comparison &amp; Award ' +
         '<span class="dhw-info" data-tooltip="' + _dhwEsc(compareTooltip) + '" aria-label="' + _dhwEsc(compareTooltip) + '">i</span>' +
       '</span>' +
-      statusPill +
     '</div>' +
     summary +
     (hasAward ? '<div style="height:14px;"></div>' : '') +
@@ -5457,7 +5458,7 @@ function _dhwRenderCompareBySupplier(takeoff, quotes){
     var isActive = (award && award.basis === 'whole' && award.supplierId === r.supplierName);
     var awardBtn = isActive
       ? '<button class="dhw-btn-small" disabled style="opacity:0.7; cursor:default;">Awarded</button>'
-      : '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardWhole(' + idx + ')">Award whole package</button>';
+      : '<button class="dhw-btn-small dhw-btn-primary" onclick="_dhwAwardWhole(' + idx + ')" title="Use this supplier for all lines (whole-package award).">ALL</button>';
     return '<tr>' +
       '<td><b>' + _dhwEsc(r.supplierName || '(unnamed)') + '</b></td>' +
       // W1: package cost CENTERED in its column (was right-aligned).
