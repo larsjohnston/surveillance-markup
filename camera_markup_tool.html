@@ -4011,7 +4011,6 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
     var unitCostCell = (unitCost == null)
       ? '<span class="dhw-gap">not priced</span>'
       : (_dhwFmtMoney(unitCost) + flagMark);
-    var unitSellCell = (unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(unitSell);
     var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
     var keyAttr = _dhwAttrJs(key);
     // Per-line markup override; blank = fall back to project default.
@@ -4020,6 +4019,19 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
       ' placeholder="' + _dhwEsc(markupDefault) + '"' +
       ' title="Per-line override; blank = use project default (' + _dhwEsc(markupDefault) + '%)"' +
       ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
+    // W6+: Unit sell is editable on priced lines — two-way bound with the
+    // Markup % cell. Both write to lineMarkupOverrides[matchKey]; editing
+    // sell back-calculates markup as (sell/cost - 1) × 100. Unpriced/gap
+    // lines stay read-only ("—") since back-calc requires a positive cost.
+    var unitSellCell;
+    if(unitSell == null){
+      unitSellCell = '<span class="dhw-gap">&mdash;</span>';
+    } else {
+      unitSellCell = '<input type="number" class="dhw-input-inline" style="width:90px;" min="0" step="0.01"' +
+        ' value="' + _dhwEsc(unitSell.toFixed(2)) + '"' +
+        ' title="Type a unit sell value — markup % recalculates from cost."' +
+        ' onchange="_dhwSetLineUnitSell(' + keyAttr + ', this.value, ' + unitCost + ')">';
+    }
     // W5: shared leading columns across all hardware-module step tables —
     // Qty · SKU · Description · Finish · Supplier — then per-step extras.
     return '<tr' + rowCls + '>' +
@@ -5142,6 +5154,42 @@ function _dhwSetLineMarkup(matchKey, raw){
     if(!isFinite(n) || n < 0) n = 0;
     pricing.lineMarkupOverrides[matchKey] = n;
   }
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+// W6+: two-way binding for the Step 2 Hardware table. The user can edit
+// EITHER markup % OR unit sell on a priced line; both write to the same
+// hardwarePricing.lineMarkupOverrides[matchKey] field. This setter takes
+// the user-typed unit sell value, back-calculates markup% as:
+//   markup = (sell / cost - 1) × 100
+// and writes that percentage. Editing unit sell is equivalent to typing
+// the corresponding markup directly.
+//
+// Behavior matches _dhwSetLineMarkup: blank input clears the override
+// (falls back to project default); negative markup clamps to 0 (sell
+// below cost is treated as 0% markup, so unit sell will display as the
+// cost on next render — same convention as the markup setter).
+//
+// Unpriced lines (no unit cost) shouldn't reach this setter — the render
+// keeps Unit sell read-only on those lines. The unitCost == null / <= 0
+// guard here is a defensive safety net only.
+function _dhwSetLineUnitSell(matchKey, raw, unitCost){
+  var pricing = doorHardware.hardwarePricing;
+  if(!pricing.lineMarkupOverrides) pricing.lineMarkupOverrides = {};
+  var s = String(raw == null ? '' : raw).replace(/^\s+|\s+$/g, '');
+  if(s === ''){
+    delete pricing.lineMarkupOverrides[matchKey];
+    markDirty();
+    renderDoorHardwareModal();
+    return;
+  }
+  if(typeof unitCost !== 'number' || !isFinite(unitCost) || unitCost <= 0) return;
+  var sell = parseFloat(s);
+  if(!isFinite(sell) || sell < 0) sell = 0;
+  var markup = (sell / unitCost - 1) * 100;
+  if(!isFinite(markup) || markup < 0) markup = 0;
+  pricing.lineMarkupOverrides[matchKey] = markup;
   markDirty();
   renderDoorHardwareModal();
 }
