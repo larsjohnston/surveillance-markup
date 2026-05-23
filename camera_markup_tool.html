@@ -1260,12 +1260,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   font:700 9px var(--font-ui); color:var(--text-muted); letter-spacing:.06em;
   text-transform:uppercase; padding:4px 2px 2px; line-height:1.2;
 }
-.sa-hint {
-  grid-column:1 / -1;
-  padding:8px 10px; border:1px dashed var(--border); border-radius:4px;
-  font:500 10px var(--font-ui); color:var(--text-muted); line-height:1.4;
-  background:#f9fafb;
-}
+/* Panel-cleanup P3 follow-up: .sa-hint CSS removed alongside the mailbox
+   Canada Post descriptive block — its only usage. Pattern matches the
+   other P3-removed hints. */
 .smart-apt-tile {
   /* Tile-conformity: matches the other tile classes for visual conformity.
      Identical outer box to .tier2-tile and .brand-tile (padding 7/4/5,
@@ -10636,15 +10633,15 @@ function _renderMailboxDrillDown(){
     allBrands: smartAptBrandsForType('mailbox')
   });
   // Mailbox Tier 2 is asymmetric:
-  //   - Canada Post → no SKUs in MAILBOX_DB; render a help hint.
+  //   - Canada Post → no SKUs in MAILBOX_DB; tier 2 stays empty (P3
+  //     follow-up: matches every other mode's silent-panel convention —
+  //     no descriptive placement instructions in the left panel anymore).
   //   - Custom → 1 SKU placeholder; render the standard SKU tile.
   var tier2 = '';
   if(currentMailboxBrand === 'Canada Post'){
-    tier2 = '<div class="sa-hint">' +
-              'Canada Post mailbox banks are sized-to-order. ' +
-              'Click on the floor plan to place a default 4×4 bank — ' +
-              'edit columns and rows in the right panel after placement.' +
-            '</div>';
+    // No tier 2 content for Canada Post — sized-to-order, click canvas
+    // to place a default 4×4 bank. (Previous .sa-hint block removed in
+    // the P3 follow-up so this mode matches the others.)
   } else if(currentMailboxBrand){
     var skus = Object.keys(MAILBOX_DB).filter(function(s){
       return MAILBOX_DB[s].brand === currentMailboxBrand;
