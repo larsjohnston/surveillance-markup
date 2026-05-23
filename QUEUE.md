@@ -1,59 +1,56 @@
 # Surveillance / Door Hardware Markup Tool — Work Queue
 
-_Canonical manually-maintained queue. Last regenerated after the Hardware Module merge (`48469ff` on main)._
+_Canonical manually-maintained queue. Last regenerated after the menu/panel/camera cleanup stretch (main around `2f672a1`)._
 
 ---
 
 ## JUST SHIPPED (on main)
 
-- **Hardware Module pass** (`48469ff`, M1–M5). Door Hardware is now a left-rail mode (key icon) with a home checklist canvas:
-  - M1: all left-rail icons unified to filled inline SVG (camera/AC converted from PNG); added Hardware (key) mode + full-coverage home overlay (zoom suppressed + scroll save/restore in hardware mode).
-  - M2: home canvas 6-row checklist with live status (door schedule / hardware schedule / RFQ / quotes / Price-the-Hardware launches wizard / Add-to-Proposal).
-  - M3: removed the 4 hardware actions from the File menu (now on the canvas); kept Load/Clear Pricing; fixed 4 stale error strings to point at the canvas.
-  - M4: customer-facing Hardware Schedule proposal page — SELL ONLY, after Riser before Plans, 2x2 presentation (line-by-line/lump-sum × separate/combined), excluded lines show "—", supply-only suppresses labour.
-  - M5: export-modal Hardware Schedule checkbox + 2x2 controls; home row 6 wired (syncs with modal); resolution safeguard — must-acknowledge warning at export when lines are neither priced nor excluded, plus the wizard Step 5 unresolved-lines banner.
-- Earlier: W8 (click-to-select + sums + non-cheapest flag + notes, `3ad1029`), W7 (supply-only + exclude + zero-labour warning, `03b87ed`), M3.5 wizard (`89cd2fe`).
+- **Menu + panel + camera cleanup stretch** (multiple small branches merged):
+  - Menus: removed File-menu pricing (Load/Clear) entries; View-menu Equipment Labels → top-level with hover-flyout children; removed the Tool menu entirely (Place head-end already a tile; Scale tool → new ruler icon top-right beside the eye).
+  - Left panels: camera models list → 5-wide tile grid (name only, spec on hover tooltip); removed all always-visible placement hints (all modes); removed per-page placed-device lists (all modes — selection/delete now canvas-only); removed AC Technology dropdown (defaults Dual-tech; right-pane control still changes it); removed the DORI Range panel section (View-menu DORI toggle is canonical).
+  - Camera accessories: added a **Network** tile beside CMVR/NVR — places a network switch on the canvas (place / drag-to-move / click-to-delete-armed / save-reload persist; minimal positional model, no SKU/topology yet).
+- **Hardware Module** (`48469ff`), **W8** (`3ad1029`), **W7** (`03b87ed`), **M3.5 wizard** (`89cd2fe`) — Door Hardware module complete with customer proposal output + resolution safeguard.
 
 ---
 
 ## NEXT UP
 
-_No active next pass — pick from Deferred. Natural candidates: the Hardware-Module follow-up cleanups (below), or a larger pass like Take-Off Pricing or the cross-tie data model._
+_No active next pass — pick from Deferred._
 
 ---
 
 ## HARDWARE MODULE — FOLLOW-UP CLEANUPS (flagged during M4/M5)
 
-- **Math-drift risk: shared sell-calc helper.** The M4 proposal page (`drawProposalHardwareSchedule`) re-implements per-row sell math instead of sharing the wizard Step 5 code. Same engine primitives so figures match today, but a future change to one could silently diverge. Extract a shared helper.
-- **Row 5 home-canvas counts are pre-exclude.** "57 priced, 9 omissions" uses raw resolveAward; the wizard Summary applies the exclude filter. Make row 5 exclude-aware (show resolved/unresolved truthfully) — pairs naturally with the safeguard already on row 6.
-- **Optional SKU column** on the customer Hardware Schedule. Currently description+finish only (SKU treated as installer-side). Some customers expect the spec'd model — add as an optional column if wanted.
-- **Description truncation** at 56 chars (line-by-line separate mode) clips long door-schedule descriptions. Make configurable or widen if it bites.
-- **Persist asymmetry:** hardware section toggle + 2x2 persist on-change; the other 5 export sections persist on-export (legacy). Unify if it causes confusion.
-- **Empty-state vs missing-takeoff:** hardware section ON but no takeoff → renders a one-line notice. Decide whether to hide the section entirely instead.
-- **Native confirm()** for the export safeguard gate — styled-modal upgrade is a future polish (matches W7/W8 native prompts).
-- **Orphaned PNG assets** `./Icons/dome_camera.png` + `./Icons/access_reader.png` — no longer referenced after M1's SVG conversion; delete in a housekeeping pass.
+- **Math-drift risk: shared sell-calc helper** — M4 proposal page re-implements per-row sell math vs. the wizard Step 5; extract a shared helper.
+- **Row 5 home-canvas counts are pre-exclude** — make exclude-aware to match the wizard / resolution safeguard.
+- **Optional SKU column** on the customer Hardware Schedule (currently description+finish only).
+- **Description truncation** at 56 chars (line-by-line separate) — make configurable.
+- **Persist asymmetry** — hardware section + 2x2 persist on-change; other 5 export sections persist on-export. Unify if confusing.
+- **Empty-state vs missing-takeoff** on the proposal page — decide whether to hide the section entirely when no takeoff.
+- **Native confirm()** for the export safeguard gate — styled-modal upgrade is future polish.
 
 ---
 
 ## DEFERRED — DOOR HARDWARE
 
-- **Cross-tie data model: door schedule <-> hardware schedule <-> floor plans** (known future architecture problem). A door on the floor plan ties to its door-schedule entry + hardware-schedule line(s) so the three imports share openings/keys. Today independent (PDF / CSV / canvas) with no linkage. Substantial data-model feature.
-- **PO consolidation / tie-break.** Tied unit cost between two suppliers → default toward the supplier getting the larger overall dollar share (consolidate POs). Surfaces at PO-generation. Design Qs: define "larger share"; circularity; manual-override interaction.
-- **Zero-match import guard.** Quote matching zero takeoff lines (BG ERP format) → warn "unsupported format, attach as reference" instead of a 0.00 / 0-coverage row.
-- **Supplier ERP-format quote import (BG).** Fuzzy SKU reconciliation across vendor formats. Substantial own pass.
-- **Suppliers import quotes directly into our database** (replaces the manual RFQ-email + CSV-import loop).
-- **"Priced by others" -> Overlap subsection.** Auto-move by-others lines into a subsection under AC Overlap.
-- **Take-Off Pricing pass** (big). Cost columns/totals on the Take-Off page, consuming the Pricing Foundation. Build real source-data/pricing.json from vendor books FIRST.
-- **Price-book direct integration.** Removes Load/Clear Pricing from the File menu entirely.
+- **Cross-tie data model: door schedule <-> hardware schedule <-> floor plans** (known future architecture problem). The three imports should share openings/keys.
+- **PO consolidation / tie-break** — tied unit cost → default toward the supplier getting the larger overall dollar share.
+- **Zero-match import guard** — quote matching zero takeoff lines → warn "unsupported format, attach as reference."
+- **Supplier ERP-format quote import (BG)** — fuzzy SKU reconciliation across vendor formats.
+- **Suppliers import quotes directly into our database** (replaces RFQ-email + CSV-import loop).
+- **"Priced by others" -> Overlap subsection** — auto-move by-others lines under AC Overlap.
+- **Take-Off Pricing pass** (big) — cost columns/totals on Take-Off, consuming the Pricing Foundation. Build real source-data/pricing.json first.
+- **Price-book direct integration** — its own module (the reason File-menu pricing was removed); will fully replace Load/Clear Pricing.
 
 ---
 
 ## DEFERRED — OTHER MODULES
 
-- **Switch Topology** (Cleanup #9B). Placed switches, two-tier camera->switch->CMVR cabling. Likely merges with Manual Cable Routing + Conduit.
-- **Manual Cable Routing + Conduit.** User-drawn polyline paths replacing straight-line x multiplier; conduit per-segment flag → BOM conduit row.
-- **Camera Details Panel Redesign** (Cleanup #8). Sliders with two-way canvas sync.
-- **PDF scale-marker auto-recognition.** Select scale bar on PDF → extract calibration. OCR lib TBD.
+- **Switch Topology** (Cleanup #9B) — NOW PARTIALLY STARTED: the Network switch tile (place/drag/delete/persist) shipped in the cleanup stretch with a minimal positional model (no SKU, no ports, single-per-page, no right-panel). The full pass extends this: camera->switch->CMVR two-tier cabling, multi-switch-per-page (switches[pageIdx] → array), switch selection + right-panel, drag already done. Likely merges with Manual Cable Routing + Conduit.
+- **Manual Cable Routing + Conduit** — user-drawn polyline paths replacing straight-line x multiplier; conduit per-segment flag → BOM conduit row.
+- **Camera Details Panel Redesign** (Cleanup #8) — sliders with two-way canvas sync.
+- **PDF scale-marker auto-recognition** — select scale bar on PDF → extract calibration. OCR lib TBD.
 - **Rules Page editor.**
 - **Catalog imports** — LuxerOne / Doorbird / Hanwha.
 
@@ -61,11 +58,12 @@ _No active next pass — pick from Deferred. Natural candidates: the Hardware-Mo
 
 ## HOUSEKEEPING
 
-- **Dead-code sweep.** Orphaned: `.lp-breadcrumb`, `.dhw-advisory`, `.dhw-award-summary.dhw-award-none`, `computeAutoCableRows()`, `_dhwRenderPricingAndLabour`, `.dhw-status-pill`/`-unawarded`/`-awarded`, `.dhw-line-override`, + the two orphaned PNG icon assets (above).
+- **`switches` (and `headends`) don't reset on raw PDF re-import** — pre-existing pattern; loading PDF B after placing on PDF A keeps stale positions referencing invalid page indices. Should reset in loadPDF. Pre-existing bug, flagged during the switch work.
+- **Dead-code sweep.** Orphaned CSS/JS accumulated: `.lp-breadcrumb`, `.dhw-advisory`, `.dhw-award-summary.dhw-award-none`, `computeAutoCableRows()`, `_dhwRenderPricingAndLabour`, `.dhw-status-pill`/`-unawarded`/`-awarded`, `.dhw-line-override`, `.tier3-row`, `.hint`/`.reader-hint` (removed-element rules), `#dori-info*`, the orphaned PNG icon assets (dome_camera.png / access_reader.png), and the various null-safe no-op list renderers (updateList/updateAcList/etc.) + updateDoriInfo + updateReaderVariant call sites left as no-ops.
 - **Stray untracked file** `PASS_DHW_M3_POLISH_BRIEF.md` in repo root — add or delete.
 - **Process note:** Claude Code once committed a brief directly to `main` (W8). Watch for agent self-commits to main.
 - **Install LibreOffice** on Windows — kills the docs-PDF regen caveat.
-- **User guide** v1.7. Wizard + W7 + W8 + Hardware Module undocumented — update when stable.
+- **User guide** v1.7 — wizard + W7 + W8 + Hardware Module + the cleanup-stretch UI changes all undocumented; update when stable.
 
 ---
 
@@ -73,5 +71,6 @@ _No active next pass — pick from Deferred. Natural candidates: the Hardware-Mo
 
 - ~~Flag-annotation notes~~ — W8c.
 - ~~AC-overlap line removal/exclude~~ — W7 Exclude.
-- ~~Unpriced-warning on step indicator~~ — Hardware Module resolution safeguard (M5 + wizard Step 5 banner).
-- ~~Standalone "M4 proposal pages"~~ — absorbed into the Hardware Module pass.
+- ~~Unpriced-warning on step indicator~~ — Hardware Module resolution safeguard.
+- ~~Standalone "M4 proposal pages"~~ — absorbed into Hardware Module.
+- ~~Camera placed-list / hints / DORI panel section~~ — removed in the cleanup stretch.
