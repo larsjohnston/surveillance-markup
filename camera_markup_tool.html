@@ -1424,12 +1424,14 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <div class="menu-divider"></div>
         <button class="menu-item" id="btn-pricing-load" onclick="openPricingFilePicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Pricing&hellip;</span></button>
         <button class="menu-item" id="btn-pricing-clear" onclick="confirmClearPricing()"><span class="menu-check">&#10003;</span><span class="menu-label">Clear Pricing</span></button>
-        <!-- Door Hardware M2: import/export hardware data. -->
-        <div class="menu-divider"></div>
-        <button class="menu-item" id="btn-dhw-takeoff"  onclick="openHardwareTakeoffPicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Import Hardware Takeoff (CSV)&hellip;</span></button>
-        <button class="menu-item" id="btn-dhw-quote"    onclick="openHardwareQuotePicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Import Hardware Quote (CSV)&hellip;</span></button>
-        <button class="menu-item" id="btn-dhw-rfq"      onclick="exportHardwareRfq()"><span class="menu-check">&#10003;</span><span class="menu-label">Export RFQ (CSV)</span></button>
-        <button class="menu-item" id="btn-dhw-schedule" onclick="openDoorSchedulePicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Attach Door Schedule (PDF)&hellip;</span></button>
+        <!-- Hardware-Module M3: the four hardware actions (Import Takeoff,
+             Import Quote, Export RFQ, Attach Door Schedule) used to live
+             here. They moved onto the Hardware home canvas (key icon, left
+             rail) — the underlying handlers (openHardwareTakeoffPicker,
+             openHardwareQuotePicker, exportHardwareRfq, openDoorSchedulePicker)
+             are unchanged; the canvas tiles call them directly. Load/Clear
+             Pricing stay above — they'll move later when price books
+             integrate directly. -->
       </div>
     </div>
     <div class="menu" data-menu="view">
