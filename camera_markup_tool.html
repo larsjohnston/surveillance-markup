@@ -6860,7 +6860,13 @@ var bomTierFilter = 'all';
 var projectInfo = {
   name:'', ref:'', client:'', address:'', date:'', valid:'',
   sales:'', company:'', scope:'',
-  proposalSections: { cover:true, bom:true, takeOff:true, riser:true, plans:true },
+  // Hardware-Module M4: hardware section default OFF until the user opts
+  // in (M5 will add the export-modal checkbox). proposalHardware holds the
+  // 2×2 presentation choice for the Hardware Schedule page — detail
+  // (lineByLine | lump) × split (separate | combined). M5 wires the
+  // controls; M4's defaults are line-by-line + separate per the brief.
+  proposalSections: { cover:true, bom:true, takeOff:true, riser:true, hardware:false, plans:true },
+  proposalHardware: { detail:'lineByLine', split:'separate' },
   // Pass Left-Pane: project-wide variant defaults for the AC drill-down.
   // Persisted in the JSON save (proposed v15 — version bump in M5).
   acDefaults: cloneAcDefaults(),
@@ -12798,7 +12804,7 @@ function applyProjectState(data){
     }
   });
   if(!projectInfo.proposalSections){
-    projectInfo.proposalSections = { cover:true, bom:true, takeOff:true, riser:true, plans:true };
+    projectInfo.proposalSections = { cover:true, bom:true, takeOff:true, riser:true, hardware:false, plans:true };
   }
   // Take-Off M3: backfill takeOff key on saves predating this milestone.
   // `!== false` semantics (used at gate sites) mean undefined is also
@@ -12806,6 +12812,22 @@ function applyProjectState(data){
   // round-trips are stable.
   if(typeof projectInfo.proposalSections.takeOff !== 'boolean'){
     projectInfo.proposalSections.takeOff = true;
+  }
+  // Hardware-Module M4: backfill hardware section (default OFF on older
+  // saves — opt-in via the M5 export-modal checkbox). proposalHardware
+  // backfill defaults the 2×2 presentation choice to line-by-line +
+  // separate. Both additive — no save-format version bump.
+  if(typeof projectInfo.proposalSections.hardware !== 'boolean'){
+    projectInfo.proposalSections.hardware = false;
+  }
+  if(!projectInfo.proposalHardware || typeof projectInfo.proposalHardware !== 'object'){
+    projectInfo.proposalHardware = { detail:'lineByLine', split:'separate' };
+  }
+  if(projectInfo.proposalHardware.detail !== 'lump'){
+    projectInfo.proposalHardware.detail = 'lineByLine';
+  }
+  if(projectInfo.proposalHardware.split !== 'combined'){
+    projectInfo.proposalHardware.split = 'separate';
   }
   // Pass Left-Pane (v15 backfill): saves predating the AC drill-down lack
   // projectInfo.acDefaults. Default it so M3/M4 reads don't NPE. M5 wraps
@@ -13143,14 +13165,19 @@ async function runExportPDF(){
     takeOff:     document.getElementById('export-takeoff').checked,
     riser:       document.getElementById('export-riser').checked,
     plans:       document.getElementById('export-plans').checked,
-    currentOnly: document.getElementById('exp-current-only').checked
+    currentOnly: document.getElementById('exp-current-only').checked,
+    // Hardware-Module M4: no export-modal checkbox yet (M5 adds it). Read
+    // directly from projectInfo.proposalSections.hardware so the page is
+    // gated on the persisted toggle; defaults to false → page omitted.
+    hardware:    !!(projectInfo.proposalSections && projectInfo.proposalSections.hardware)
   };
   projectInfo.proposalSections = {
-    cover:   opts.cover,
-    bom:     opts.bom,
-    takeOff: opts.takeOff,
-    riser:   opts.riser,
-    plans:   opts.plans
+    cover:    opts.cover,
+    bom:      opts.bom,
+    takeOff:  opts.takeOff,
+    riser:    opts.riser,
+    hardware: opts.hardware,
+    plans:    opts.plans
   };
   markDirty();
   closeExportModal();
@@ -13216,6 +13243,18 @@ async function runExportPDF(){
     showProgress('Composing riser diagram\u2026',25);
     startSection('letter','portrait');
     drawProposalRiser(doc, pageW, pageH, startSection);
+  }
+
+  // Hardware Schedule (M4) — customer-facing sell-only page. Sits between
+  // Riser and Plans per the brief. Gated on opts.hardware (toggle off by
+  // default; M5 wires the export-modal checkbox to set it). The page
+  // renders even with no awarded data — it self-empties with a notice —
+  // because once the user opts in we want the page to appear consistently;
+  // M5 also adds the unresolved-line warning at generation time.
+  if(opts.hardware){
+    showProgress('Composing hardware schedule…',28);
+    startSection('letter','portrait');
+    drawProposalHardwareSchedule(doc, pageW, pageH, startSection);
   }
 
   // ── Floor Plan Pages ─────────────────────────────────────────────────
@@ -14986,6 +15025,295 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
   });
 }
 
+// ─── Hardware Schedule (M4) ─────────────────────────────────────────────────
+// Customer-facing Door Hardware page. SELL ONLY — no cost, markup, supplier
+// names, flags, or any internal data leaks onto this page. Sits between the
+// Riser and the floor Plans in proposal order (gated by
+// projectInfo.proposalSections.hardware; M5 wires the export-modal toggle).
+//
+// Reads the same resolved-award pricing the wizard Step 5 Summary uses
+// (resolveAward → dhwUnitSell per line, dhwLabourTotal for labour Σ), so
+// the totals match what the integrator saw inside the wizard. Excluded
+// (W7 "by others") lines render in the line-by-line views as "—" — the
+// honest out-of-scope signal — and contribute 0 to the totals. Unresolved
+// (missed) lines also render "—" defensively; the M5 proposal-generation
+// gate is the loud warning that's supposed to catch them first.
+//
+// Four presentation combinations (M5 controls flip projectInfo.proposalHardware):
+//   detail × split = lineByLine × separate (default), lineByLine × combined,
+//   lump × separate, lump × combined.
+// Supply-only mode (pricing.supplyOnly) suppresses labour from all four —
+// "combined" then degenerates to "Hardware" only (we relabel the row so
+// the customer doesn't think installation is $0 included).
+//
+// Page chrome: drawPageHeader + drawPageFooter (matches BOM/Take-Off/Riser).
+// Overflow: line-by-line mode adds continuation pages with the column
+// header redrawn at the top of each (mirrors drawRiserSchedule's pattern).
+function drawProposalHardwareSchedule(doc, W, H, startSection){
+  drawPageHeader(doc, W, 'Hardware Schedule');
+
+  var cfg = projectInfo.proposalHardware || {};
+  var detail = (cfg.detail === 'lump')      ? 'lump'     : 'lineByLine';
+  var split  = (cfg.split  === 'combined')  ? 'combined' : 'separate';
+
+  var takeoff = doorHardware.importedTakeoff;
+  var quotes  = doorHardware.hardwareQuotes || [];
+  var award   = doorHardware.hardwareAward;
+  var pricing = doorHardware.hardwarePricing || {};
+  var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 50;
+  var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
+  var supplyOnly    = !!pricing.supplyOnly;
+  var overrides     = pricing.lineMarkupOverrides || {};
+  var hoursMap      = pricing.lineInstallHours    || {};
+
+  var leftX  = 40;
+  var rightX = W - 40;
+  var y      = 80;
+
+  // Empty-state guard. If there's no takeoff at all, render a one-line
+  // notice so the page isn't a blank slab. (The page only renders when
+  // M5's section toggle is on; an empty-state page from the user opting
+  // in without a takeoff is still preferable to a silent omission.)
+  var hasTakeoff = !!(takeoff && Array.isArray(takeoff.lines) && takeoff.lines.length > 0);
+  if(!hasTakeoff){
+    doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120,120,140);
+    doc.text('No hardware schedule data — no takeoff imported.', leftX, y + 8);
+    drawPageFooter(doc, W, H);
+    return;
+  }
+
+  // Build per-line rows. Same math as _dhwRenderStep5Summary, stripped of
+  // anything the customer shouldn't see (cost, markup, supplier name, flag,
+  // override-marker, install hours). isShown=false → render "—" in price
+  // columns AND skip from totals (excluded OR unresolved/missed line).
+  var resolved = resolveAward(takeoff, quotes, award);
+  var rows = resolved.map(function(r){
+    var t = r.takeoffLine || {};
+    var qty = (typeof t.qty === 'number') ? t.qty : 0;
+    var excluded = _dhwIsExcluded(r.matchKey);
+    var shown = r.priced && !excluded;
+
+    var unitCost = r.priced ? r.awardedUnitCost : null;
+    var override = overrides[r.matchKey];
+    var hasOverride = (typeof override === 'number' && isFinite(override));
+    var markup = hasOverride ? override : markupDefault;
+    var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, markup);
+    var extSell  = (unitSell == null) ? null : qty * unitSell;
+
+    var hoursVal = hoursMap[r.matchKey];
+    var hasHours = !supplyOnly && (typeof hoursVal === 'number' && isFinite(hoursVal));
+    var hours    = hasHours ? hoursVal : 0;
+    var labour   = hours * hourlyRate;
+
+    return {
+      qty: qty,
+      description: t.description || '',
+      finish:      t.finish      || '',
+      hardwareSell: shown && extSell != null ? extSell : null,
+      labourSell:   shown && hasHours        ? labour  : null,
+      isShown:      shown
+    };
+  });
+
+  // Totals — sum only "shown" rows (priced + non-excluded). Supply-only
+  // already zeroed labour at the row level via hasHours=false.
+  var sumHardware = 0;
+  var sumLabour   = 0;
+  rows.forEach(function(row){
+    if(row.hardwareSell != null) sumHardware += row.hardwareSell;
+    if(row.labourSell   != null) sumLabour   += row.labourSell;
+  });
+  var sumTotal = sumHardware + sumLabour;
+
+  // Subtitle — describes the presentation mode in customer-friendly terms.
+  doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120, 120, 140);
+  var subtitle;
+  if(detail === 'lump'){
+    subtitle = supplyOnly
+      ? 'Door hardware — lump sum (supply only)'
+      : (split === 'combined'
+          ? 'Door hardware — lump sum (hardware + installation combined)'
+          : 'Door hardware — lump sum (hardware + installation separate)');
+  } else {
+    subtitle = supplyOnly
+      ? 'Door hardware — itemized (supply only)'
+      : (split === 'combined'
+          ? 'Door hardware — itemized (hardware + installation combined)'
+          : 'Door hardware — itemized (hardware + installation separate)');
+  }
+  doc.text(subtitle, leftX, y);
+  y += 18;
+
+  // Locally-scoped helpers (mirror Take-Off / Riser-Schedule patterns).
+  function fmtMoney(n){
+    return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function fitText(v, maxChars){
+    var s = (v == null) ? '' : String(v);
+    if(s.length > maxChars) s = s.slice(0, maxChars - 1) + '…';
+    return s;
+  }
+
+  // ── Lump-sum branch ─────────────────────────────────────────────────────
+  if(detail === 'lump'){
+    var blockX = leftX + 6;
+    var blockW = 300;
+    doc.setFont('courier','normal'); doc.setFontSize(11);
+    if(supplyOnly){
+      // No labour — single Hardware line.
+      doc.setTextColor(40, 40, 60);
+      doc.text('Hardware:', blockX, y + 10);
+      doc.setFont('courier','bold');
+      doc.text(fmtMoney(sumTotal), blockX + blockW, y + 10, { align: 'right' });
+      y += 24;
+    } else if(split === 'combined'){
+      // Combined — one combined "Hardware & Installation" line.
+      doc.setTextColor(40, 40, 60);
+      doc.text('Hardware & Installation:', blockX, y + 10);
+      doc.setFont('courier','bold');
+      doc.text(fmtMoney(sumTotal), blockX + blockW, y + 10, { align: 'right' });
+      y += 24;
+    } else {
+      // Separate — three lines: Hardware, Installation, Total.
+      doc.setTextColor(40, 40, 60);
+      doc.text('Hardware:', blockX, y + 10);
+      doc.text(fmtMoney(sumHardware), blockX + blockW, y + 10, { align: 'right' });
+      y += 18;
+      doc.text('Installation:', blockX, y + 10);
+      doc.text(fmtMoney(sumLabour), blockX + blockW, y + 10, { align: 'right' });
+      y += 12;
+      doc.setDrawColor(200, 32, 44); doc.setLineWidth(0.8);
+      doc.line(blockX, y, blockX + blockW, y);
+      y += 14;
+      doc.setFont('courier','bold'); doc.setTextColor(200, 32, 44);
+      doc.text('Total:', blockX, y + 10);
+      doc.text(fmtMoney(sumTotal), blockX + blockW, y + 10, { align: 'right' });
+      y += 24;
+    }
+    drawPageFooter(doc, W, H);
+    return;
+  }
+
+  // ── Line-by-line branch ────────────────────────────────────────────────
+  // Column layout. Right-aligned $ columns; left-aligned qty + description.
+  // Description maxChars tuned so the right-column stack never collides
+  // with the description text at 8 pt courier (~4.8 pt/char).
+  var cols;
+  if(supplyOnly){
+    cols = [
+      { label:'QTY',         x: leftX + 5,    align: 'left',  maxChars: 5  },
+      { label:'DESCRIPTION', x: leftX + 45,   align: 'left',  maxChars: 78 },
+      { label:'PRICE',       x: rightX - 5,   align: 'right', maxChars: 14 }
+    ];
+  } else if(split === 'combined'){
+    cols = [
+      { label:'QTY',         x: leftX + 5,    align: 'left',  maxChars: 5  },
+      { label:'DESCRIPTION', x: leftX + 45,   align: 'left',  maxChars: 78 },
+      { label:'PRICE',       x: rightX - 5,   align: 'right', maxChars: 14 }
+    ];
+  } else {
+    cols = [
+      { label:'QTY',         x: leftX + 5,    align: 'left',  maxChars: 5  },
+      { label:'DESCRIPTION', x: leftX + 45,   align: 'left',  maxChars: 56 },
+      { label:'HARDWARE',    x: rightX - 175, align: 'right', maxChars: 12 },
+      { label:'INSTALL',     x: rightX - 90,  align: 'right', maxChars: 12 },
+      { label:'TOTAL',       x: rightX - 5,   align: 'right', maxChars: 12 }
+    ];
+  }
+
+  function drawColHeaders(){
+    var rowH = 14;
+    ensureSpace(rowH + 12);
+    doc.setFillColor(31, 41, 55);
+    doc.rect(leftX, y - 10, rightX - leftX, rowH, 'F');
+    doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+    cols.forEach(function(c){
+      doc.text(c.label, c.x, y, { align: c.align });
+    });
+    y += rowH;
+  }
+  function drawDataRow(values, rowIdx, mutedRow){
+    var rowH = 12;
+    ensureSpace(rowH);
+    if(rowIdx % 2 === 1){
+      doc.setFillColor(245, 244, 240);
+      doc.rect(leftX, y - 9, rightX - leftX, rowH, 'F');
+    }
+    doc.setFont('courier','normal'); doc.setFontSize(8);
+    if(mutedRow) doc.setTextColor(130, 130, 140);
+    else         doc.setTextColor(40, 40, 60);
+    cols.forEach(function(c, ci){
+      doc.text(fitText(values[ci], c.maxChars), c.x, y, { align: c.align });
+    });
+    y += rowH;
+  }
+  function ensureSpace(needed){
+    if(y + needed > H - 50){
+      drawPageFooter(doc, W, H);
+      doc.addPage('letter','portrait');
+      drawPageHeader(doc, W, 'Hardware Schedule (cont.)');
+      y = 80;
+      // Redraw column headers on continuation so the customer always sees
+      // what each column means without flipping back to page 1.
+      drawColHeaders();
+    }
+  }
+
+  drawColHeaders();
+
+  rows.forEach(function(row, idx){
+    var qtyText = row.qty ? String(row.qty) : '';
+    var descFull = row.description + (row.finish ? ' (' + row.finish + ')' : '');
+    var values;
+    if(supplyOnly || split === 'combined'){
+      var price;
+      if(!row.isShown){
+        price = '—';
+      } else {
+        var p = (row.hardwareSell || 0) + (row.labourSell || 0);
+        price = fmtMoney(p);
+      }
+      values = [qtyText, descFull, price];
+    } else {
+      var hw = row.isShown ? (row.hardwareSell != null ? fmtMoney(row.hardwareSell) : '—') : '—';
+      var lb = row.isShown ? (row.labourSell   != null ? fmtMoney(row.labourSell)   : '—') : '—';
+      var tot;
+      if(!row.isShown) tot = '—';
+      else tot = fmtMoney((row.hardwareSell || 0) + (row.labourSell || 0));
+      values = [qtyText, descFull, hw, lb, tot];
+    }
+    drawDataRow(values, idx, !row.isShown);
+  });
+
+  // ── Totals block ───────────────────────────────────────────────────────
+  // Right-aligned figures matching the table's price columns. Grand total
+  // gets the red accent rule above (matches Take-Off / Cover totals).
+  y += 6;
+  function drawTotalRow(label, value, grand){
+    ensureSpace(14);
+    if(grand){
+      doc.setDrawColor(200, 32, 44); doc.setLineWidth(0.8);
+      doc.line(rightX - 175, y - 8, rightX - 5, y - 8);
+    }
+    doc.setFont('courier','bold'); doc.setFontSize(9);
+    doc.setTextColor(grand ? 200 : 40, grand ? 32 : 40, grand ? 44 : 60);
+    doc.text(label, rightX - 175, y, { align: 'left' });
+    doc.text(value, rightX -   5, y, { align: 'right' });
+    y += 14;
+  }
+  if(supplyOnly){
+    drawTotalRow('Total:', fmtMoney(sumTotal), true);
+  } else if(split === 'combined'){
+    drawTotalRow('Total:', fmtMoney(sumTotal), true);
+  } else {
+    drawTotalRow('Hardware:',    fmtMoney(sumHardware), false);
+    drawTotalRow('Installation:', fmtMoney(sumLabour),  false);
+    drawTotalRow('Total:',       fmtMoney(sumTotal),    true);
+  }
+
+  drawPageFooter(doc, W, H);
+}
+
 function drawLegend(tc, canvasW, canvasH, pageIdx){
   var types=['dome','bullet','turret','fisheye','ptz','lpr'];
   var names=['Dome','Bullet','Turret','Fisheye','PTZ','LPR'];
@@ -16149,7 +16477,11 @@ function saveProjectInfo(){
     sales:   document.getElementById('proj-sales').value,
     company: document.getElementById('proj-company').value,
     scope:   document.getElementById('proj-scope').value,
-    proposalSections: projectInfo.proposalSections || { cover:true, bom:true, takeOff:true, riser:true, plans:true },
+    proposalSections: projectInfo.proposalSections || { cover:true, bom:true, takeOff:true, riser:true, hardware:false, plans:true },
+    // Hardware-Module M4: preserve the 2×2 presentation config across
+    // projectInfo modal saves so the user's M5 choice survives. Same
+    // carry-over pattern as proposalSections — the modal doesn't edit it.
+    proposalHardware: (projectInfo.proposalHardware && typeof projectInfo.proposalHardware === 'object') ? projectInfo.proposalHardware : { detail:'lineByLine', split:'separate' },
     acDefaults:       projectInfo.acDefaults       || cloneAcDefaults(),
     // Pass N+1 M1: preserve unit-type catalog and IoT-device selection. The
     // project info modal doesn't edit these (they live in Suites-mode Modal
