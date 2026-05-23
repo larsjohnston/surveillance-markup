@@ -932,6 +932,24 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .strip-divider { height:1px; background:var(--border); margin:4px 12px; }
 .strip-spacer { flex:1; }
 
+/* Hardware-Module M1: home-canvas placeholder overlay. Sits inside
+   #canvas-wrap and (when shown) covers the canvas/dropzone/banners/zoom-bar
+   so the workspace reads as a dedicated dashboard, not a drawing surface.
+   z-index above the in-wrap overlays (calib-banner 15, progress-wrap 20,
+   zoom-bar 25). Default hidden; setPanelMode toggles .show. */
+#hardware-home {
+  position:absolute; inset:0; z-index:26;
+  display:none;
+  background:var(--surface);
+  padding:48px 24px; box-sizing:border-box;
+  flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  text-align:center;
+}
+#hardware-home.show { display:flex; }
+.hw-home-icon { width:64px; height:64px; color:var(--text-muted); opacity:.5; }
+.hw-home-title { font:700 18px var(--font-ui); color:var(--text); letter-spacing:.02em; }
+.hw-home-sub   { font:500 13px var(--font-ui); color:var(--text-muted); max-width:420px; line-height:1.5; }
+
 /* ── Property panel (left of canvas) ────────────────────── */
 #panel { width:280px; flex-shrink:0; background:var(--surface); display:flex; flex-direction:column; overflow:hidden; box-shadow:1px 0 0 var(--border); }
 
@@ -1439,38 +1457,49 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <button class="strip-btn" data-mode-btn="access" title="Access Control" onclick="setPanelMode('access')">
       <img src="./Icons/access_reader.png" alt="" class="strip-icon">
     </button>
-    <!-- Pass N+1 M1 (D0): four new top-level modes for the smart-apartment
-         device families. Inline SVG (no new PNG dependencies) using
-         stroke="currentColor" so the strip-btn active/hover color cascade
-         drives them. Drill-down content lives in M3 (intercom/parcel/mailbox)
-         and M5/M7 (suites) — until then, clicking these buttons switches the
-         panel data-mode and the rail shows the active accent. -->
+    <!-- Pass N+1 M1 (D0): four top-level modes for the smart-apartment device
+         families. Originally rendered as stroke/outline SVG; Hardware-Module
+         M1 converts them to filled silhouettes to match the top two PNG
+         icons (Cameras / Access Control). Each SVG now uses fill="currentColor"
+         so the strip-btn active/hover color cascade still drives the tint.
+         Drill-down content lives in M3 (intercom/parcel/mailbox) and M5/M7
+         (suites). -->
     <button class="strip-btn" data-mode-btn="intercom" title="Intercoms" onclick="setPanelMode('intercom')">
-      <svg class="strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="6" y="3" width="12" height="18" rx="2"/>
-        <rect x="8.5" y="6" width="7" height="5" rx="0.5"/>
-        <circle cx="12" cy="16.5" r="1.1"/>
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M7 2.5h10a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2zm.5 4.5v5h9v-5h-9zM12 15a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/>
       </svg>
     </button>
     <button class="strip-btn" data-mode-btn="parcel" title="Parcel Lockers" onclick="setPanelMode('parcel')">
-      <svg class="strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="8" width="18" height="13" rx="1"/>
-        <rect x="2" y="6" width="20" height="4" rx="0.5"/>
-        <line x1="12" y1="6" x2="12" y2="21"/>
-        <path d="M12 6 C 9 3, 6 4, 7 7 C 5 7, 5 4, 8 4 C 11 4, 12 6, 12 6"/>
-        <path d="M12 6 C 15 3, 18 4, 17 7 C 19 7, 19 4, 16 4 C 13 4, 12 6, 12 6"/>
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="5" rx="0.6"/>
+        <rect x="3" y="9.5" width="18" height="5" rx="0.6"/>
+        <rect x="3" y="16" width="18" height="5" rx="0.6"/>
       </svg>
     </button>
     <button class="strip-btn" data-mode-btn="mailbox" title="Mailbox Banks" onclick="setPanelMode('mailbox')">
-      <svg class="strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="6" width="18" height="13" rx="1"/>
-        <path d="M3 7 L12 14 L21 7"/>
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <rect x="3" y="3.5" width="8.4" height="7" rx="0.5"/>
+        <rect x="12.6" y="3.5" width="8.4" height="7" rx="0.5"/>
+        <rect x="3" y="13.5" width="8.4" height="7" rx="0.5"/>
+        <rect x="12.6" y="13.5" width="8.4" height="7" rx="0.5"/>
       </svg>
     </button>
     <button class="strip-btn" data-mode-btn="suite" title="Suites" onclick="setPanelMode('suite')">
-      <svg class="strip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="6" y="3" width="12" height="18" rx="0.5"/>
-        <circle cx="14.5" cy="12" r="0.8" fill="currentColor"/>
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M6 2.5h12a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-18a1 1 0 0 1 1-1zm9 8.7a0.9 0.9 0 1 0 0 1.8 0.9 0.9 0 0 0 0-1.8z"/>
+      </svg>
+    </button>
+    <!-- Hardware-Module M1: new left-rail mode for Door Hardware. Filled key
+         silhouette (bow with hole + shaft with two teeth) using fill-rule
+         "evenodd" on the head to render the hole. Clicking it switches the
+         workspace to the Hardware home canvas (placeholder in M1; checklist
+         in M2). Underlying state lives in the existing `doorHardware` global. -->
+    <button class="strip-btn" data-mode-btn="hardware" title="Door Hardware" onclick="setPanelMode('hardware')">
+      <svg class="strip-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/>
+        <rect x="11" y="10.5" width="2" height="11"/>
+        <rect x="13" y="14" width="1.8" height="1.5"/>
+        <rect x="13" y="17.5" width="1.8" height="1.5"/>
       </svg>
     </button>
     <div class="strip-spacer"></div>
@@ -1512,6 +1541,21 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div id="zoom-label">100%</div>
       <button class="zbtn" onclick="zoom(+0.25)">+</button>
       <button class="zbtn" onclick="fitPage()" style="font-size:10px;width:auto;padding:0 8px">Fit</button>
+    </div>
+    <!-- Hardware-Module M1: placeholder home-canvas shell. Overlay inside
+         #canvas-wrap (position:absolute / z-index above the canvas + banners
+         + zoom-bar) so it covers the floor-plan workspace when hardware
+         mode is active. Toggled via the .show class by setPanelMode. M2
+         replaces the placeholder content with the checklist/dashboard. -->
+    <div id="hardware-home">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="hw-home-icon">
+        <path fill-rule="evenodd" d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/>
+        <rect x="11" y="10.5" width="2" height="11"/>
+        <rect x="13" y="14" width="1.8" height="1.5"/>
+        <rect x="13" y="17.5" width="1.8" height="1.5"/>
+      </svg>
+      <div class="hw-home-title">Door Hardware</div>
+      <div class="hw-home-sub">Home canvas placeholder &mdash; checklist arrives in M2.</div>
     </div>
   </div>
 
@@ -6491,7 +6535,12 @@ var currentACSubcategory = null;       // matches BRIVO_CATALOG.subcategory
 // intercom, parcel, mailbox, suite added here. setPanelMode drives the
 // blue-rail active state, panel data-mode CSS swap, and (in later
 // milestones) the canvas placement branch per mode.
-var panelMode = 'cameras';    // 'cameras' | 'access' | 'intercom' | 'parcel' | 'mailbox' | 'suite'
+// Hardware-Module M1: 7th mode added — 'hardware'. Unlike the others, it
+// has no on-canvas placement; its workspace is a home-canvas dashboard
+// (placeholder in M1; checklist in M2) rendered as an absolute overlay
+// inside #canvas-wrap (toggled by setPanelMode via the .show class on
+// #hardware-home).
+var panelMode = 'cameras';    // 'cameras' | 'access' | 'intercom' | 'parcel' | 'mailbox' | 'suite' | 'hardware'
 
 // ─── BOM State ────────────────────────────────────────────────────────────────
 // Custom (manually-added) line items by section. Auto rows are derived live.
@@ -9504,6 +9553,7 @@ document.addEventListener('keydown',function(e){
   if(e.key === '4'){ setPanelMode('parcel'); }
   if(e.key === '5'){ setPanelMode('mailbox'); }
   if(e.key === '6'){ setPanelMode('suite'); }
+  if(e.key === '7'){ setPanelMode('hardware'); }
 });
 
 function showCtxMenu(x,y){
@@ -9537,6 +9587,13 @@ function setPanelMode(mode){
   document.querySelectorAll('#icon-strip .strip-btn[data-mode-btn]').forEach(function(b){
     b.classList.toggle('active', b.dataset.modeBtn === mode);
   });
+  // Hardware-Module M1: toggle the home-canvas placeholder overlay. When
+  // hardware mode is active, the placeholder covers the floor-plan canvas
+  // (and its overlays — banners, zoom-bar, dropzone) so the workspace
+  // reads as a dashboard, not a drawing surface. Every other mode hides
+  // the placeholder. Defensive null-guard in case M2/M3 changes the DOM.
+  var hwHome = document.getElementById('hardware-home');
+  if(hwHome) hwHome.classList.toggle('show', mode === 'hardware');
   // Mode switches always deselect — the right panel slides out via the
   // canonical close path (which clears both selectedId and acSelectedId).
   // The user re-opens it by clicking a camera or reader after the switch.
