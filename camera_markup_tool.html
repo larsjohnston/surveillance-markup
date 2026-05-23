@@ -1381,12 +1381,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    interactions themselves; future help may surface them in a dedicated
    help overlay rather than per-mode panel chrome. */
 
-#dori-info { padding:8px 13px; border-bottom:1px solid var(--border); background:#fafaf8; font-size:10px; }
-#dori-info .di-title { font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#9ca3af; margin-bottom:5px; font-weight:700; }
-#dori-info .di-row { display:flex; justify-content:space-between; padding:1px 0; }
-#dori-info .di-row b { font:600 11px var(--font-mono); }
-#dori-info .di-row .di-swatch { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:middle; }
-#dori-info.empty { color:#9ca3af; font-style:italic; padding:8px 13px; font-size:10px; }
+/* Panel-cleanup P7: #dori-info CSS rules removed alongside the DORI Range
+   panel section. DORI bands still render on the canvas via the View
+   menu's DORI Zones toggle — that's the canonical surface now. */
 
 #cam-list { flex:1; overflow-y:auto; }
 .cam-item { display:flex; align-items:center; gap:7px; padding:5px 13px; cursor:pointer; border-left:3px solid transparent; }
@@ -1843,13 +1840,13 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       </button>
     </div>
 
-    <div class="phdr">DORI Range</div>
-    <div id="dori-info" class="empty">Calibrate scale and select a camera to compute DORI distances.</div>
-
-    <!-- Panel-cleanup P4: per-page placed-camera list removed from the
-         panel. Selection/deletion happens on the canvas (click + Del key /
-         right-click menu). updateList() is null-safe; calls from
-         placement/selection paths are now no-ops here. -->
+    <!-- Panel-cleanup P7: DORI Range section removed from the panel —
+         redundant with the View menu's DORI Zones toggle (which paints
+         the bands on the canvas itself). updateDoriInfo() is null-safe;
+         all callers continue to fire harmlessly.
+         Panel-cleanup P4 (prior): per-page placed-camera list also
+         removed. Selection/deletion of cameras happens on the canvas
+         (click + Del key / right-click menu). -->
     </div><!-- /panel-body cameras -->
 
     <div class="panel-body" data-mode-section="access">
@@ -9099,6 +9096,10 @@ function cameraSpecReachM(modelKey){
 
 function updateDoriInfo(){
   var el=document.getElementById('dori-info');
+  // Panel-cleanup P7: DORI Range section removed from the panel — early
+  // return when the readout target is gone keeps callers (many — see grep
+  // for updateDoriInfo) firing as safe no-ops without further changes.
+  if(!el) return;
   var ppm=getPPM(currentPage);
   if(!selectedId||!ppm){
     el.className='empty';
