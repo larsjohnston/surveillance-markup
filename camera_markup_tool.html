@@ -1485,13 +1485,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <button class="menu-item" id="btn-heatmap" onclick="setViewToggle('heatmap')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Heatmap</span></button>
       </div>
     </div>
-    <div class="menu" data-menu="tools">
-      <button class="menu-trigger">Tools</button>
-      <div class="menu-dropdown">
-        <button class="menu-item" id="btn-calib" onclick="startCalibration()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Calibrate Scale</span></button>
-        <button class="menu-item" id="btn-headend" onclick="startHeadendPlacement()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Place Head-End</span></button>
-      </div>
-    </div>
+    <!-- Menu-cleanup C3: Tools menu removed. "Calibrate Scale" moved to a
+         dedicated ruler icon next to the eye toggle in the top bar (see
+         #btn-calib below — same id preserved so enable/disable + active-
+         state JS arrays don't need updating). "Place Head-End" moved off
+         the menu entirely; it already lives as a tile on the Cameras-mode
+         left panel (#tb-cmvr → startHeadendPlacement). -->
     <div class="menu" data-menu="proposal">
       <button class="menu-trigger">Proposal</button>
       <div class="menu-dropdown">
@@ -1538,6 +1537,21 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <button class="eye-item" data-toggle="heatmap"     onclick="setViewToggle('heatmap')"><span class="eye-check">&#10003;</span><span class="eye-label">Heatmap</span></button>
     </div>
   </div>
+  <!-- Menu-cleanup C3: Scale/calibration tool relocated from the (removed)
+       Tools menu to a dedicated ruler icon button. Same handler
+       (startCalibration → openCalibDialog) and same id (btn-calib) as the
+       former menu item — JS enable/disable + active-state cascades keep
+       working without changes. Active styling via the pre-existing
+       #btn-calib.active CSS rule (amber fill while calibration is running). -->
+  <button id="btn-calib" class="topbar-icon-btn" title="Set scale / calibrate" onclick="startCalibration()" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 7L17 3L3 17L7 21L21 7z"/>
+      <path d="M14 6l2 2"/>
+      <path d="M11 9l2 2"/>
+      <path d="M8 12l2 2"/>
+      <path d="M5 15l2 2"/>
+    </svg>
+  </button>
   <button id="btn-undo" class="topbar-icon-btn" title="Undo" onclick="undoLast()" disabled>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 10h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-7"/>
