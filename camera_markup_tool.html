@@ -1378,43 +1378,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .ctrl textarea:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-faint); }
 .ctrl input[type=number] { padding:6px 8px; border:1px solid var(--border); border-radius:6px; font:600 12px var(--font-mono); background:#fff; }
 
-.hint { font-size:9px; color:#9ca3af; line-height:1.7; margin-top:7px; background:#f9fafb; border-radius:3px; padding:6px 8px; border:1px solid #e5e7eb; }
-.hint b { color:#374151; }
-/* Panel-cleanup P2: hover-revealed (i) info icon for per-mode placement
-   tips. Sits inline at the right of the panel's first .phdr. Hovering (or
-   keyboard-focusing) reveals a dark popover with that mode's tips. Replaces
-   the always-visible .hint / .reader-hint blocks. text-transform/letter-
-   spacing reset on the icon + tooltip so they don't inherit the phdr's
-   uppercase. */
-.phdr-info {
-  position:relative;
-  display:inline-block; vertical-align:middle;
-  margin-left:6px; cursor:help;
-  text-transform:none; letter-spacing:0; line-height:1;
-  outline:none;
-}
-.phdr-info-icon {
-  display:inline-block; vertical-align:middle;
-  width:13px; height:13px; color:#9ca3af;
-  transition:color .15s;
-}
-.phdr-info:hover .phdr-info-icon,
-.phdr-info:focus-within .phdr-info-icon { color:var(--primary); }
-.phdr-info-tip {
-  display:none; position:absolute;
-  top:calc(100% + 6px); left:0;
-  min-width:200px; max-width:240px;
-  background:#1f2937; color:#fff;
-  font:500 11px var(--font-ui); letter-spacing:0; text-transform:none;
-  line-height:1.55;
-  padding:8px 10px; border-radius:5px;
-  box-shadow:0 4px 12px rgba(0,0,0,.18);
-  z-index:50;
-  white-space:normal; text-align:left;
-}
-.phdr-info-tip b { color:#fbbf24; font-weight:700; }
-.phdr-info:hover .phdr-info-tip,
-.phdr-info:focus-within .phdr-info-tip { display:block; }
+/* Panel-cleanup P3: .hint / .reader-hint / .phdr-info* rules removed —
+   placement tips no longer appear in any mode's left panel. Camera and
+   AC placement actions remain documented via tooltips on the canvas
+   interactions themselves; future help may surface them in a dedicated
+   help overlay rather than per-mode panel chrome. */
 
 #dori-info { padding:8px 13px; border-bottom:1px solid var(--border); background:#fafaf8; font-size:10px; }
 #dori-info .di-title { font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#9ca3af; margin-bottom:5px; font-weight:700; }
@@ -1479,7 +1447,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 
 /* ── Access Control: drill-down container ──────────────────────────────── */
 #ac-controls { padding:12px 16px; border-bottom:1px solid var(--border); }
-.reader-hint { font:11px var(--font-ui); color:var(--text-muted); line-height:1.5; margin-top:8px; }
 
 #ac-list { flex:1; overflow-y:auto; }
 .ac-item { display:flex; align-items:center; gap:7px; padding:5px 13px; cursor:pointer; border-left:3px solid transparent; }
@@ -1757,7 +1724,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 
   <div id="panel" data-mode="cameras" style="display:none">
     <div class="panel-body" data-mode-section="cameras">
-    <div class="phdr">Camera Manufacturers<span class="phdr-info" tabindex="0" aria-label="Cameras mode tips"><svg class="phdr-info-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM8 4.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7 7.5h2v5H7v-5z"/></svg><span class="phdr-info-tip"><b>Empty space</b> &rarr; place camera<br><b>Body</b> drag &middot; <b>Arrowhead</b> aim<br><b>Right-click</b> menu &middot; <b>Del</b> remove<br><b>Scroll</b> zoom &middot; <b>Esc</b> cancel</span></span></div>
+    <div class="phdr">Camera Manufacturers</div>
     <div id="controls">
       <!-- Pass Left-Pane: Tier 1 manufacturer tiles. .brand-tile class
            reused from the previous flow (D2). Clicks route through
@@ -1863,9 +1830,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           </div>
         </div>
       </details>
-      <!-- Panel-cleanup P2: placement-tips block removed; same content
-           now lives in the hover popover beside the "Camera Manufacturers"
-           header at the top of this panel. -->
     </div>
 
     <!-- Cleanup M4: Camera Accessories section. Holds head-end / network /
@@ -1890,7 +1854,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     </div><!-- /panel-body cameras -->
 
     <div class="panel-body" data-mode-section="access">
-      <div class="phdr">AC Manufacturers<span class="phdr-info" tabindex="0" aria-label="Access Control mode tips"><svg class="phdr-info-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM8 4.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7 7.5h2v5H7v-5z"/></svg><span class="phdr-info-tip" id="ac-hint">Pick a Brivo device &mdash; click on the floor plan to place.</span></span></div>
+      <div class="phdr">AC Manufacturers</div>
       <div id="ac-controls">
         <!-- Pass Left-Pane M3: Tier 1 — Brivo / Other. .brand-tile class
              reused for visual consistency with the cameras drill-down.
@@ -1922,10 +1886,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <!-- Inline variant default dropdown for the active Tier 3 leaf.
              Empty for leaves with no variant axis (ACS300). -->
         <div id="lp-ac-variant"></div>
-        <!-- Panel-cleanup P2: placement hint now lives in the (i) hover
-             popover beside the "AC Manufacturers" header. id="ac-hint"
-             moved up to that popover so the existing brand-aware text
-             update keeps working. -->
       </div>
       <div class="phdr">AC Devices on this page &nbsp;<span id="ac-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="ac-list"></div>
@@ -1937,30 +1897,27 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
          the tile list via _render*DrillDown. Setting data-mode-section
          matches the 6-mode CSS filter from M1. -->
     <div class="panel-body" data-mode-section="intercom">
-      <div class="phdr">Intercom Manufacturers<span class="phdr-info" tabindex="0" aria-label="Intercoms mode tips"><svg class="phdr-info-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM8 4.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7 7.5h2v5H7v-5z"/></svg><span class="phdr-info-tip">Pick an intercom &mdash; click on the floor plan to place.</span></span></div>
+      <div class="phdr">Intercom Manufacturers</div>
       <div id="ac-controls">
         <div id="lp-intercom-tiles" class="sa-tile-grid"></div>
-        <!-- Panel-cleanup P2: hint moved to the (i) hover popover above. -->
       </div>
       <div class="phdr">Intercoms on this page &nbsp;<span id="intercom-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="intercom-list"></div>
     </div>
 
     <div class="panel-body" data-mode-section="parcel">
-      <div class="phdr">Parcel Manufacturers<span class="phdr-info" tabindex="0" aria-label="Parcel Lockers mode tips"><svg class="phdr-info-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM8 4.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7 7.5h2v5H7v-5z"/></svg><span class="phdr-info-tip">Pick a parcel locker &mdash; click on the floor plan to place.</span></span></div>
+      <div class="phdr">Parcel Manufacturers</div>
       <div id="ac-controls">
         <div id="lp-parcel-tiles" class="sa-tile-grid"></div>
-        <!-- Panel-cleanup P2: hint moved to the (i) hover popover above. -->
       </div>
       <div class="phdr">Parcel Lockers on this page &nbsp;<span id="parcel-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="parcel-list"></div>
     </div>
 
     <div class="panel-body" data-mode-section="mailbox">
-      <div class="phdr">Mailbox Manufacturers<span class="phdr-info" tabindex="0" aria-label="Mailbox Banks mode tips"><svg class="phdr-info-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM8 4.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7 7.5h2v5H7v-5z"/></svg><span class="phdr-info-tip">Pick a mailbox bank &mdash; click on the floor plan to place.</span></span></div>
+      <div class="phdr">Mailbox Manufacturers</div>
       <div id="ac-controls">
         <div id="lp-mailbox-tiles" class="sa-tile-grid"></div>
-        <!-- Panel-cleanup P2: hint moved to the (i) hover popover above. -->
       </div>
       <div class="phdr">Mailbox Banks on this page &nbsp;<span id="mailbox-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="mailbox-list"></div>
@@ -1972,7 +1929,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
          No SKU tiles here — suite placement (M6) reads from
          projectInfo.unitTypes, not from a placeholder catalog. -->
     <div class="panel-body" data-mode-section="suite">
-      <div class="phdr">Unit Types<span class="phdr-info" tabindex="0" aria-label="Suites mode tips"><svg class="phdr-info-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM8 4.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM7 7.5h2v5H7v-5z"/></svg><span class="phdr-info-tip" id="suite-hint">Define unit types, then place suites on the floor plan.</span></span></div>
+      <div class="phdr">Unit Types</div>
       <div id="ac-controls">
         <!-- Suites Polish M3: Tier-1-style tiles replace the two blue
              rectangular buttons used in M5/M8. Tile count footers
@@ -1995,8 +1952,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
              to View menu + eye dropdown (top bar). The suitesHidden state
              is unchanged; setViewToggle('suiteLabels') drives the swap. -->
         <div id="suite-unit-types-list"></div>
-        <!-- Panel-cleanup P2: hint moved to the (i) hover popover beside
-             the "Unit Types" header. id="suite-hint" carried over there. -->
       </div>
       <div class="phdr">Suites on this page &nbsp;<span id="suite-count" style="color:#9ca3af;font-weight:400"></span></div>
       <div id="suite-list"></div>
@@ -7559,15 +7514,9 @@ function _renderAcDrillDown(){
     t.classList.toggle('active', t.dataset.brand === currentACBrand);
   });
 
-  // Mode-aware placement hint. The Brivo path tells the user to pick a
-  // device first; the Other path has no picker, so it just describes
-  // the placement action.
-  var hintEl = document.getElementById('ac-hint');
-  if(hintEl){
-    hintEl.textContent = (currentACBrand === 'other')
-      ? 'Click on the floor plan to place a generic device.'
-      : 'Pick a Brivo device — click on the floor plan to place.';
-  }
+  // Panel-cleanup P3: AC placement hint removed from the left panel
+  // (along with cameras / intercom / parcel / mailbox / suites
+  // equivalents). The dynamic Brivo/Other text update lived here.
 
   var bc1 = document.getElementById('lp-ac-bc1');
   var t2  = document.getElementById('lp-ac-tier2');
