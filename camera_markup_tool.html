@@ -3938,7 +3938,7 @@ function openHardwareQuotePicker(){
     showHardwareError(
       'Import a takeoff first',
       'Quotes match against the imported takeoff lines.',
-      ['Use File → Import Hardware Takeoff (CSV) to load the unpriced Allegion template, then import supplier quotes.']
+      ['Import a hardware schedule first on the Door Hardware home canvas (key icon in the left rail, row 2).']
     );
     return;
   }
@@ -3971,7 +3971,7 @@ function _handleHardwareQuoteFile(file){
         'No prices found in this CSV',
         'The file parsed but no line has a COST column value.',
         ['It looks like an unpriced takeoff, not a supplier quote.',
-         'If this is the takeoff, use File → Import Hardware Takeoff instead.',
+         'If this is the takeoff, import it via the Door Hardware home canvas (row 2 — Import Hardware Schedule) instead.',
          'If this is meant to be a quote, ask the supplier to fill the COST column and re-export.']
       );
       return;
@@ -5618,8 +5618,8 @@ function _dhwConfirmAwardOnContinue(){
 
 function _dhwRenderEmpty(){
   return '<div class="dhw-empty">No hardware takeoff imported. ' +
-         'Use <b>File &rarr; Import Hardware Takeoff (CSV)</b> to load the unpriced Allegion template, ' +
-         'then re-open this dialog to import supplier quotes and price the package.</div>';
+         'Switch to the Door Hardware module (key icon, left rail) and import the takeoff (row 2), ' +
+         'then re-open this dialog.</div>';
 }
 
 function _dhwRenderTakeoffSummary(takeoff){
@@ -5644,7 +5644,7 @@ function _dhwRenderQuoteList(quotes){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Quotes</span></div>' +
       '<div class="dhw-empty">No supplier quotes imported yet. ' +
-        'Use <b>File &rarr; Import Hardware Quote (CSV)</b> to add one.</div>' +
+        'Use row 4 (Import Quotes) on the Door Hardware home canvas to add one.</div>' +
       '</div>';
   }
   // Polish item 4 / W6: humanized flag-explanation tooltip on quote rows.
