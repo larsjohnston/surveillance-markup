@@ -1,45 +1,41 @@
 # Surveillance / Door Hardware Markup Tool — Work Queue
 
-_Canonical manually-maintained queue. Last regenerated after the W8 merge (`3ad1029` on main)._
+_Canonical manually-maintained queue. Last regenerated mid Hardware Module pass (after M1, `ce8c391` on hardware-module branch; main is at `3ad1029`)._
 
 ---
 
-## JUST SHIPPED (on main)
+## IN PROGRESS
 
-- **Door Hardware W8 — Comparison click-to-select + sums + non-cheapest flag + notes** (`3ad1029`).
-  - Best-by-Line: replaced the supplier dropdown with click-to-select price cells (cheapest pre-selected implicitly, one green cell = selected, click-selected is a no-op, click cheapest deletes the override entry, gaps not selectable). Staging/confirm-on-Continue unchanged.
-  - Step 1 polish: "Award whole package" buttons relabeled "ALL"; Unawarded/Awarded status pill removed; Comparison defaults to Best-by-Line view; Hardware-step no-selection placeholder reworded + bold.
-  - Per-supplier column sums + blended best-line total merged into one "Totals:" footer row.
-  - Non-cheapest flag (count + extra cost vs cheapest) below the table; ties don't count (strict >); gaps excluded.
-  - Per-line notes panel opened from the flag (the long-deferred flag-annotation feature). New persisted `hardwareAward.lineNotes` object map; internal-only, never customer-facing.
-- **Door Hardware W7** (`03b87ed`): supply-only toggle, per-line Exclude (Excluded section on Summary), zero-labour warning.
-- **Door Hardware M3.5 wizard** (`89cd2fe`): 5-step manager wizard.
-
----
-
-## NEXT UP
-
-_Nothing queued as the active next pass — pick from Deferred below._
+### Hardware Module pass (branch `hardware-module`, brief: PASS_HARDWARE_MODULE_BRIEF.md)
+Turns Door Hardware into a left-rail mode (key icon) with a home checklist canvas, relocates File-menu hardware actions onto it, launches the existing wizard for pricing, and produces the customer-facing Hardware Schedule proposal page. Milestones:
+- **M1 — DONE (`ce8c391`):** filled all left-rail icons; added Hardware (key) mode + empty home canvas overlay. (Follow-up icon fixes in flight: curbside-mailbox icon, parcel-box locker icon, convert camera+AC PNGs to inline SVG for tint consistency.)
+- **M2 — NEXT:** home canvas checklist (6 rows, live status): door schedule / hardware schedule / RFQ export / quotes / "Price the Hardware" (launches wizard) / add-to-proposal. Not gated; soft dependency hints; live status from doorHardware state.
+- **M3:** remove the 4 hardware actions (import takeoff, import quote, export RFQ, attach door schedule PDF) from the File menu — now on the canvas. LEAVE Load/Clear Pricing in File.
+- **M4:** customer-facing Hardware Schedule proposal page. SELL ONLY. Placement: after Riser, before Plans. 2x2 presentation: line-by-line OR lump-sum × hardware/labour separate OR combined. Excluded/"by others" lines show as "—".
+- **M5:** proposal export integration — Hardware Schedule section toggle + the 2x2 controls (persisted); wire the canvas "Add to Proposal" row.
+- **Resolution safeguard (folded into M4/M5 + wizard):** every awarded line must be priced OR excluded. Unresolved (gap + not excluded) = "missed." Warn in wizard Summary (early catch) AND at proposal generation (loud warning, NOT a hard block — proceed-if-insist with explicit acknowledgement). Excluded/"by others" lines are resolved and show "—" on the customer page. This realizes the old deferred "unpriced-warning on step indicator" item with a precise meaning.
 
 ---
 
 ## DEFERRED — DOOR HARDWARE
 
-- **M4 — Door Hardware proposal pages.** Customer-facing Hardware Schedule page (sell only — never cost/markup/supplier; reuse riser table/overflow), Door Schedule reference page (rasterize attached PDF via pdf.js, mirroring sourceDocument). 2 proposalSections toggles. The includeLabour column-combine toggle drives separate-vs-combined labour presentation on the customer proposal. Open Q: where the Hardware Schedule sits in proposal order. NOTE: the W8 lineNotes are internal — M4 decides if/how any of them surface.
-- **PO consolidation / tie-break.** When best-line awarding finds two suppliers tied on a line's unit cost, default toward the supplier receiving the larger overall dollar share of the job (consolidate POs vs split for no savings). Surfaces at PO-generation. Design Qs: define "larger share" (total $ / line count / coverage); circularity (tie-break depends on totals which depend on tie-breaks); interaction with manual per-line override. W8's non-cheapest flag + column sums are related context. Part of a future PO pass.
-- **Zero-match import guard.** When an imported quote matches zero takeoff lines (e.g. BG ERP-format file), warn "unsupported format — attach as reference" instead of creating a confusing 0.00 / 0-coverage row.
-- **Supplier ERP-format quote import (BG).** Fuzzy SKU reconciliation across vendor formats. Real BG fixture is supplier ERP format (different columns, SKU notation like FALC-T581P6DAN626 vs takeoff's T581CP6 DAN). Substantial own pass.
-- **"Priced by others" -> Overlap subsection.** Move by-others lines out of the main hardware flow into a subsection under AC Overlap. (Manual Exclude from W7 partly covers the workflow; this is the automatic by-others move.)
-- **Take-Off Pricing pass** (big). Cost columns/totals on the Take-Off page, consuming the Pricing Foundation. Build real `source-data/pricing.json` from vendor books FIRST.
+- **Cross-tie data model: door schedule <-> hardware schedule <-> floor plans** (NEW, known future architecture problem). A door on the floor plan should tie to its door-schedule entry and its hardware-schedule line(s) so the three imports share openings/keys. Today they're independent (PDF reference, CSV line list, canvas drawings) with no linkage. Matching openings across three sources that don't share keys is a substantial data-model feature. The Hardware Module structure is meant to leave room for it.
+- **PO consolidation / tie-break.** Tied unit cost between two suppliers on a line → default toward the supplier getting the larger overall dollar share (consolidate POs vs split). Surfaces at PO-generation. Design Qs: define "larger share"; circularity; interaction with manual override. W8 non-cheapest flag + column sums are related context.
+- **Zero-match import guard.** Imported quote matching zero takeoff lines (e.g. BG ERP format) → warn "unsupported format, attach as reference" instead of a confusing 0.00 / 0-coverage row.
+- **Supplier ERP-format quote import (BG).** Fuzzy SKU reconciliation across vendor formats (BG SKU notation FALC-T581P6DAN626 vs takeoff T581CP6 DAN). Substantial own pass.
+- **Suppliers import quotes directly into our database** (step-3 future — "later version"; replaces the manual RFQ-email + CSV-import loop).
+- **"Priced by others" -> Overlap subsection.** Auto-move by-others lines into a subsection under AC Overlap (manual Exclude partly covers the workflow).
+- **Take-Off Pricing pass** (big). Cost columns/totals on the Take-Off page, consuming the Pricing Foundation. Build real source-data/pricing.json from vendor books FIRST.
+- **Price-book direct integration.** Removes Load/Clear Pricing from the File menu entirely (currently left in File during the Hardware Module pass).
 
 ---
 
 ## DEFERRED — OTHER MODULES
 
 - **Switch Topology** (Cleanup #9B). Placed switches, two-tier camera->switch->CMVR cabling. Likely merges with Manual Cable Routing + Conduit.
-- **Manual Cable Routing + Conduit.** Replace straight-line x multiplier cable model with user-drawn polyline paths. Add conduit as per-segment flag feeding a BOM conduit auto-row. Open Qs: click-vs-draw UX, wall-snap, conduit catalog, cable tray, multiplier fallback, backwards compat.
+- **Manual Cable Routing + Conduit.** User-drawn polyline paths replacing straight-line x multiplier; conduit per-segment flag feeding a BOM conduit row. Open Qs: click-vs-draw, wall-snap, conduit catalog, cable tray, multiplier fallback, backwards compat.
 - **Camera Details Panel Redesign** (Cleanup #8). Sliders with two-way canvas sync.
-- **PDF scale-marker auto-recognition.** User selects scale bar on imported PDF, tool extracts calibration. Open Qs: OCR library (Tesseract.js?), scale bars vs ratios, graphic-only bars, per-page scales, user-assisted vs full auto.
+- **PDF scale-marker auto-recognition.** Select scale bar on imported PDF → extract calibration. Open Qs: OCR lib (Tesseract.js?), bars vs ratios, graphic-only bars, per-page scales, user-assisted vs auto.
 - **Rules Page editor.**
 - **Catalog imports** — LuxerOne / Doorbird / Hanwha.
 
@@ -47,16 +43,17 @@ _Nothing queued as the active next pass — pick from Deferred below._
 
 ## HOUSEKEEPING
 
-- **Dead-code sweep.** Orphaned: `.lp-breadcrumb`, `.dhw-advisory`, `.dhw-award-summary.dhw-award-none`, `computeAutoCableRows()`, `_dhwRenderPricingAndLabour` (wizard-orphaned), `.dhw-status-pill` / `.dhw-status-unawarded` / `.dhw-status-awarded` (W8-orphaned after pill removal), `.dhw-line-override` (W8a-orphaned after dropdown removal).
-- **Stray untracked file** `PASS_DHW_M3_POLISH_BRIEF.md` in the repo root — never committed. Add it or delete it to clear the status noise.
-- **Process note:** during W8, Claude Code committed the W8 brief directly to `main` (75244c5) instead of leaving commits to the user — reconciled via a merge. Watch that the agent doesn't push/commit to main on its own.
-- **Install LibreOffice** on the Windows machine — kills the recurring docs-PDF regen caveat (docx is canonical; PDF stale).
-- **User guide** currently v1.7. Door Hardware wizard + W7 + W8 not yet documented — update when the module stabilizes.
+- **Dead-code sweep.** Orphaned: `.lp-breadcrumb`, `.dhw-advisory`, `.dhw-award-summary.dhw-award-none`, `computeAutoCableRows()`, `_dhwRenderPricingAndLabour` (wizard-orphaned), `.dhw-status-pill`/`.dhw-status-unawarded`/`.dhw-status-awarded` (W8-orphaned), `.dhw-line-override` (W8a-orphaned).
+- **Stray untracked file** `PASS_DHW_M3_POLISH_BRIEF.md` in repo root — never committed. Add or delete to clear status noise.
+- **Process note:** during W8, Claude Code committed a brief directly to `main` instead of leaving commits to the user. Watch for agent self-commits to main.
+- **Install LibreOffice** on the Windows machine — kills the docs-PDF regen caveat (docx canonical; PDF stale).
+- **User guide** v1.7. Wizard + W7 + W8 + Hardware Module not yet documented — update when the module stabilizes.
 
 ---
 
-## RESOLVED THIS SESSION (removed from deferred)
+## RESOLVED (removed from deferred)
 
-- ~~Flag-annotation notes~~ — shipped in W8c.
-- ~~Unpriced-hardware warning on step indicator~~ — largely subsumed by W7 Exclude (a line is now either priced or explicitly excluded); revisit only if the by-others subsection work resurfaces a need.
-- ~~AC-overlap line removal/exclude~~ — subsumed by W7 per-line Exclude.
+- ~~Flag-annotation notes~~ — shipped W8c.
+- ~~AC-overlap line removal/exclude~~ — subsumed by W7 Exclude.
+- ~~Unpriced-warning on step indicator~~ — now precisely defined and folded into the Hardware Module resolution safeguard (M4/M5 + wizard Summary).
+- ~~Standalone "M4 proposal pages" item~~ — absorbed into the Hardware Module pass (M4/M5).
