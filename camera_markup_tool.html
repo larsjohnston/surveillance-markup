@@ -1429,18 +1429,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <div class="menu-divider"></div>
         <button class="menu-item" id="btn-save" onclick="saveJSON()" data-shortcut="S" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save Project</span></button>
         <button class="menu-item" id="btn-load" onclick="document.getElementById('json-input').click()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Project&hellip;</span></button>
-        <!-- Pricing Data Foundation M2: pricing file picker entries. -->
-        <div class="menu-divider"></div>
-        <button class="menu-item" id="btn-pricing-load" onclick="openPricingFilePicker()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Pricing&hellip;</span></button>
-        <button class="menu-item" id="btn-pricing-clear" onclick="confirmClearPricing()"><span class="menu-check">&#10003;</span><span class="menu-label">Clear Pricing</span></button>
-        <!-- Hardware-Module M3: the four hardware actions (Import Takeoff,
-             Import Quote, Export RFQ, Attach Door Schedule) used to live
-             here. They moved onto the Hardware home canvas (key icon, left
-             rail) — the underlying handlers (openHardwareTakeoffPicker,
-             openHardwareQuotePicker, exportHardwareRfq, openDoorSchedulePicker)
-             are unchanged; the canvas tiles call them directly. Load/Clear
-             Pricing stay above — they'll move later when price books
-             integrate directly. -->
+        <!-- Menu-cleanup C1: Load Pricing / Clear Pricing menu entries
+             removed. Their handlers (openPricingFilePicker,
+             confirmClearPricing) remain in the JS for a future price-book
+             module to reuse.
+             Hardware-Module M3 (prior): four hardware actions (Import
+             Takeoff, Import Quote, Export RFQ, Attach Door Schedule) moved
+             onto the Hardware home canvas (key icon, left rail). Handlers
+             (openHardwareTakeoffPicker, openHardwareQuotePicker,
+             exportHardwareRfq, openDoorSchedulePicker) unchanged. -->
       </div>
     </div>
     <div class="menu" data-menu="view">
