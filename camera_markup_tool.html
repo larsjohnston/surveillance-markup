@@ -4405,6 +4405,12 @@ var _dhwSummaryToolsOpen    = false;
 // Notes themselves persist via hardwareAward.lineNotes (additive state).
 var _dhwNotesPanelOpen = false;
 
+// Hardware-Module M2 fix #2: saved #canvas-wrap scroll position from
+// before hardware mode was entered. Restored on mode exit so the user's
+// floor-plan scroll location survives a hardware-mode round-trip.
+// null when no save is in effect (cameras/access/etc. modes).
+var _hwSavedScroll = null;
+
 // W6+++++ setters. Tri-state sort cycle (none → asc → desc → none) on
 // repeated clicks of the same column; switching columns starts at asc.
 function _dhwSetSummarySort(column){
@@ -8041,6 +8047,13 @@ function applyViewScale(){
   redraw();
 }
 function zoom(delta,cx,cy){
+  // Hardware-Module M2 fix #2: zoom is a no-op in hardware mode. The
+  // home canvas is a dashboard with no floor plan to scale; zoom would
+  // also mutate wrap.scrollLeft/Top via the math below, which shifts the
+  // overlay's anchor away from the visible viewport (absolute children
+  // of a scrollable container scroll WITH the content) and exposes the
+  // floor plan underneath.
+  if(panelMode === 'hardware') return;
   var oldScale=viewScale;
   viewScale=Math.min(5,Math.max(0.1,parseFloat((viewScale+delta).toFixed(3))));
   if(cx!==undefined){
@@ -8051,12 +8064,22 @@ function zoom(delta,cx,cy){
   applyViewScale();
 }
 function fitPage(){
+  // Hardware-Module M2 fix #2: fitPage also mutates viewScale and is a
+  // no-op in hardware mode for the same reason as zoom() above. (Called
+  // by switchPage too — pages may still be switched via the tabs while
+  // in hardware mode without forcing a viewScale recompute.)
+  if(panelMode === 'hardware') return;
   if(!pages.length) return;
   var pg=pages[currentPage];
   viewScale=Math.min(wrap.clientWidth/pg.logW,wrap.clientHeight/pg.logH)*0.97;
   applyViewScale();
 }
 wrap.addEventListener('wheel',function(e){
+  // Hardware-Module M2 fix #2: in hardware mode, let the wheel bubble
+  // naturally so the overlay's .hw-home-scroll wrapper handles it as
+  // standard vertical scrolling. preventDefault + zoom-call only fires
+  // for the floor-plan canvas modes.
+  if(panelMode === 'hardware') return;
   e.preventDefault();
   var r=wrap.getBoundingClientRect();
   zoom(e.deltaY<0?0.15:-0.15, e.clientX-r.left, e.clientY-r.top);
@@ -9878,10 +9901,40 @@ function setPanelMode(mode){
   // overlays — banners, zoom-bar, dropzone) so the workspace reads as a
   // dashboard. M2 also paints the checklist contents on entry — live
   // status from doorHardware state is recomputed on every render.
+  //
+  // M2 fix #2: the overlay is position:absolute inside #canvas-wrap, so
+  // absolutely-positioned descendants of a scrollable container scroll
+  // WITH the content. If wrap.scrollLeft/Top > 0 when entering hardware
+  // mode (carried over from cameras-mode scrolling, OR set by zoom math),
+  // the overlay's (0,0) anchor sits OUTSIDE the visible viewport and the
+  // floor plan shows through. Mitigations:
+  //   1. Reset scroll to 0 on entry — the overlay's anchor matches the
+  //      visible viewport. Save the prior position so we can restore on
+  //      exit (preserves the user's floor-plan scroll between mode trips).
+  //   2. Suppress zoom() / fitPage() / wheel-zoom while in hardware mode
+  //      (see those functions) so scroll positions can't move under the
+  //      overlay.
   var hwHome = document.getElementById('hardware-home');
   if(hwHome){
-    hwHome.classList.toggle('show', mode === 'hardware');
-    if(mode === 'hardware') renderHardwareHome();
+    var wasHardware = hwHome.classList.contains('show');
+    var nowHardware = (mode === 'hardware');
+    hwHome.classList.toggle('show', nowHardware);
+    if(nowHardware && !wasHardware){
+      // Entering hardware mode: save scroll, reset to 0.
+      if(typeof wrap !== 'undefined' && wrap){
+        _hwSavedScroll = { left: wrap.scrollLeft, top: wrap.scrollTop };
+        wrap.scrollLeft = 0;
+        wrap.scrollTop  = 0;
+      }
+    } else if(!nowHardware && wasHardware && _hwSavedScroll){
+      // Leaving hardware mode: restore the saved floor-plan scroll position.
+      if(typeof wrap !== 'undefined' && wrap){
+        wrap.scrollLeft = _hwSavedScroll.left;
+        wrap.scrollTop  = _hwSavedScroll.top;
+      }
+      _hwSavedScroll = null;
+    }
+    if(nowHardware) renderHardwareHome();
   }
   // Mode switches always deselect — the right panel slides out via the
   // canonical close path (which clears both selectedId and acSelectedId).
