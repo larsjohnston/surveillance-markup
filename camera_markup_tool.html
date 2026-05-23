@@ -1362,8 +1362,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .type-btn .ts-icon { width:22px; height:22px; }
 .type-btn-cmvr { font-size:7.5px; }
 .type-btn-cmvr.active     { border-color:#1e3a8a;        background:#eef2ff; color:#1e3a8a; }
-#lp-cmvr-row { margin:6px 0 9px; }
-#lp-cmvr-row .type-btn-cmvr { width:100%; padding:8px 6px 6px; }
+/* Panel-cleanup P8: Network Switch accessory tile — teal/cyan accent to
+   echo the project's cable palette (#0e7490). Sits beside the CMVR/NVR
+   tile in a 2-column grid; same chrome/placement-mode behavior as the
+   head-end tile. A fuller switch topology (downstream cameras, ports,
+   uplink) is a future pass — this is placement-only. */
+.type-btn-switch { font-size:7.5px; }
+.type-btn-switch.active   { border-color:#0e7490;        background:#ecfeff; color:#0e7490; }
+#lp-cmvr-row { margin:6px 0 9px; display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+#lp-cmvr-row .type-btn { padding:8px 6px 6px; min-width:0; }
 
 .ctrl { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
 .ctrl label { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:#9ca3af; min-width:50px; }
@@ -1826,17 +1833,23 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       </details>
     </div>
 
-    <!-- Cleanup M4: Camera Accessories section. Holds head-end / network /
-         cabling tiles relocated out of the drill-down so they sit as a peer
-         section, always visible regardless of brand/style/model state. Ships
-         with CMVR/NVR only; the Switch tile is deferred to a future Switch
-         Topology pass (placed switch needs real downstream behavior — BOM,
-         riser, cabling — that's out of cleanup scope). -->
+    <!-- Cleanup M4 (prior): Camera Accessories — head-end + network +
+         cabling tiles relocated out of the drill-down so they sit as a
+         peer section, always visible regardless of brand/style/model
+         state.
+         Panel-cleanup P8: Network tile added beside CMVR/NVR. Click-to-
+         place a network switch on the canvas (mirrors head-end placement).
+         Switch is a basic placeable for now — fuller topology (downstream
+         cameras, ports, uplink) is a future Switch Topology pass. -->
     <div class="phdr">Camera Accessories</div>
     <div id="lp-cmvr-row">
       <button class="type-btn type-btn-cmvr" id="tb-cmvr" onclick="startHeadendPlacement()" title="Place CMVR / NVR head-end on this page">
         <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><circle cx="8" cy="7" r=".7" fill="currentColor"/><circle cx="8" cy="17" r=".7" fill="currentColor"/><path d="M12 7h4M12 17h4"/></svg>
         CMVR / NVR
+      </button>
+      <button class="type-btn type-btn-switch" id="tb-switch" onclick="startSwitchPlacement()" title="Place network switch on this page">
+        <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="9" width="18" height="6" rx="1"/><path d="M6 15v2M9 15v2M12 15v2M15 15v2M18 15v2"/><circle cx="6" cy="12" r=".8" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r=".8" fill="currentColor" stroke="none"/></svg>
+        Network
       </button>
     </div>
 
@@ -2821,6 +2834,12 @@ var fovVisible=true;
 var calibrations={}, calibMode=false, calibPoints=[], calibCursor=null;
 var headends = {};            // pageIdx -> {x, y} in logical PDF units
 var headendMode = false;      // currently placing head-end?
+// Panel-cleanup P8: Network Switch placements. Mirrors headends — one
+// switch per page (single point on the canvas). A future Switch Topology
+// pass will likely expand this to an array per page with port/uplink
+// metadata; for now it's a single point with no downstream relationships.
+var switches = {};            // pageIdx -> {x, y} in logical PDF units
+var switchMode = false;       // currently placing a network switch?
 var cablesMode = true;        // showing cable runs? default on; gated by headend presence at draw time
 var cableOverhead = 1.25;     // multiplier for cable routing (vs straight-line)
 var maxCableM = 90;           // PoE Cat6 max length
@@ -8092,7 +8111,7 @@ function rewindToNoPdf(){
   sourceDocumentBytes = null; sourceDocumentName = null; sourceDocumentMime = null;
   currentPage = 0;
   pdfLoaded = false;
-  pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {};
+  pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {}; switches = {};
   smartApartment = []; smartAptCounters = { intercom: {}, parcel: {}, mailbox: {} };
   suites = []; suiteCounters = {};
   tabOrder = null;            // Pass A.7: clear manual order with the rest of state
@@ -9000,6 +9019,84 @@ function placeHeadend(cssX, cssY){
   redraw();
 }
 
+// ── Network Switch placement (P8) ───────────────────────────────────────
+// Mirrors the head-end placement flow: tile → arm switchMode → click on
+// canvas → write switches[currentPage] → cancel mode. Single switch per
+// page (this is the basic-placeable per the brief; topology comes later).
+// Distinct active-tile color (#0e7490 teal) so the user can tell which
+// placement mode they're in when the calib-banner says only "Click to
+// place ...".
+function startSwitchPlacement(){
+  if(!pdfLoaded) return;
+  // Same typical-floor guard as the head-end: a switch is a physical
+  // device, not a logical per-floor copy.
+  if(pageMultiplier(currentPage) > 1){
+    alert('Place the switch on a non-typical floor (parkade, lobby, or single floor). Typical floors share the same network equipment.');
+    return;
+  }
+  if(calibMode) cancelCalibrationFlow();
+  if(headendMode) cancelHeadendPlacement();
+  switchMode = true;
+  var btn = document.getElementById('tb-switch');
+  if(btn) btn.classList.add('active');
+  document.getElementById('calib-banner').classList.add('show');
+  document.getElementById('calib-msg').textContent = 'Click to place network switch on this page';
+  redraw();
+}
+
+function cancelSwitchPlacement(){
+  switchMode = false;
+  var btn = document.getElementById('tb-switch');
+  if(btn) btn.classList.remove('active');
+  document.getElementById('calib-banner').classList.remove('show');
+  redraw();
+}
+
+function placeSwitch(cssX, cssY){
+  switches[currentPage] = { x: cssX/viewScale, y: cssY/viewScale };
+  markDirty();
+  cancelSwitchPlacement();
+  redraw();
+}
+
+// Hit-test for switch icon. ±10 px on x, ±8 px on y — matches the drawn
+// rectangle's silhouette so click-to-delete-while-armed feels natural.
+function switchAt(cssX, cssY){
+  var s = switches[currentPage];
+  if(!s) return null;
+  var px = s.x * viewScale, py = s.y * viewScale;
+  return (Math.abs(cssX - px) <= 10 && Math.abs(cssY - py) <= 8) ? s : null;
+}
+
+// Canvas render. Cyan-teal chassis with "SW" label + glow ring; matches
+// the head-end's iconography style but with the network palette so the
+// two are visually distinguishable when both are placed on the same page.
+function drawSwitch(){
+  var s = switches[currentPage];
+  if(!s) return;
+  var sx = s.x * viewScale, sy = s.y * viewScale;
+  var w = 20, h = 12;
+  // Body
+  ctx.beginPath();
+  ctx.rect(sx - w/2, sy - h/2, w, h);
+  ctx.fillStyle = '#0e7490';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Label
+  ctx.font = 'bold 7px Courier New';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('SW', sx, sy);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  // Glow ring
+  ctx.beginPath(); ctx.arc(sx, sy, Math.max(w, h) * 0.85, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(14,116,144,0.4)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
 // Estimate cable length in meters for a camera, given head-end on its page
 function cableLengthM(cam, pageIdx){
   var he = headends[pageIdx];
@@ -9386,6 +9483,11 @@ function redraw(){
   if(headends[currentPage]){
     drawHeadEnd();
   }
+  // Panel-cleanup P8: network switch marker (same draw-order tier as
+  // head-end — on top of camera/AC markers).
+  if(switches[currentPage]){
+    drawSwitch();
+  }
 
   if(calibMode) drawCalibrationOverlay();
   ctx.restore();
@@ -9684,6 +9786,19 @@ cv.addEventListener('mousedown',function(e){
       return;
     }
     placeHeadend(p.cx, p.cy);
+    return;
+  }
+  // Panel-cleanup P8: same click-to-place/click-to-remove pattern for
+  // the network switch — armed via the Network tile in Camera Accessories.
+  if(switchMode){
+    if(switchAt(p.cx, p.cy)){
+      delete switches[currentPage];
+      markDirty();
+      cancelSwitchPlacement();
+      redraw();
+      return;
+    }
+    placeSwitch(p.cx, p.cy);
     return;
   }
   // Head-end is drawn on top of everything; hit-test it first so a click on
@@ -9999,6 +10114,8 @@ document.addEventListener('keydown',function(e){
     if(document.getElementById('iot-devices-modal').classList.contains('show')){ closeIotDevicesModal(); return; }
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
+    // Panel-cleanup P8: Escape also cancels switch placement.
+    if(switchMode){ cancelSwitchPlacement(); return; }
     // closeRightPanel handles the camera-selected case (clears selectedId,
     // hides the panel, redraws). Always reset acSelectedId too.
     acSelectedId = null;
@@ -12600,6 +12717,9 @@ function buildLiteSaveData(){
     pages: pagesForSave,
     calibrations: calibrations,
     headends: headends,
+    // Panel-cleanup P8: additive persist of network switch placements.
+    // Backfilled on load (empty {} when absent — see applyProjectState).
+    switches: switches,
     projectInfo: projectInfo,
     bom: { customLines: bomCustomLines, autoOverrides: bomAutoOverrides, config: bomConfig },
     acDevices: acDevices,
@@ -12852,6 +12972,8 @@ async function saveJSON(){
     pages: pagesForSave,
     calibrations: calibrations,
     headends: headends,
+    // Panel-cleanup P8: see twin save path above.
+    switches: switches,
     projectInfo: projectInfo,
     bom: { customLines: bomCustomLines, autoOverrides: bomAutoOverrides, config: bomConfig },
     acDevices: acDevices,
@@ -12917,6 +13039,9 @@ function applyProjectState(data){
   if(data.cameras) cameras = data.cameras;
   if(data.calibrations) calibrations = data.calibrations;
   if(data.headends) headends = data.headends;
+  // Panel-cleanup P8: backfill switches map from save. Older saves
+  // (pre-P8) have no switches key → start with an empty map.
+  switches = (data.switches && typeof data.switches === 'object') ? data.switches : {};
   if(data.projectInfo) projectInfo = data.projectInfo;
   // Door Hardware M1 (v18): load module state through the normalizer so
   // partial / older / missing payloads backfill to empty-state defaults.
