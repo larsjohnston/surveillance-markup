@@ -1232,7 +1232,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #ac-brand-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px; }
 
 /* Inline variant default — single row under the active Tier 3 leaf. */
-#lp-ac-variant { margin:4px 0 8px; min-height:0; }
+/* Panel-cleanup P5: #lp-ac-variant element removed — its inline
+   Technology/Form-factor dropdown was retired in favor of the right-panel
+   per-device variant control. */
 .ac-variant-row { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#f9fafb; border:1px solid var(--border); border-radius:4px; font:11px var(--font-ui); }
 .ac-variant-row label { color:var(--text-muted); letter-spacing:.05em; text-transform:uppercase; font:700 9px var(--font-ui); }
 .ac-variant-row select { flex:1; padding:5px 8px; border:1px solid var(--border); border-radius:4px; font:600 11px var(--font-ui); background:#fff; }
@@ -1885,9 +1887,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <!-- Tier 3 — leaves per subcategory. Dynamically rendered. -->
         <div id="lp-ac-tier3" class="lp-tier-row"></div>
 
-        <!-- Inline variant default dropdown for the active Tier 3 leaf.
-             Empty for leaves with no variant axis (ACS300). -->
-        <div id="lp-ac-variant"></div>
+        <!-- Panel-cleanup P5: the inline Technology / Form-factor variant
+             dropdown was removed. New AC devices default per
+             DEFAULT_AC_DEFAULTS (Dual-tech for the Reader subcategories);
+             per-device overrides live on the right panel. -->
       </div>
       <!-- Panel-cleanup P4: per-page placed-AC list removed; updateAcList()
            is null-safe so call sites stay valid no-ops. -->
@@ -7451,9 +7454,12 @@ function armAcDevice(category, subcategory){
   currentACBrand       = 'brivo';
   currentACCategory    = category;
   currentACSubcategory = subcategory;
-  var variant = (projectInfo.acDefaults && projectInfo.acDefaults[subcategory])
-    ? projectInfo.acDefaults[subcategory]
-    : (variantValuesFor(category, subcategory)[0] || null);
+  // Panel-cleanup P5: variant lookup now reads DEFAULT_AC_DEFAULTS so new
+  // devices always arm with the canonical default (Dual-tech for Reader
+  // subcategories). The per-project projectInfo.acDefaults map is no
+  // longer consulted at arming/placement time — overrides are per-device
+  // via the right-panel variant control.
+  var variant = DEFAULT_AC_DEFAULTS[subcategory] || (variantValuesFor(category, subcategory)[0] || null);
   var sku = resolveSku(category, subcategory, variant);
   currentReaderModel = sku;
   renderLeftPaneDrillDown('ac');
@@ -7498,17 +7504,12 @@ function lpPickAcSubcategory(subcategory){
   armAcDevice(currentACCategory, subcategory);
 }
 
-// Inline variant <select> change handler. Updates project default for
-// THIS subcategory, re-resolves SKU with new default, arms it,
-// markDirty. Per acceptance #14.
-function lpChangeAcVariant(subcategory, variantValue){
-  if(!projectInfo.acDefaults) projectInfo.acDefaults = cloneAcDefaults();
-  projectInfo.acDefaults[subcategory] = variantValue;
-  var sku = resolveSku(currentACCategory, subcategory, variantValue);
-  currentReaderModel = sku;
-  markDirty();
-  renderLeftPaneDrillDown('ac');
-}
+// Panel-cleanup P5: lpChangeAcVariant() removed along with its inline
+// dropdown. The right-panel variant control (updateReaderVariant) is now
+// the only path to override a Brivo device's Technology / Form factor —
+// per-device, not project-default. projectInfo.acDefaults remains in the
+// save shape (unused at placement time post-P5; DEFAULT_AC_DEFAULTS is
+// the new placement default source).
 
 function _renderAcDrillDown(){
   // Tier 1: paint #ac-brand-grid .brand-tile active state.
@@ -7524,7 +7525,8 @@ function _renderAcDrillDown(){
   var t2  = document.getElementById('lp-ac-tier2');
   var bc2 = document.getElementById('lp-ac-bc2');
   var t3  = document.getElementById('lp-ac-tier3');
-  var vr  = document.getElementById('lp-ac-variant');
+  // Panel-cleanup P5: lp-ac-variant element removed; the inline variant
+  // dropdown rendering branch at the tail of this function is gone.
   if(!t2 || !t3) return;
 
   var brandLabel = currentACBrand === 'brivo' ? 'Brivo' :
@@ -7576,31 +7578,9 @@ function _renderAcDrillDown(){
               '</div>';
   });
   t3.innerHTML = t3Html;
-
-  // Inline variant <select> — only on the active Tier 3 leaf, only when
-  // that leaf has a variant axis. ACS300 (variant_axis null) renders no
-  // dropdown per brief.
-  if(!vr) return;
-  vr.innerHTML = '';
-  if(!currentACSubcategory) return;
-  var axis   = variantAxisFor(currentACCategory, currentACSubcategory);
-  var values = variantValuesFor(currentACCategory, currentACSubcategory);
-  if(!axis || values.length === 0) return;
-  var currentVariant = (projectInfo.acDefaults && projectInfo.acDefaults[currentACSubcategory])
-    ? projectInfo.acDefaults[currentACSubcategory]
-    : values[0];
-  var optHtml = '';
-  values.forEach(function(v){
-    var sel = (v === currentVariant) ? ' selected' : '';
-    optHtml += '<option value="' + escapeHtml(v) + '"' + sel + '>' + escapeHtml(v) + '</option>';
-  });
-  vr.innerHTML =
-    '<div class="ac-variant-row">' +
-      '<label>' + escapeHtml(axis) + '</label>' +
-      '<select onchange="lpChangeAcVariant(\'' + currentACSubcategory + '\', this.value)">' +
-        optHtml +
-      '</select>' +
-    '</div>';
+  // Panel-cleanup P5: inline variant <select> rendering removed. The
+  // right-panel variant control (updateReaderVariant) is now the only
+  // surface for changing a Brivo device's Technology / Form factor.
 }
 
 // ─── PDF Import ───────────────────────────────────────────────────────────────
@@ -10197,8 +10177,12 @@ function placeReader(cssX, cssY){
   // state. cam.model retained (drawReader / readerAt key into
   // BRIVO_READERS by cam.model — only valid for Reader SKUs; Controller
   // SKUs fall back to drawReader's singlegang default until queue 4).
+  // Panel-cleanup P5: variant default reads DEFAULT_AC_DEFAULTS instead of
+  // projectInfo.acDefaults. New AC devices land with Dual-tech for Reader
+  // subcategories regardless of legacy per-project overrides. Right-panel
+  // updateReaderVariant() is the user's path to change a placed device.
   var variantValue = currentACSubcategory
-    ? ((projectInfo.acDefaults && projectInfo.acDefaults[currentACSubcategory]) || null)
+    ? (DEFAULT_AC_DEFAULTS[currentACSubcategory] || null)
     : null;
   var dev = {
     id: 'ac-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
