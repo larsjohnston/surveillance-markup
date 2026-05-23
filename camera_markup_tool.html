@@ -1849,8 +1849,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="phdr">DORI Range</div>
     <div id="dori-info" class="empty">Calibrate scale and select a camera to compute DORI distances.</div>
 
-    <div class="phdr">Cameras &nbsp;<span id="cam-count" style="color:#9ca3af;font-weight:400"></span></div>
-    <div id="cam-list"></div>
+    <!-- Panel-cleanup P4: per-page placed-camera list removed from the
+         panel. Selection/deletion happens on the canvas (click + Del key /
+         right-click menu). updateList() is null-safe; calls from
+         placement/selection paths are now no-ops here. -->
     </div><!-- /panel-body cameras -->
 
     <div class="panel-body" data-mode-section="access">
@@ -1887,8 +1889,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
              Empty for leaves with no variant axis (ACS300). -->
         <div id="lp-ac-variant"></div>
       </div>
-      <div class="phdr">AC Devices on this page &nbsp;<span id="ac-count" style="color:#9ca3af;font-weight:400"></span></div>
-      <div id="ac-list"></div>
+      <!-- Panel-cleanup P4: per-page placed-AC list removed; updateAcList()
+           is null-safe so call sites stay valid no-ops. -->
     </div>
 
     <!-- Pass N+1 M3: three smart-apartment panel-bodies. Each follows the
@@ -1901,8 +1903,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div id="ac-controls">
         <div id="lp-intercom-tiles" class="sa-tile-grid"></div>
       </div>
-      <div class="phdr">Intercoms on this page &nbsp;<span id="intercom-count" style="color:#9ca3af;font-weight:400"></span></div>
-      <div id="intercom-list"></div>
+      <!-- Panel-cleanup P4: per-page intercom list removed; updateIntercomList()
+           is null-safe so call sites stay valid no-ops. -->
     </div>
 
     <div class="panel-body" data-mode-section="parcel">
@@ -1910,8 +1912,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div id="ac-controls">
         <div id="lp-parcel-tiles" class="sa-tile-grid"></div>
       </div>
-      <div class="phdr">Parcel Lockers on this page &nbsp;<span id="parcel-count" style="color:#9ca3af;font-weight:400"></span></div>
-      <div id="parcel-list"></div>
+      <!-- Panel-cleanup P4: per-page parcel list removed; updateParcelList()
+           is null-safe so call sites stay valid no-ops. -->
     </div>
 
     <div class="panel-body" data-mode-section="mailbox">
@@ -1919,8 +1921,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <div id="ac-controls">
         <div id="lp-mailbox-tiles" class="sa-tile-grid"></div>
       </div>
-      <div class="phdr">Mailbox Banks on this page &nbsp;<span id="mailbox-count" style="color:#9ca3af;font-weight:400"></span></div>
-      <div id="mailbox-list"></div>
+      <!-- Panel-cleanup P4: per-page mailbox list removed; updateMailboxList()
+           is null-safe so call sites stay valid no-ops. -->
     </div>
 
     <!-- Pass N+1 M5: Suites panel-body. The unit-types catalog is a
@@ -1953,8 +1955,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
              is unchanged; setViewToggle('suiteLabels') drives the swap. -->
         <div id="suite-unit-types-list"></div>
       </div>
-      <div class="phdr">Suites on this page &nbsp;<span id="suite-count" style="color:#9ca3af;font-weight:400"></span></div>
-      <div id="suite-list"></div>
+      <!-- Panel-cleanup P4: per-page suite list removed; updateSuiteList()
+           is null-safe so call sites stay valid no-ops. -->
     </div>
 
     <div id="footer">
@@ -12463,8 +12465,14 @@ function resetReachToSpec(){
 
 function updateList(){
   var el=document.getElementById('cam-list');
+  // Panel-cleanup P4: cam-list element removed from the panel \u2014 early
+  // return when the list is missing makes the renderer a safe no-op.
+  // Same null-safety pattern as updateAcList / updateIntercomList /
+  // updateParcelList / updateMailboxList / updateSuiteList.
+  if(!el) return;
   var fl=cameras.filter(function(c){return c.page===currentPage;});
-  document.getElementById('cam-count').textContent='('+cameras.length+' total \u00b7 '+fl.length+' this page)';
+  var countEl=document.getElementById('cam-count');
+  if(countEl) countEl.textContent='('+cameras.length+' total \u00b7 '+fl.length+' this page)';
   el.innerHTML='';
   fl.forEach(function(cam){
     var t=cam.type||'dome';
