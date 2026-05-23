@@ -858,6 +858,28 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   font:italic 11px var(--font-ui); border:1px dashed var(--border); border-radius:4px;
   margin-bottom:10px;
 }
+/* iot-into-unittypes: in-modal IoT device checklist that replaces the
+   former standalone IoT Devices modal. Sits above the unit-type rows;
+   each checkbox toggles its column in the rows below. Subtle surface-
+   soft fill so it reads as a settings row distinct from the rows table. */
+.ut-iot-picker {
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px;
+  padding:8px 12px; margin-bottom:10px;
+  background:var(--surface-soft); border:1px solid var(--border); border-radius:5px;
+  font:500 12px var(--font-ui); color:var(--text);
+}
+.ut-iot-picker .ut-iot-picker-label {
+  font:700 10px var(--font-ui); color:var(--text-muted);
+  text-transform:uppercase; letter-spacing:.06em;
+  margin-right:4px;
+}
+.ut-iot-picker label {
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer;
+  font:500 12px var(--font-ui); color:var(--text);
+}
+.ut-iot-picker input[type=checkbox] {
+  transform:scale(1.05); accent-color:var(--primary); cursor:pointer;
+}
 /* Pass N+1 M5: Suites left-pane unit-type read-only list. Compact
    rows showing the catalog at a glance. Reuses .ac-item layout
    conventions for visual consistency with the other mode lists. */
@@ -882,7 +904,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    2px border, min-height 76, justify-content:center). Inner content is
    icon + label + count footer. `.subdued` opacity-fades the tile when its
    count is 0 — the tile stays clickable; the fade is just a state hint. */
-.suite-mode-tile-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:10px; }
+/* iot-into-unittypes: was 2-column (Unit Types + IoT Devices); collapsed
+   to a single column now that IoT lives inside the Unit Types modal. */
+.suite-mode-tile-grid { display:grid; grid-template-columns:1fr; gap:6px; margin-bottom:10px; }
 .suite-mode-tile {
   padding:7px 4px 5px; border:2px solid var(--border); border-radius:5px; background:#fff;
   cursor:pointer; text-align:center;
@@ -1943,16 +1967,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
              ("N defined" / "N selected") + subdued state when count=0
              are repainted by _renderSuiteDrillDown on save / mode entry /
              project load. -->
+        <!-- iot-into-unittypes: the IoT Devices tile was removed — the
+             IoT picker now lives at the top of the Unit Types modal. Unit
+             Types is now the single entry point to all suite-level
+             catalog editing. -->
         <div class="suite-mode-tile-grid">
           <div class="suite-mode-tile" id="suite-tile-unit-types" onclick="openUnitTypesModal()">
             <div class="sm-icon">&#127968;</div>
             <div class="sm-label">Unit Types</div>
             <div class="sm-count" id="suite-tile-unit-types-count">0 defined</div>
-          </div>
-          <div class="suite-mode-tile" id="suite-tile-iot-devices" onclick="openIotDevicesModal()">
-            <div class="sm-icon">&#128268;</div>
-            <div class="sm-label">IoT Devices</div>
-            <div class="sm-count" id="suite-tile-iot-devices-count">0 selected</div>
           </div>
         </div>
         <!-- Visibility Toggles UX pass: the "Hide unit labels" button moved
@@ -2395,12 +2418,26 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 
 <!-- Pass N+1 M5: Modal #1 — Unit Types catalog. Auto-opens on cold entry
      to Suites mode when projectInfo.unitTypes is empty; manual reopen via
-     the "Manage Unit Types" button in the Suites left-pane. -->
+     the "Manage Unit Types" button in the Suites left-pane.
+     iot-into-unittypes pass: the IoT device picker (previously a separate
+     Modal #3) is now embedded here at the top of the modal. Each checkbox
+     toggles its column in the unit-type rows below; toggling commits
+     immediately (matches the simpler unified-modal interaction model). -->
 <div id="unit-types-modal" class="big-modal" onclick="if(event.target===this) closeUnitTypesModal()">
   <div class="modal-box" style="min-width:520px; max-width:640px; position:relative;">
     <button class="modal-close-x" onclick="closeUnitTypesModal()" title="Close" aria-label="Close">&times;</button>
     <h3>&#127968; Unit Types</h3>
     <p style="margin-bottom:10px;">Add the unit types found in your building (e.g. 1BR/1BA, 2BR/2BA). You'll use these when assigning a type to each suite, and we'll use them to calculate how many smart devices you'll need. You can update this list anytime from Suites.</p>
+    <!-- iot-into-unittypes: global IoT device picker. Checking adds a per-
+         unit-type count column to the rows below (seeded to 1 on each row);
+         unchecking removes the column. State commits to
+         projectInfo.iotDevices on each toggle + recalc BOM. -->
+    <div class="ut-iot-picker">
+      <span class="ut-iot-picker-label">IoT Devices:</span>
+      <label><input type="checkbox" id="iot-smart-lock"   onchange="onIotDeviceToggle('smartLock', this.checked)"> Smart Lock</label>
+      <label><input type="checkbox" id="iot-thermostat"   onchange="onIotDeviceToggle('thermostat', this.checked)"> Thermostat</label>
+      <label><input type="checkbox" id="iot-water-sensor" onchange="onIotDeviceToggle('waterSensor', this.checked)"> Water Sensor</label>
+    </div>
     <div id="unit-types-rows-container"></div>
     <p id="unit-types-err" class="calib-error" style="display:none; margin-top:10px;"></p>
     <div style="display:flex; gap:8px; margin-top:8px;">
@@ -2449,28 +2486,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
 </div>
 
-<!-- Pass N+1 M8: Modal #3 — IoT in-unit devices. Triggered from the
-     "IoT Devices…" button in the Suites left pane. Checkbox state binds to
-     projectInfo.iotDevices.{smartLock, thermostat, waterSensor}. Save commits
-     the selection and refreshes the BOM SMART APARTMENT section (which
-     computes qty per device = suites.length per the M8 brief). -->
-<div id="iot-devices-modal" class="big-modal" onclick="if(event.target===this) closeIotDevicesModal()">
-  <div class="modal-box" style="min-width:380px; max-width:480px; position:relative;">
-    <button class="modal-close-x" onclick="closeIotDevicesModal()" title="Close" aria-label="Close">&times;</button>
-    <h3>IoT Devices</h3>
-    <p style="margin-bottom:10px;">Select which in-unit smart devices are included for every suite. Each selection rolls one line into the Smart Apartment section of the BOM, with quantity equal to the suite count.</p>
-    <div class="export-opts">
-      <label><input type="checkbox" id="iot-smart-lock"> Smart Lock</label>
-      <label><input type="checkbox" id="iot-thermostat"> Thermostat</label>
-      <label><input type="checkbox" id="iot-water-sensor"> Water Sensor</label>
-    </div>
-    <p style="margin-top:10px; font:italic 11px var(--font-ui); color:var(--text-muted); line-height:1.4;">Selected devices appear as columns on the Unit Types modal, where you set the per-suite count for each unit type. Unchecking a device removes its column; per-unit-type values will reset to 1 if the device is re-enabled later.</p>
-    <div class="modal-actions" style="margin-top:16px;">
-      <button class="btn btn-dark"  onclick="closeIotDevicesModal()">Cancel</button>
-      <button class="btn btn-green" onclick="saveIotDevices()">Save</button>
-    </div>
-  </div>
-</div>
+<!-- iot-into-unittypes: standalone IoT Devices modal (formerly M8 Modal #3)
+     removed. Its checkbox row + cascade logic merged into the Unit Types
+     modal at the top (see #unit-types-modal). The three IoT input IDs
+     (iot-smart-lock / iot-thermostat / iot-water-sensor) are preserved
+     there so any external selector against them still resolves. -->
+
 
 <!-- Help / About Modal -->
 <div id="help-modal" class="big-modal">
@@ -8130,7 +8151,7 @@ function rewindToNoPdf(){
   _syncViewToggleUI();
   // Close any open modals / overlays. Pass N+1 M5/M6/M8: include the suite
   // modals and the IoT-devices modal.
-  ['project-modal','export-modal','help-modal','calib-modal','unit-types-modal','suite-placement-modal','iot-devices-modal'].forEach(function(id){
+  ['project-modal','export-modal','help-modal','calib-modal','unit-types-modal','suite-placement-modal'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.classList.remove('show');
   });
   // Pass N+1 M5: reset the "shown this session" flag so a fresh project
@@ -10122,8 +10143,9 @@ document.addEventListener('keydown',function(e){
     if(document.getElementById('unit-types-modal').classList.contains('show')){ closeUnitTypesModal(); return; }
     // Pass N+1 M6: Escape closes the Suite Placement modal (same as Cancel).
     if(document.getElementById('suite-placement-modal').classList.contains('show')){ closeSuitePlacementModal(); return; }
-    // Pass N+1 M8: Escape closes the IoT Devices modal (same as Cancel).
-    if(document.getElementById('iot-devices-modal').classList.contains('show')){ closeIotDevicesModal(); return; }
+    // iot-into-unittypes: the standalone IoT Devices modal was removed —
+    // its Esc branch is dropped. IoT controls now sit inside the Unit Types
+    // modal and dismiss with that modal's Esc handler above.
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
     // Panel-cleanup P8: Escape also cancels switch placement.
@@ -11160,6 +11182,18 @@ function openUnitTypesModal(){
       iotCounts: _seedDraftIotCounts(null)
     });
   }
+  // iot-into-unittypes: sync the inline IoT checkboxes from the persisted
+  // flags. Checkboxes mutate projectInfo.iotDevices directly on toggle
+  // (via onIotDeviceToggle) — there's no separate IoT draft, matching the
+  // simpler unified-modal interaction model.
+  var iotNow = projectInfo.iotDevices || {};
+  var smartLockEl   = document.getElementById('iot-smart-lock');
+  var thermostatEl  = document.getElementById('iot-thermostat');
+  var waterSensorEl = document.getElementById('iot-water-sensor');
+  if(smartLockEl)   smartLockEl.checked   = !!iotNow.smartLock;
+  if(thermostatEl)  thermostatEl.checked  = !!iotNow.thermostat;
+  if(waterSensorEl) waterSensorEl.checked = !!iotNow.waterSensor;
+
   _renderUnitTypesRows();
   document.getElementById('unit-types-err').style.display = 'none';
   document.getElementById('unit-types-modal').classList.add('show');
@@ -11420,61 +11454,47 @@ function skipUnitTypes(){
   closeUnitTypesModal();
 }
 
-// ─── Pass N+1 M8: Modal #3 — IoT in-unit devices ──────────────────────────
-// projectInfo.iotDevices.{smartLock, thermostat, waterSensor} drives the
-// SMART APARTMENT BOM IoT rows. Cancel discards edits; Save commits to
-// projectInfo and recalcs the BOM. No JSON version bump — keys backfilled
-// on load (applyProjectState) so older saves load cleanly.
-function openIotDevicesModal(){
-  var iot = projectInfo.iotDevices || {};
-  document.getElementById('iot-smart-lock').checked   = !!iot.smartLock;
-  document.getElementById('iot-thermostat').checked   = !!iot.thermostat;
-  document.getElementById('iot-water-sensor').checked = !!iot.waterSensor;
-  document.getElementById('iot-devices-modal').classList.add('show');
-}
-
-function closeIotDevicesModal(){
-  document.getElementById('iot-devices-modal').classList.remove('show');
-}
-
-function saveIotDevices(){
-  var next = {
-    smartLock:   document.getElementById('iot-smart-lock').checked,
-    thermostat:  document.getElementById('iot-thermostat').checked,
-    waterSensor: document.getElementById('iot-water-sensor').checked
-  };
-  var prior = projectInfo.iotDevices || {};
-  var changed = (prior.smartLock !== next.smartLock)
-             || (prior.thermostat !== next.thermostat)
-             || (prior.waterSensor !== next.waterSensor);
-  projectInfo.iotDevices = next;
-  // Suites Polish M1: on false→true transitions, every existing unit type
-  // gets iotCounts[device]=1 — unconditionally, overwriting any existing
-  // numeric value. Stored counts written while the flag was false are
-  // placeholders (the BOM doesn't read them), so resetting to 1 on enable
-  // matches user intent. Users who want 0 for specific unit types can edit
-  // Modal #1 once in M2's UI.
-  //
-  // true→false: do nothing — values are preserved on uncheck so the user
-  // can re-enable later without re-entering per-type counts they tuned
-  // while the flag was true.
-  ['smartLock', 'thermostat', 'waterSensor'].forEach(function(key){
-    if(next[key] && !prior[key]){
-      (projectInfo.unitTypes || []).forEach(function(ut){
-        if(!ut.iotCounts || typeof ut.iotCounts !== 'object') ut.iotCounts = {};
-        ut.iotCounts[key] = 1;
-      });
-    }
-  });
-  if(changed) markDirty();
-  closeIotDevicesModal();
-  // Recompute the BOM so the SMART APARTMENT IoT rows reflect the new
-  // selection immediately (drawer doesn't need to be open for recalcBom
-  // to update the underlying state, but the section visibility refreshes
-  // either way).
+// ─── iot-into-unittypes: in-modal IoT device toggle handler ──────────────
+// Replaces the prior Modal #3 (openIotDevicesModal / closeIotDevicesModal /
+// saveIotDevices). The three IoT checkboxes now live at the top of the
+// Unit Types modal and commit immediately on toggle — there's no separate
+// Save button for them. The interaction model is simpler: check a box →
+// the column appears in the unit-type rows with 1s; uncheck → the column
+// disappears (the underlying iotCounts values persist so re-checking
+// restores them, matching the prior true→false behavior).
+//
+// Cascading on false→true: every persisted unit type AND every draft row
+// (the modal is open by definition when this fires) gets iotCounts[key]=1
+// unconditionally — overwriting any old value. Same rule the prior
+// saveIotDevices used; users who want 0 for a specific type edit the cell
+// directly afterward.
+function onIotDeviceToggle(key, checked){
+  if(key !== 'smartLock' && key !== 'thermostat' && key !== 'waterSensor') return;
+  if(!projectInfo.iotDevices) projectInfo.iotDevices = { smartLock:false, thermostat:false, waterSensor:false };
+  var prior = !!projectInfo.iotDevices[key];
+  var next  = !!checked;
+  if(prior === next) return;
+  projectInfo.iotDevices[key] = next;
+  // false→true: seed iotCounts[key]=1 on every persisted unit type AND on
+  // every draft row (the modal is open — _unitTypesDraft is populated).
+  // true→false: leave numeric values intact (preserve for re-enable).
+  if(!prior && next){
+    (projectInfo.unitTypes || []).forEach(function(ut){
+      if(!ut.iotCounts || typeof ut.iotCounts !== 'object') ut.iotCounts = {};
+      ut.iotCounts[key] = 1;
+    });
+    (_unitTypesDraft || []).forEach(function(ut){
+      if(!ut.iotCounts || typeof ut.iotCounts !== 'object') ut.iotCounts = {};
+      ut.iotCounts[key] = 1;
+    });
+  }
+  markDirty();
+  // Re-render rows so the column appears/disappears. Recompute BOM so
+  // the SMART APARTMENT IoT rows reflect the new selection. Repaint the
+  // suites left-pane (Unit Types tile count is unaffected, but call kept
+  // for any future re-paint coupling).
+  _renderUnitTypesRows();
   recalcBom();
-  // Suites Polish M3: repaint the Suites left-pane so the IoT Devices
-  // tile's count footer + subdued state reflect the new flag set.
   _renderSuiteDrillDown();
 }
 
@@ -11486,25 +11506,15 @@ function saveIotDevices(){
 function _renderSuiteDrillDown(){
   var uts = projectInfo.unitTypes || [];
 
-  // Suites Polish M3: tile count footers + subdued state. Both tiles
-  // stay clickable regardless of count; subdued is a visual hint, not
-  // a disable.
+  // Suites Polish M3 / iot-into-unittypes: Unit Types tile count footer +
+  // subdued state. The IoT Devices tile was removed in the iot-into-
+  // unittypes pass (IoT picker now lives inside the Unit Types modal).
   var unitTypeCount = uts.length;
-  var iotFlags = projectInfo.iotDevices || {};
-  var iotCount = (iotFlags.smartLock ? 1 : 0)
-               + (iotFlags.thermostat ? 1 : 0)
-               + (iotFlags.waterSensor ? 1 : 0);
   var utTile = document.getElementById('suite-tile-unit-types');
   if(utTile){
     utTile.classList.toggle('subdued', unitTypeCount === 0);
     var utCountEl = document.getElementById('suite-tile-unit-types-count');
     if(utCountEl) utCountEl.textContent = unitTypeCount + ' defined';
-  }
-  var iotTile = document.getElementById('suite-tile-iot-devices');
-  if(iotTile){
-    iotTile.classList.toggle('subdued', iotCount === 0);
-    var iotCountEl = document.getElementById('suite-tile-iot-devices-count');
-    if(iotCountEl) iotCountEl.textContent = iotCount + ' selected';
   }
 
   // Existing read-only unit-types list. Paints below the tiles.
