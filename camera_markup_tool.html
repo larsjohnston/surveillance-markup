@@ -9801,6 +9801,11 @@ cv.addEventListener('mousedown',function(e){
   // Head-end is drawn on top of everything; hit-test it first so a click on
   // the CMVR/NVR icon starts a drag in either panel mode.
   if(headendAt(p.cx, p.cy)){ dragging = {type:'head-end-move'}; return; }
+  // Panel-cleanup P8 follow-up: same drag-to-move for the network switch.
+  // Hit-tested AFTER the switchMode placement branch above (so a click
+  // while armed is delete, not drag) and BEFORE the universal cross-mode
+  // hit-test (so switch grabs win over an underlying camera/AC click).
+  if(switchAt(p.cx, p.cy)){ dragging = {type:'switch-move'}; return; }
 
   // Universal cross-mode hit-test. Runs BEFORE the per-mode placement
   // branches. When the click lands on a device that belongs to a
@@ -9947,7 +9952,9 @@ cv.addEventListener('mousemove',function(e){
     // (same priority order as the mousedown universal hit-test). Tip-grab
     // for camera rotation handles stays cameras-mode-only since it's a
     // selection sub-element, not a placement target.
-    if(headendAt(p.cx, p.cy)){
+    if(headendAt(p.cx, p.cy) || switchAt(p.cx, p.cy)){
+      // Panel-cleanup P8 follow-up: switch joins head-end in the
+      // "move-cursor on hover" group so the drag affordance is discoverable.
       cv.style.cursor = 'move';
     } else if(panelMode === 'cameras' && tipAt(p.cx, p.cy)){
       cv.style.cursor = 'grab';
@@ -9966,6 +9973,14 @@ cv.addEventListener('mousemove',function(e){
   if(dragging.type==='head-end-move'){
     var he = headends[currentPage];
     if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; markDirty(); redraw(); }
+    return;
+  }
+  // Panel-cleanup P8 follow-up: switch drag-to-move. Same lifecycle as
+  // the head-end above — mutate switches[currentPage] in place, markDirty,
+  // redraw. Mouseup clears dragging globally (see cv mouseup listener).
+  if(dragging.type==='switch-move'){
+    var sw = switches[currentPage];
+    if(sw){ sw.x = p.cx/viewScale; sw.y = p.cy/viewScale; markDirty(); redraw(); }
     return;
   }
   if(dragging.type==='reader-move'){
