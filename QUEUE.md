@@ -1,41 +1,59 @@
 # Surveillance / Door Hardware Markup Tool — Work Queue
 
-_Canonical manually-maintained queue. Last regenerated mid Hardware Module pass (after M1, `ce8c391` on hardware-module branch; main is at `3ad1029`)._
+_Canonical manually-maintained queue. Last regenerated after the Hardware Module merge (`48469ff` on main)._
 
 ---
 
-## IN PROGRESS
+## JUST SHIPPED (on main)
 
-### Hardware Module pass (branch `hardware-module`, brief: PASS_HARDWARE_MODULE_BRIEF.md)
-Turns Door Hardware into a left-rail mode (key icon) with a home checklist canvas, relocates File-menu hardware actions onto it, launches the existing wizard for pricing, and produces the customer-facing Hardware Schedule proposal page. Milestones:
-- **M1 — DONE (`ce8c391`):** filled all left-rail icons; added Hardware (key) mode + empty home canvas overlay. (Follow-up icon fixes in flight: curbside-mailbox icon, parcel-box locker icon, convert camera+AC PNGs to inline SVG for tint consistency.)
-- **M2 — NEXT:** home canvas checklist (6 rows, live status): door schedule / hardware schedule / RFQ export / quotes / "Price the Hardware" (launches wizard) / add-to-proposal. Not gated; soft dependency hints; live status from doorHardware state.
-- **M3:** remove the 4 hardware actions (import takeoff, import quote, export RFQ, attach door schedule PDF) from the File menu — now on the canvas. LEAVE Load/Clear Pricing in File.
-- **M4:** customer-facing Hardware Schedule proposal page. SELL ONLY. Placement: after Riser, before Plans. 2x2 presentation: line-by-line OR lump-sum × hardware/labour separate OR combined. Excluded/"by others" lines show as "—".
-- **M5:** proposal export integration — Hardware Schedule section toggle + the 2x2 controls (persisted); wire the canvas "Add to Proposal" row.
-- **Resolution safeguard (folded into M4/M5 + wizard):** every awarded line must be priced OR excluded. Unresolved (gap + not excluded) = "missed." Warn in wizard Summary (early catch) AND at proposal generation (loud warning, NOT a hard block — proceed-if-insist with explicit acknowledgement). Excluded/"by others" lines are resolved and show "—" on the customer page. This realizes the old deferred "unpriced-warning on step indicator" item with a precise meaning.
+- **Hardware Module pass** (`48469ff`, M1–M5). Door Hardware is now a left-rail mode (key icon) with a home checklist canvas:
+  - M1: all left-rail icons unified to filled inline SVG (camera/AC converted from PNG); added Hardware (key) mode + full-coverage home overlay (zoom suppressed + scroll save/restore in hardware mode).
+  - M2: home canvas 6-row checklist with live status (door schedule / hardware schedule / RFQ / quotes / Price-the-Hardware launches wizard / Add-to-Proposal).
+  - M3: removed the 4 hardware actions from the File menu (now on the canvas); kept Load/Clear Pricing; fixed 4 stale error strings to point at the canvas.
+  - M4: customer-facing Hardware Schedule proposal page — SELL ONLY, after Riser before Plans, 2x2 presentation (line-by-line/lump-sum × separate/combined), excluded lines show "—", supply-only suppresses labour.
+  - M5: export-modal Hardware Schedule checkbox + 2x2 controls; home row 6 wired (syncs with modal); resolution safeguard — must-acknowledge warning at export when lines are neither priced nor excluded, plus the wizard Step 5 unresolved-lines banner.
+- Earlier: W8 (click-to-select + sums + non-cheapest flag + notes, `3ad1029`), W7 (supply-only + exclude + zero-labour warning, `03b87ed`), M3.5 wizard (`89cd2fe`).
+
+---
+
+## NEXT UP
+
+_No active next pass — pick from Deferred. Natural candidates: the Hardware-Module follow-up cleanups (below), or a larger pass like Take-Off Pricing or the cross-tie data model._
+
+---
+
+## HARDWARE MODULE — FOLLOW-UP CLEANUPS (flagged during M4/M5)
+
+- **Math-drift risk: shared sell-calc helper.** The M4 proposal page (`drawProposalHardwareSchedule`) re-implements per-row sell math instead of sharing the wizard Step 5 code. Same engine primitives so figures match today, but a future change to one could silently diverge. Extract a shared helper.
+- **Row 5 home-canvas counts are pre-exclude.** "57 priced, 9 omissions" uses raw resolveAward; the wizard Summary applies the exclude filter. Make row 5 exclude-aware (show resolved/unresolved truthfully) — pairs naturally with the safeguard already on row 6.
+- **Optional SKU column** on the customer Hardware Schedule. Currently description+finish only (SKU treated as installer-side). Some customers expect the spec'd model — add as an optional column if wanted.
+- **Description truncation** at 56 chars (line-by-line separate mode) clips long door-schedule descriptions. Make configurable or widen if it bites.
+- **Persist asymmetry:** hardware section toggle + 2x2 persist on-change; the other 5 export sections persist on-export (legacy). Unify if it causes confusion.
+- **Empty-state vs missing-takeoff:** hardware section ON but no takeoff → renders a one-line notice. Decide whether to hide the section entirely instead.
+- **Native confirm()** for the export safeguard gate — styled-modal upgrade is a future polish (matches W7/W8 native prompts).
+- **Orphaned PNG assets** `./Icons/dome_camera.png` + `./Icons/access_reader.png` — no longer referenced after M1's SVG conversion; delete in a housekeeping pass.
 
 ---
 
 ## DEFERRED — DOOR HARDWARE
 
-- **Cross-tie data model: door schedule <-> hardware schedule <-> floor plans** (NEW, known future architecture problem). A door on the floor plan should tie to its door-schedule entry and its hardware-schedule line(s) so the three imports share openings/keys. Today they're independent (PDF reference, CSV line list, canvas drawings) with no linkage. Matching openings across three sources that don't share keys is a substantial data-model feature. The Hardware Module structure is meant to leave room for it.
-- **PO consolidation / tie-break.** Tied unit cost between two suppliers on a line → default toward the supplier getting the larger overall dollar share (consolidate POs vs split). Surfaces at PO-generation. Design Qs: define "larger share"; circularity; interaction with manual override. W8 non-cheapest flag + column sums are related context.
-- **Zero-match import guard.** Imported quote matching zero takeoff lines (e.g. BG ERP format) → warn "unsupported format, attach as reference" instead of a confusing 0.00 / 0-coverage row.
-- **Supplier ERP-format quote import (BG).** Fuzzy SKU reconciliation across vendor formats (BG SKU notation FALC-T581P6DAN626 vs takeoff T581CP6 DAN). Substantial own pass.
-- **Suppliers import quotes directly into our database** (step-3 future — "later version"; replaces the manual RFQ-email + CSV-import loop).
-- **"Priced by others" -> Overlap subsection.** Auto-move by-others lines into a subsection under AC Overlap (manual Exclude partly covers the workflow).
+- **Cross-tie data model: door schedule <-> hardware schedule <-> floor plans** (known future architecture problem). A door on the floor plan ties to its door-schedule entry + hardware-schedule line(s) so the three imports share openings/keys. Today independent (PDF / CSV / canvas) with no linkage. Substantial data-model feature.
+- **PO consolidation / tie-break.** Tied unit cost between two suppliers → default toward the supplier getting the larger overall dollar share (consolidate POs). Surfaces at PO-generation. Design Qs: define "larger share"; circularity; manual-override interaction.
+- **Zero-match import guard.** Quote matching zero takeoff lines (BG ERP format) → warn "unsupported format, attach as reference" instead of a 0.00 / 0-coverage row.
+- **Supplier ERP-format quote import (BG).** Fuzzy SKU reconciliation across vendor formats. Substantial own pass.
+- **Suppliers import quotes directly into our database** (replaces the manual RFQ-email + CSV-import loop).
+- **"Priced by others" -> Overlap subsection.** Auto-move by-others lines into a subsection under AC Overlap.
 - **Take-Off Pricing pass** (big). Cost columns/totals on the Take-Off page, consuming the Pricing Foundation. Build real source-data/pricing.json from vendor books FIRST.
-- **Price-book direct integration.** Removes Load/Clear Pricing from the File menu entirely (currently left in File during the Hardware Module pass).
+- **Price-book direct integration.** Removes Load/Clear Pricing from the File menu entirely.
 
 ---
 
 ## DEFERRED — OTHER MODULES
 
 - **Switch Topology** (Cleanup #9B). Placed switches, two-tier camera->switch->CMVR cabling. Likely merges with Manual Cable Routing + Conduit.
-- **Manual Cable Routing + Conduit.** User-drawn polyline paths replacing straight-line x multiplier; conduit per-segment flag feeding a BOM conduit row. Open Qs: click-vs-draw, wall-snap, conduit catalog, cable tray, multiplier fallback, backwards compat.
+- **Manual Cable Routing + Conduit.** User-drawn polyline paths replacing straight-line x multiplier; conduit per-segment flag → BOM conduit row.
 - **Camera Details Panel Redesign** (Cleanup #8). Sliders with two-way canvas sync.
-- **PDF scale-marker auto-recognition.** Select scale bar on imported PDF → extract calibration. Open Qs: OCR lib (Tesseract.js?), bars vs ratios, graphic-only bars, per-page scales, user-assisted vs auto.
+- **PDF scale-marker auto-recognition.** Select scale bar on PDF → extract calibration. OCR lib TBD.
 - **Rules Page editor.**
 - **Catalog imports** — LuxerOne / Doorbird / Hanwha.
 
@@ -43,17 +61,17 @@ Turns Door Hardware into a left-rail mode (key icon) with a home checklist canva
 
 ## HOUSEKEEPING
 
-- **Dead-code sweep.** Orphaned: `.lp-breadcrumb`, `.dhw-advisory`, `.dhw-award-summary.dhw-award-none`, `computeAutoCableRows()`, `_dhwRenderPricingAndLabour` (wizard-orphaned), `.dhw-status-pill`/`.dhw-status-unawarded`/`.dhw-status-awarded` (W8-orphaned), `.dhw-line-override` (W8a-orphaned).
-- **Stray untracked file** `PASS_DHW_M3_POLISH_BRIEF.md` in repo root — never committed. Add or delete to clear status noise.
-- **Process note:** during W8, Claude Code committed a brief directly to `main` instead of leaving commits to the user. Watch for agent self-commits to main.
-- **Install LibreOffice** on the Windows machine — kills the docs-PDF regen caveat (docx canonical; PDF stale).
-- **User guide** v1.7. Wizard + W7 + W8 + Hardware Module not yet documented — update when the module stabilizes.
+- **Dead-code sweep.** Orphaned: `.lp-breadcrumb`, `.dhw-advisory`, `.dhw-award-summary.dhw-award-none`, `computeAutoCableRows()`, `_dhwRenderPricingAndLabour`, `.dhw-status-pill`/`-unawarded`/`-awarded`, `.dhw-line-override`, + the two orphaned PNG icon assets (above).
+- **Stray untracked file** `PASS_DHW_M3_POLISH_BRIEF.md` in repo root — add or delete.
+- **Process note:** Claude Code once committed a brief directly to `main` (W8). Watch for agent self-commits to main.
+- **Install LibreOffice** on Windows — kills the docs-PDF regen caveat.
+- **User guide** v1.7. Wizard + W7 + W8 + Hardware Module undocumented — update when stable.
 
 ---
 
 ## RESOLVED (removed from deferred)
 
-- ~~Flag-annotation notes~~ — shipped W8c.
-- ~~AC-overlap line removal/exclude~~ — subsumed by W7 Exclude.
-- ~~Unpriced-warning on step indicator~~ — now precisely defined and folded into the Hardware Module resolution safeguard (M4/M5 + wizard Summary).
-- ~~Standalone "M4 proposal pages" item~~ — absorbed into the Hardware Module pass (M4/M5).
+- ~~Flag-annotation notes~~ — W8c.
+- ~~AC-overlap line removal/exclude~~ — W7 Exclude.
+- ~~Unpriced-warning on step indicator~~ — Hardware Module resolution safeguard (M5 + wizard Step 5 banner).
+- ~~Standalone "M4 proposal pages"~~ — absorbed into the Hardware Module pass.
