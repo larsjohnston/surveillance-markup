@@ -937,23 +937,65 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .strip-divider { height:1px; background:var(--border); margin:4px 12px; }
 .strip-spacer { flex:1; }
 
-/* Hardware-Module M1: home-canvas placeholder overlay. Sits inside
+/* Hardware-Module M2: home-canvas checklist overlay. Sits inside
    #canvas-wrap and (when shown) covers the canvas/dropzone/banners/zoom-bar
    so the workspace reads as a dedicated dashboard, not a drawing surface.
    z-index above the in-wrap overlays (calib-banner 15, progress-wrap 20,
-   zoom-bar 25). Default hidden; setPanelMode toggles .show. */
+   zoom-bar 25). Default hidden; setPanelMode toggles .show. Content
+   populated by renderHardwareHome() — palette and chrome match the rest
+   of the tool (white tiles on surface-soft background, primary-blue
+   accents, Courier-free san-serif for the dashboard chrome). */
 #hardware-home {
   position:absolute; inset:0; z-index:26;
   display:none;
-  background:var(--surface);
-  padding:48px 24px; box-sizing:border-box;
-  flex-direction:column; align-items:center; justify-content:center; gap:14px;
-  text-align:center;
+  background:var(--surface-soft);
+  overflow:auto;
 }
-#hardware-home.show { display:flex; }
-.hw-home-icon { width:64px; height:64px; color:var(--text-muted); opacity:.5; }
-.hw-home-title { font:700 18px var(--font-ui); color:var(--text); letter-spacing:.02em; }
-.hw-home-sub   { font:500 13px var(--font-ui); color:var(--text-muted); max-width:420px; line-height:1.5; }
+#hardware-home.show { display:block; }
+.hw-home-inner {
+  max-width:780px; margin:0 auto;
+  padding:44px 28px 64px; box-sizing:border-box;
+}
+.hw-home-header { margin-bottom:24px; }
+.hw-home-title { font:700 22px var(--font-ui); color:var(--text); letter-spacing:.01em; }
+.hw-home-sub   { font:500 13px var(--font-ui); color:var(--text-muted); margin:8px 0 0; line-height:1.55; max-width:560px; }
+.hw-checklist { display:flex; flex-direction:column; gap:10px; }
+/* Tile: horizontal row — step number | flat icon | label+status | action.
+   Hover lift matches the existing tile/brand-tile pattern (subtle border
+   tint + shadow). Tile coloring stays neutral; the step number badge is
+   the visual "done" indicator (green when the step's state is satisfied). */
+.hw-tile {
+  display:flex; align-items:center; gap:16px;
+  padding:14px 18px;
+  background:#fff;
+  border:1.5px solid var(--border);
+  border-radius:8px;
+  transition:border-color .15s, box-shadow .15s;
+}
+.hw-tile:hover { border-color:#cbd5e1; box-shadow:0 1px 3px rgba(15,23,42,.05); }
+.hw-tile-num {
+  flex:0 0 28px; width:28px; height:28px;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--primary-faint); color:var(--primary);
+  border-radius:50%;
+  font:700 12px var(--font-ui);
+}
+.hw-tile.hw-tile-done .hw-tile-num { background:#d1fae5; color:#047857; }
+.hw-tile-icon {
+  flex:0 0 32px; width:32px; height:32px;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--text-muted);
+}
+.hw-tile-icon svg { width:28px; height:28px; }
+.hw-tile.hw-tile-done .hw-tile-icon { color:#047857; }
+.hw-tile-body { flex:1 1 auto; min-width:0; }
+.hw-tile-label { font:700 13px var(--font-ui); color:var(--text); letter-spacing:.01em; }
+.hw-tile-status { font:500 12px var(--font-ui); color:var(--text-muted); margin-top:3px; line-height:1.4; word-break:break-word; }
+.hw-tile-status.hw-status-done { color:#047857; font-weight:600; }
+.hw-tile-hint { font:500 11px var(--font-ui); color:var(--text-faint); margin-top:4px; font-style:italic; line-height:1.4; }
+.hw-tile-action { flex:0 0 auto; }
+.hw-tile-action .btn { padding:7px 14px; font-size:11px; }
+.hw-tile-action .btn:disabled { background:#e5e7eb; color:var(--text-faint); cursor:default; }
 
 /* ── Property panel (left of canvas) ────────────────────── */
 #panel { width:280px; flex-shrink:0; background:var(--surface); display:flex; flex-direction:column; overflow:hidden; box-shadow:1px 0 0 var(--border); }
@@ -1556,20 +1598,21 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <button class="zbtn" onclick="zoom(+0.25)">+</button>
       <button class="zbtn" onclick="fitPage()" style="font-size:10px;width:auto;padding:0 8px">Fit</button>
     </div>
-    <!-- Hardware-Module M1: placeholder home-canvas shell. Overlay inside
-         #canvas-wrap (position:absolute / z-index above the canvas + banners
-         + zoom-bar) so it covers the floor-plan workspace when hardware
-         mode is active. Toggled via the .show class by setPanelMode. M2
-         replaces the placeholder content with the checklist/dashboard. -->
+    <!-- Hardware-Module M2: home-canvas checklist. Overlay inside #canvas-wrap
+         (position:absolute / z-index above the canvas + banners + zoom-bar)
+         so it covers the floor-plan workspace when hardware mode is active.
+         Toggled via the .show class by setPanelMode. Inner container is
+         scrollable on small viewports; the checklist itself is populated by
+         renderHardwareHome() — each tile reads live status from doorHardware
+         state on every render. -->
     <div id="hardware-home">
-      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="hw-home-icon">
-        <path fill-rule="evenodd" d="M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/>
-        <rect x="11" y="10.5" width="2" height="11"/>
-        <rect x="13" y="14" width="1.8" height="1.5"/>
-        <rect x="13" y="17.5" width="1.8" height="1.5"/>
-      </svg>
-      <div class="hw-home-title">Door Hardware</div>
-      <div class="hw-home-sub">Home canvas placeholder &mdash; checklist arrives in M2.</div>
+      <div class="hw-home-inner">
+        <header class="hw-home-header">
+          <div class="hw-home-title">Door Hardware</div>
+          <p class="hw-home-sub">Work this checklist as the job&rsquo;s information lands. Steps aren&rsquo;t gated &mdash; take them in any order; each row tells you where you stand.</p>
+        </header>
+        <div class="hw-checklist" id="hw-checklist"></div>
+      </div>
     </div>
   </div>
 
@@ -3848,6 +3891,7 @@ function _handleHardwareTakeoffFile(file){
     doorHardware.importedTakeoff = { header: parsed.header, lines: parsed.lines };
     markDirty();
     _dhwRefreshManagerIfOpen();
+    _dhwRefreshHomeIfVisible();
     var projName = (parsed.header && parsed.header.projectName) || 'unnamed';
     showToast('Takeoff imported: ' + parsed.lines.length + ' lines, ' + projName + '.');
   };
@@ -3916,6 +3960,7 @@ function _handleHardwareQuoteFile(file){
     doorHardware.hardwareQuotes.push(rec);
     markDirty();
     _dhwRefreshManagerIfOpen();
+    _dhwRefreshHomeIfVisible();
     var pricedCount = parsed.lines.filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
     var flaggedCount = parsed.lines.filter(function(l){ return l.flagged; }).length;
     showToast('Quote imported: ' + supplierName + ', ' + pricedCount + ' priced line' + (pricedCount === 1 ? '' : 's') +
@@ -4027,6 +4072,7 @@ function _handleDoorScheduleFile(file){
     };
     markDirty();
     _dhwRefreshManagerIfOpen();
+    _dhwRefreshHomeIfVisible();
     showToast('Door schedule attached: ' + (file.name || 'door-schedule.pdf') + '.');
   };
   reader.onerror = function(){
@@ -4040,6 +4086,203 @@ function _handleDoorScheduleFile(file){
 }
 
 // ─── End Door Hardware file pickers ─────────────────────────────────────────
+
+// ─── Hardware home canvas (M2) ──────────────────────────────────────────────
+// The home canvas is the left-rail Hardware mode's workspace — a 6-row
+// checklist/dashboard. Each row reflects current doorHardware state and
+// fires the existing file-picker / wizard-launch handlers. Live status is
+// recomputed on every render; renderHardwareHome() is called when entering
+// hardware mode and from _dhwRefreshHomeIfVisible() (which fires after the
+// file handlers, mirroring the _dhwRefreshManagerIfOpen pattern). The
+// underlying doorHardware engine (resolveAward, importedTakeoff,
+// hardwareQuotes, doorScheduleRef) is unchanged.
+
+// Inline SVGs for the per-tile flat icons. Single-color silhouettes using
+// fill="currentColor" so they pick up the .hw-tile-icon color cascade.
+var _HW_TILE_ICON_SVGS = {
+  doorSchedule: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5 3h9.5L19 7.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm9.5 1.7V8H18l-3.5-3.3zM7 11h10v1H7zm0 2.5h10v1H7zm0 2.5h7v1H7z"/></svg>',
+  hardwareSchedule: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4 4h16v16H4V4zm1.5 1.5v3h13v-3h-13zm0 4.5v3h6V10h-6zm7.5 0v3h5.5V10H13zm-7.5 4.5v3h6v-3h-6zm7.5 0v3h5.5v-3H13z"/></svg>',
+  exportRfq: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3L6 9h4v6h4V9h4l-6-6zM4 18h16v3H4z"/></svg>',
+  importQuotes: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 3h-4v6H6l6 6 6-6h-4V3zM4 18h16v3H4z"/></svg>',
+  price: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19zm.9 4v1.6c1.4.2 2.6 1.1 2.7 2.6h-1.7c-.1-.6-.6-1-1.6-1-.9 0-1.5.4-1.5 1 0 .5.4.8 1.5 1.1l1 .2c1.9.4 2.7 1.3 2.7 2.6 0 1.6-1.3 2.5-2.9 2.7v1.7h-1.8v-1.7c-1.7-.2-3-1.2-3.1-2.9h1.7c.1.8.7 1.3 1.9 1.3 1 0 1.7-.4 1.7-1.1 0-.5-.4-.9-1.4-1.1l-1.1-.3c-1.7-.4-2.7-1.2-2.7-2.6 0-1.4 1.1-2.4 2.8-2.6V6.5h1.8z"/></svg>',
+  proposal: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 3h8a1 1 0 0 1 1 1v1h1.5a1.5 1.5 0 0 1 1.5 1.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6.5A1.5 1.5 0 0 1 5.5 5H7V4a1 1 0 0 1 1-1zm1 2v1.5h6V5H9zm.5 7.5l-1.7-1.7-1.1 1.1L9.5 14.7l5.3-5.3-1.1-1.1-4.2 4.2z"/></svg>'
+};
+
+// HTML-escape helper for the home canvas. _dhwEsc lives further down the
+// file but is hoisted; reusing it here keeps escaping consistent with the
+// wizard. (Function declarations are hoisted, so calling it before its
+// site is fine.)
+function _hwHomeEsc(s){ return _dhwEsc(s); }
+
+// Compute a one-line summary for a confirmed award. Reuses resolveAward
+// so the home canvas reads the same numbers the wizard Summary would.
+// Returns null when no award is confirmed (basis is null/missing).
+function _hwHomeAwardSummary(){
+  var award = doorHardware.hardwareAward;
+  if(!award || !award.basis) return null;
+  var takeoff = doorHardware.importedTakeoff;
+  var quotes  = doorHardware.hardwareQuotes || [];
+  if(!takeoff || !Array.isArray(takeoff.lines) || takeoff.lines.length === 0) return null;
+  var resolved = resolveAward(takeoff, quotes, award);
+  var priced = 0, gaps = 0;
+  resolved.forEach(function(r){ if(r.priced) priced++; else gaps++; });
+  if(award.basis === 'whole'){
+    return 'Awarded: ' + (award.supplierId || '(unnamed supplier)') +
+      ' &mdash; ' + priced + ' priced, ' + gaps + ' gap' + (gaps === 1 ? '' : 's');
+  }
+  if(award.basis === 'bestLine'){
+    return 'Best-line &mdash; ' + priced + ' priced, ' + gaps + ' omission' + (gaps === 1 ? '' : 's');
+  }
+  return null;
+}
+
+// Render one tile. opts:
+//   num         — 1-6 step number
+//   iconKey     — _HW_TILE_ICON_SVGS key
+//   label       — bold label (HTML-escaped)
+//   status      — primary status line (HTML; pre-escaped by caller)
+//   done        — bool, true → green badge + green status text
+//   hint        — optional muted dependency hint (HTML; pre-escaped)
+//   actionLabel — button text (HTML; pre-escaped)
+//   onClick     — JS string for the button's onclick (escaping handled by caller)
+//   disabled    — bool, true → grey/disabled button
+function _hwHomeRenderTile(opts){
+  var tileCls = 'hw-tile' + (opts.done ? ' hw-tile-done' : '');
+  var statusCls = 'hw-tile-status' + (opts.done ? ' hw-status-done' : '');
+  var hintHtml = opts.hint ? '<div class="hw-tile-hint">' + opts.hint + '</div>' : '';
+  var btnDis = opts.disabled ? ' disabled' : '';
+  var btnOnclick = opts.disabled ? '' : ' onclick="' + opts.onClick + '"';
+  return '<div class="' + tileCls + '">' +
+    '<div class="hw-tile-num">' + opts.num + '</div>' +
+    '<div class="hw-tile-icon">' + _HW_TILE_ICON_SVGS[opts.iconKey] + '</div>' +
+    '<div class="hw-tile-body">' +
+      '<div class="hw-tile-label">' + opts.label + '</div>' +
+      '<div class="' + statusCls + '">' + opts.status + '</div>' +
+      hintHtml +
+    '</div>' +
+    '<div class="hw-tile-action">' +
+      '<button class="btn btn-blue"' + btnDis + btnOnclick + '>' + opts.actionLabel + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderHardwareHome(){
+  var list = document.getElementById('hw-checklist');
+  if(!list) return;
+  var takeoff = doorHardware.importedTakeoff;
+  var quotes  = doorHardware.hardwareQuotes || [];
+  var doorRef = doorHardware.doorScheduleRef;
+  var takeoffLineCount = (takeoff && Array.isArray(takeoff.lines)) ? takeoff.lines.length : 0;
+  var hasTakeoff = takeoffLineCount > 0;
+  var hasQuotes = quotes.length > 0;
+  var awardSummary = _hwHomeAwardSummary();
+
+  // Row 1: Door Schedule (PDF). Done when doorScheduleRef.attached.
+  var row1Done = !!(doorRef && doorRef.attached);
+  var row1Status = row1Done
+    ? _hwHomeEsc(doorRef.name || 'door-schedule.pdf')
+    : 'Not attached';
+
+  // Row 2: Hardware Schedule (takeoff CSV). Done when importedTakeoff has lines.
+  var row2Done = hasTakeoff;
+  var row2Status = row2Done
+    ? (takeoffLineCount + ' line' + (takeoffLineCount === 1 ? '' : 's'))
+    : 'Not imported';
+
+  // Row 3: RFQ (always-available action; no done-state — convenience step).
+  var row3Status = hasTakeoff
+    ? 'Send the RFQ to your suppliers for pricing.'
+    : 'Send the RFQ to your suppliers for pricing.';
+  var row3Hint = hasTakeoff ? '' : 'Import a hardware schedule first &mdash; the RFQ is built from the takeoff lines.';
+
+  // Row 4: Quotes (repeatable). Done when any quotes imported.
+  var row4Done = hasQuotes;
+  var row4Status;
+  if(hasQuotes){
+    var supplierNames = quotes.map(function(q){
+      var n = q.supplierName || '(unnamed)';
+      return _hwHomeEsc(n);
+    });
+    row4Status = supplierNames.join(', ');
+  } else {
+    row4Status = 'No quotes yet';
+  }
+  var row4Hint = hasTakeoff ? '' : 'Import a hardware schedule first &mdash; quotes match against the takeoff lines.';
+
+  // Row 5: Price (launches wizard). Done when award is confirmed.
+  var row5Done = !!awardSummary;
+  var row5Status = awardSummary || 'Not started';
+  var row5Hint;
+  if(!hasTakeoff) row5Hint = 'Import a hardware schedule first.';
+  else if(!hasQuotes) row5Hint = 'Import at least one supplier quote first.';
+  else row5Hint = '';
+
+  // Row 6: Add to Proposal (M5 toggle). M2 ships a disabled placeholder per
+  // the brief — "until M5 wires the export, this can be a disabled 'coming
+  // in this pass' row."
+  var row6Done = false;
+  var row6Status = 'Not in proposal';
+  var row6Hint = 'Wired in M5 &mdash; the Hardware Schedule page lands in the proposal export then.';
+
+  list.innerHTML =
+    _hwHomeRenderTile({
+      num:1, iconKey:'doorSchedule',
+      label:'Import Door Schedule',
+      status:row1Status, done:row1Done,
+      hint:'',
+      actionLabel:row1Done ? 'Replace PDF' : 'Attach PDF',
+      onClick:'openDoorSchedulePicker()'
+    }) +
+    _hwHomeRenderTile({
+      num:2, iconKey:'hardwareSchedule',
+      label:'Import Hardware Schedule',
+      status:row2Status, done:row2Done,
+      hint:'',
+      actionLabel:row2Done ? 'Re-import CSV' : 'Import CSV',
+      onClick:'openHardwareTakeoffPicker()'
+    }) +
+    _hwHomeRenderTile({
+      num:3, iconKey:'exportRfq',
+      label:'Export RFQ',
+      status:row3Status, done:false,
+      hint:row3Hint,
+      actionLabel:'Export CSV',
+      onClick:'exportHardwareRfq()'
+    }) +
+    _hwHomeRenderTile({
+      num:4, iconKey:'importQuotes',
+      label:'Import Quotes',
+      status:row4Status, done:row4Done,
+      hint:row4Hint,
+      actionLabel:row4Done ? 'Add another' : 'Import CSV',
+      onClick:'openHardwareQuotePicker()'
+    }) +
+    _hwHomeRenderTile({
+      num:5, iconKey:'price',
+      label:'Price the Hardware',
+      status:row5Status, done:row5Done,
+      hint:row5Hint,
+      actionLabel:row5Done ? 'Continue' : 'Open wizard',
+      onClick:'openDoorHardwareModal()'
+    }) +
+    _hwHomeRenderTile({
+      num:6, iconKey:'proposal',
+      label:'Add to Proposal',
+      status:row6Status, done:row6Done,
+      hint:row6Hint,
+      actionLabel:'Coming in M5',
+      onClick:'',
+      disabled:true
+    });
+}
+
+// Refresh hook — mirrors _dhwRefreshManagerIfOpen. Called after every state
+// mutation that affects a tile's status (file imports, award changes). Cheap
+// short-circuit when hardware mode isn't active.
+function _dhwRefreshHomeIfVisible(){
+  if(panelMode === 'hardware') renderHardwareHome();
+}
+
 
 // ─── Door Hardware Manager Modal (M3) ──────────────────────────────────────
 // UI layer over the M1 data engine and M2 file pickers. Reached via
@@ -4075,6 +4318,11 @@ function openDoorHardwareModal(){
 function closeDoorHardwareModal(){
   var modal = document.getElementById('door-hardware-modal');
   if(modal) modal.classList.remove('show');
+  // Hardware-Module M2: the modal obscures the home canvas while open. Any
+  // award/exclude/pricing change made inside the modal needs to repaint the
+  // home behind it on close, otherwise row 5's "Awarded / Not started"
+  // status would stay stale until the next mode switch.
+  _dhwRefreshHomeIfVisible();
 }
 // Re-render hook for outside-the-modal state changes (file-menu imports).
 // Cheap — short-circuits when modal isn't open. Called from the M2 file
@@ -9601,13 +9849,16 @@ function setPanelMode(mode){
   document.querySelectorAll('#icon-strip .strip-btn[data-mode-btn]').forEach(function(b){
     b.classList.toggle('active', b.dataset.modeBtn === mode);
   });
-  // Hardware-Module M1: toggle the home-canvas placeholder overlay. When
-  // hardware mode is active, the placeholder covers the floor-plan canvas
-  // (and its overlays — banners, zoom-bar, dropzone) so the workspace
-  // reads as a dashboard, not a drawing surface. Every other mode hides
-  // the placeholder. Defensive null-guard in case M2/M3 changes the DOM.
+  // Hardware-Module M1/M2: toggle the home-canvas overlay. When hardware
+  // mode is active, the overlay covers the floor-plan canvas (and its
+  // overlays — banners, zoom-bar, dropzone) so the workspace reads as a
+  // dashboard. M2 also paints the checklist contents on entry — live
+  // status from doorHardware state is recomputed on every render.
   var hwHome = document.getElementById('hardware-home');
-  if(hwHome) hwHome.classList.toggle('show', mode === 'hardware');
+  if(hwHome){
+    hwHome.classList.toggle('show', mode === 'hardware');
+    if(mode === 'hardware') renderHardwareHome();
+  }
   // Mode switches always deselect — the right panel slides out via the
   // canonical close path (which clears both selectedId and acSelectedId).
   // The user re-opens it by clicking a camera or reader after the switch.
