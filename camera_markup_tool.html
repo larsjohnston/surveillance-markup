@@ -941,17 +941,39 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    #canvas-wrap and (when shown) covers the canvas/dropzone/banners/zoom-bar
    so the workspace reads as a dedicated dashboard, not a drawing surface.
    z-index above the in-wrap overlays (calib-banner 15, progress-wrap 20,
-   zoom-bar 25). Default hidden; setPanelMode toggles .show. Content
-   populated by renderHardwareHome() — palette and chrome match the rest
-   of the tool (white tiles on surface-soft background, primary-blue
-   accents, Courier-free san-serif for the dashboard chrome). */
+   zoom-bar 25). Default hidden; setPanelMode toggles .show.
+
+   M2-fix (full-coverage): the M2 initial styling combined
+   `position:absolute; inset:0; display:block; overflow:auto;`. With a huge
+   #cv canvas making #canvas-wrap scrollable, that combination let the
+   overlay collapse to content-height instead of filling the container —
+   the floor plan + canvas-wrap's horizontal scrollbar showed through
+   beneath the last checklist tile. M1's working version used display:flex
+   on the overlay, which forces the overlay to honor the inset-derived
+   size. The fix restores that pattern: the OVERLAY is a flex column that
+   fills via explicit top/right/bottom/left + width/height (belt-and-
+   suspenders against the inset edge case); width/height are honored
+   because the overlay's own overflow is HIDDEN (no content-height
+   collapse). SCROLLING is delegated to .hw-home-scroll (flex:1 child
+   with overflow:auto + min-height:0 so it can shrink inside the flex
+   parent), so the overlay always covers the full workspace while the
+   checklist still scrolls when taller than the viewport. */
 #hardware-home {
-  position:absolute; inset:0; z-index:26;
+  position:absolute; top:0; right:0; bottom:0; left:0;
+  width:100%; height:100%;
+  z-index:26;
   display:none;
   background:var(--surface-soft);
+  overflow:hidden;
+  box-sizing:border-box;
+}
+#hardware-home.show { display:flex; flex-direction:column; }
+.hw-home-scroll {
+  flex:1 1 auto;
+  min-height:0;
+  width:100%;
   overflow:auto;
 }
-#hardware-home.show { display:block; }
 .hw-home-inner {
   max-width:780px; margin:0 auto;
   padding:44px 28px 64px; box-sizing:border-box;
@@ -1606,12 +1628,14 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
          renderHardwareHome() — each tile reads live status from doorHardware
          state on every render. -->
     <div id="hardware-home">
-      <div class="hw-home-inner">
-        <header class="hw-home-header">
-          <div class="hw-home-title">Door Hardware</div>
-          <p class="hw-home-sub">Work this checklist as the job&rsquo;s information lands. Steps aren&rsquo;t gated &mdash; take them in any order; each row tells you where you stand.</p>
-        </header>
-        <div class="hw-checklist" id="hw-checklist"></div>
+      <div class="hw-home-scroll">
+        <div class="hw-home-inner">
+          <header class="hw-home-header">
+            <div class="hw-home-title">Door Hardware</div>
+            <p class="hw-home-sub">Work this checklist as the job&rsquo;s information lands. Steps aren&rsquo;t gated &mdash; take them in any order; each row tells you where you stand.</p>
+          </header>
+          <div class="hw-checklist" id="hw-checklist"></div>
+        </div>
       </div>
     </div>
   </div>
