@@ -1348,11 +1348,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   line-height:1.15;
 }
 .tier3-tile.active .t3-name { color:var(--mode-cam); }
-.tier3-tile .t3-spec {
-  font:600 8px var(--font-ui); color:#9ca3af; letter-spacing:.02em;
-  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  line-height:1.15;
-}
 
 /* CMVR head-end placement — relocated from the old #type-row. Charcoal-
    accented to match the canvas head-end marker. */
@@ -7330,18 +7325,17 @@ function renderLeftPaneDrillDown(mode){
     t3.innerHTML = '<div style="grid-column:1/-1;padding:20px 12px;text-align:center;color:#9ca3af;font-size:10px;font-style:italic;">No ' + escapeHtml(styleLabel) + ' models for ' + escapeHtml(brandLabelFor(currentBrand)) + '.</div>';
     return;
   }
-  // Panel-cleanup P1: rendered as a 5-column tile grid (.tier3-tile inside
-  // the .lp-tier3-list grid container). Tile content = model name + spec
-  // line (resolution · FOV°). Selected tile gets the red-border active
-  // treatment; no separate radio glyph (the highlight IS the selection
-  // signal). Same data-key + onclick wiring as before.
+  // Panel-cleanup P1/P6: 5-column tile grid (.tier3-tile inside the
+  // .lp-tier3-list grid container). Tile content = model name ONLY (P6
+  // dropped the resolution·FOV° spec sub-line). The full spec still
+  // appears in the hover title for quick reference. Selected tile gets
+  // the red-border active treatment; same data-key + onclick wiring as
+  // before.
   var t3Html = '';
   models.forEach(function(m){
-    var resTxt = m.spec.hPx >= 3840 ? '4K' : m.spec.hPx >= 2592 ? '5MP' : m.spec.hPx >= 2560 ? '4MP' : m.spec.hPx >= 1920 ? '2MP' : (m.spec.hPx + 'px');
     var activeCls = (m.key === currentModelKey) ? ' active' : '';
     t3Html += '<div class="tier3-tile' + activeCls + '" data-key="' + m.key + '" onclick="lpPickCamerasModel(\'' + m.key + '\')" title="' + escapeHtml(m.spec.desc || '') + '">' +
               '<div class="t3-name">' + escapeHtml(m.spec.model) + '</div>' +
-              '<div class="t3-spec">' + resTxt + ' · ' + m.spec.fov + '°</div>' +
               '</div>';
   });
   t3.innerHTML = t3Html;
