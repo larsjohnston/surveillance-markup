@@ -671,6 +671,24 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .dhw-noncheapest-flag { margin:12px 0 0; padding:10px 14px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:5px; color:#92400e; font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; cursor:pointer; }
 .dhw-noncheapest-flag:hover { background:#fde68a; }
 .dhw-noncheapest-allgood { margin:12px 0 0; font:500 11px var(--font-ui); color:var(--text-muted); }
+/* W8c: notes panel for non-cheapest line annotations. Opens below the flag
+   when the user clicks it. Inline section (not an overlay) so the user can
+   reference the comparison table above while explaining each pick. Soft
+   surface fill ties it to the flag visually; the per-row entries use the
+   tool's standard input chrome (border + radius + mono font on identifiers,
+   sans-serif textareas matching .dhw-input). Notes are INTERNAL — never
+   surface on customer-facing views (proposal). */
+.dhw-notes-panel { margin:8px 0 0; padding:12px 14px; background:var(--surface-soft); border:1px solid var(--border); border-radius:6px; }
+.dhw-notes-header { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:10px; font:500 12px var(--font-ui); color:var(--text); }
+.dhw-notes-header b { letter-spacing:.02em; }
+.dhw-notes-hint { display:block; font:500 11px var(--font-ui); color:var(--text-muted); margin-top:2px; }
+.dhw-notes-list { display:flex; flex-direction:column; gap:8px; }
+.dhw-notes-row { display:flex; gap:12px; align-items:flex-start; padding:8px 10px; background:#fff; border:1px solid var(--border); border-radius:5px; }
+.dhw-notes-id { flex:1 1 auto; min-width:0; }
+.dhw-notes-desc { font:600 12px var(--font-ui); color:var(--text); line-height:1.35; word-break:break-word; }
+.dhw-notes-meta { margin-top:2px; font:500 11px var(--font-mono); color:var(--text-muted); line-height:1.4; word-break:break-word; }
+.dhw-notes-input { flex:0 0 280px; min-width:200px; padding:6px 8px; border:1.5px solid var(--border); border-radius:4px; font:500 12px var(--font-ui); resize:vertical; box-sizing:border-box; }
+.dhw-notes-input:focus { outline:none; border-color:var(--primary); }
 .dhw-award-summary { padding:10px 12px; background:var(--primary-faint); border:1px solid var(--primary-soft); border-radius:5px; font:500 12px var(--font-ui); color:var(--text); line-height:1.5; }
 .dhw-award-summary.dhw-award-none { background:var(--surface-soft); border-color:var(--border); color:var(--text-muted); }
 .dhw-award-active { font-weight:700; color:var(--primary); }
@@ -3098,6 +3116,13 @@ function dhwNormalizeState(obj){
   if(empty.hardwareAward && (!empty.hardwareAward.excluded || typeof empty.hardwareAward.excluded !== 'object')){
     empty.hardwareAward.excluded = {};
   }
+  // W8c: additive backfill for the per-line Notes map. Object map keyed by
+  // matchKey → free-text note explaining a non-cheapest selection. Internal
+  // (estimator-only) — never surfaces on customer-facing views. The engine
+  // ignores this map entirely; the W8c notes panel reads/writes it.
+  if(empty.hardwareAward && (!empty.hardwareAward.lineNotes || typeof empty.hardwareAward.lineNotes !== 'object')){
+    empty.hardwareAward.lineNotes = {};
+  }
   if(obj.hardwarePricing && typeof obj.hardwarePricing === 'object'){
     var p = obj.hardwarePricing;
     // W6 bug fix: the empty-state default for defaultMarkupPct was bumped
@@ -3982,6 +4007,9 @@ function openDoorHardwareModal(){
   _dhwSummaryQuickFilter  = null;
   _dhwSummaryHiddenCols   = {};
   _dhwSummaryToolsOpen    = false;
+  // W8c: notes panel is transient UI state, reset on every modal open so it
+  // doesn't surprise the user re-entering the manager.
+  _dhwNotesPanelOpen      = false;
   renderDoorHardwareModal();
   var modal = document.getElementById('door-hardware-modal');
   if(modal) modal.classList.add('show');
@@ -4040,6 +4068,12 @@ var _dhwSummaryQuickFilter  = null;
 // only — totals and underlying data always reflect ALL lines and ALL data.
 var _dhwSummaryHiddenCols   = {};
 var _dhwSummaryToolsOpen    = false;
+
+// W8c: notes-panel open/closed state for the non-cheapest notes list
+// (Best-by-Line view). Module-local, not persisted; reset on every modal
+// open. Toggled by _dhwOpenNonCheapestNotes / _dhwCloseNonCheapestNotes.
+// Notes themselves persist via hardwareAward.lineNotes (additive state).
+var _dhwNotesPanelOpen = false;
 
 // W6+++++ setters. Tri-state sort cycle (none → asc → desc → none) on
 // repeated clicks of the same column; switching columns starts at asc.
@@ -5552,6 +5586,13 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
   var colSums = supplierNames.map(function(){ return 0; });
   var nonCheapestCount = 0;
   var nonCheapestExtra = 0;
+  // W8c: capture identifying fields for each non-cheapest row so the notes
+  // panel (rendered after the table) can list them without re-walking the
+  // comparison data. Strict subset of what the table row shows — qty +
+  // description + catalog # + finish identify a line, plus the chosen
+  // supplier name / unit cost and cheapest-alternative supplier / unit cost
+  // for context, and the per-line extra cost for emphasis.
+  var nonCheapestRows = [];
   var unpricedCount = 0;
   var trs = lines.map(function(L){
     var t = L.takeoffLine || {};
@@ -5583,7 +5624,21 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
     // different supplier name shouldn't read as "not at lowest price".
     if(chosen.priced && L.pricedByAnyone && chosen.unitCost > L.bestUnitCost){
       nonCheapestCount++;
-      nonCheapestExtra += qty * (chosen.unitCost - L.bestUnitCost);
+      var lineExtra = qty * (chosen.unitCost - L.bestUnitCost);
+      nonCheapestExtra += lineExtra;
+      // W8c: stash identifiers + supplier/extra context for the notes panel.
+      nonCheapestRows.push({
+        matchKey: L.matchKey,
+        qty: t.qty,
+        description: t.description || '',
+        catalogNumber: t.catalogNumber || '',
+        finish: t.finish || '',
+        chosenSupplier: chosen.supplierName || '',
+        chosenUnitCost: chosen.unitCost,
+        bestSupplier: L.bestSupplierName || '',
+        bestUnitCost: L.bestUnitCost,
+        extra: lineExtra
+      });
     }
     // W8a: per-supplier cells, click-to-select.
     //   - Gap cells (no unit cost from this supplier) stay non-interactive.
@@ -5673,6 +5728,57 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
   } else if(anyPricedSelections){
     nonCheapestFlag = '<div class="dhw-noncheapest-allgood">All lines at lowest price.</div>';
   }
+  // W8c: notes panel — list of non-cheapest lines with a notes textarea per
+  // line. Renders when the user has clicked the flag AND there are still
+  // non-cheapest selections to annotate. Notes are estimator-internal and
+  // do NOT appear on any customer-facing view (per the brief). Reads/writes
+  // hardwareAward.lineNotes via _dhwSetLineNote (blur-triggered onchange).
+  var notesPanel = '';
+  if(_dhwNotesPanelOpen && nonCheapestRows.length > 0){
+    var notesMap = (award && award.lineNotes && typeof award.lineNotes === 'object')
+      ? award.lineNotes : {};
+    var notesRowsHtml = nonCheapestRows.map(function(r){
+      var existingNote = notesMap[r.matchKey];
+      var noteText = (typeof existingNote === 'string') ? existingNote : '';
+      var matchKeyAttr2 = _dhwAttrJs(r.matchKey);
+      var qtyStr  = (r.qty == null) ? '' : String(r.qty);
+      var deltaStr = '+' + _dhwFmtMoney(r.extra) +
+        ' vs ' + _dhwEsc(r.bestSupplier || '(unnamed)') +
+        ' @ ' + _dhwFmtMoney(r.bestUnitCost);
+      return '<div class="dhw-notes-row">' +
+        '<div class="dhw-notes-id">' +
+          '<div class="dhw-notes-desc">' +
+            _dhwEsc(qtyStr) + ' &times; ' + _dhwEsc(r.description) +
+          '</div>' +
+          '<div class="dhw-notes-meta">' +
+            _dhwEsc(r.catalogNumber) +
+            (r.finish ? ' &middot; ' + _dhwEsc(r.finish) : '') +
+            ' &middot; ' +
+            _dhwEsc(r.chosenSupplier || '(unnamed)') +
+            ' @ ' + _dhwFmtMoney(r.chosenUnitCost) +
+            ' &middot; ' + deltaStr +
+          '</div>' +
+        '</div>' +
+        '<textarea class="dhw-notes-input"' +
+          ' rows="2"' +
+          ' placeholder="Why not cheapest? (lead time, quality, gap, etc.)"' +
+          ' onchange="_dhwSetLineNote(' + matchKeyAttr2 + ', this.value)">' +
+          _dhwEsc(noteText) +
+        '</textarea>' +
+      '</div>';
+    }).join('');
+    notesPanel =
+      '<div class="dhw-notes-panel">' +
+        '<div class="dhw-notes-header">' +
+          '<div>' +
+            '<b>Why not cheapest?</b>' +
+            '<span class="dhw-notes-hint">Internal notes &mdash; won&rsquo;t appear on the customer proposal.</span>' +
+          '</div>' +
+          '<button class="dhw-btn-small" type="button" onclick="_dhwCloseNonCheapestNotes()">Close</button>' +
+        '</div>' +
+        '<div class="dhw-notes-list">' + notesRowsHtml + '</div>' +
+      '</div>';
+  }
   var isActiveBestLine = (award && award.basis === 'bestLine');
   var awardBtn = isActiveBestLine
     ? '<button class="dhw-btn-small" disabled style="opacity:0.7; cursor:default;">Awarded</button>'
@@ -5692,6 +5798,7 @@ function _dhwRenderCompareBestLine(takeoff, quotes){
       '</table>' +
     '</div>' +
     nonCheapestFlag +
+    notesPanel +
     '<div style="margin-top:12px; text-align:right;">' + awardBtn + '</div>';
 }
 
@@ -5715,7 +5822,10 @@ function _dhwAwardWhole(quoteIdx){
     lineSupplier: (existing.lineSupplier && typeof existing.lineSupplier === 'object') ? existing.lineSupplier : {},
     // W7a: preserve excluded across re-awards (matchKey is stable, so an
     // excluded line stays excluded regardless of the awarded supplier).
-    excluded: (existing.excluded && typeof existing.excluded === 'object') ? existing.excluded : {}
+    excluded: (existing.excluded && typeof existing.excluded === 'object') ? existing.excluded : {},
+    // W8c: preserve per-line notes across re-awards (matchKey-keyed; the
+    // notes are estimator-internal context that doesn't expire on award).
+    lineNotes: (existing.lineNotes && typeof existing.lineNotes === 'object') ? existing.lineNotes : {}
   };
   markDirty();
   renderDoorHardwareModal();
@@ -5729,7 +5839,9 @@ function _dhwAwardBestLine(){
     basis: 'bestLine',
     lineSupplier: (existing.lineSupplier && typeof existing.lineSupplier === 'object') ? existing.lineSupplier : {},
     // W7a: preserve excluded across re-awards (see _dhwAwardWhole).
-    excluded: (existing.excluded && typeof existing.excluded === 'object') ? existing.excluded : {}
+    excluded: (existing.excluded && typeof existing.excluded === 'object') ? existing.excluded : {},
+    // W8c: preserve per-line notes across re-awards (see _dhwAwardWhole).
+    lineNotes: (existing.lineNotes && typeof existing.lineNotes === 'object') ? existing.lineNotes : {}
   };
   markDirty();
   renderDoorHardwareModal();
@@ -5755,8 +5867,10 @@ function _dhwSetLineSupplier(matchKey, supplierName){
   if(matchKey == null) return;
   var award = doorHardware.hardwareAward;
   // Initialize a "staging" award shell — basis stays null until confirmed.
+  // W8c: include lineNotes in the shell so the notes setter can write into
+  // it without re-initializing if the user adds a note before/after picking.
   if(!award){
-    award = { basis: null, lineSupplier: {} };
+    award = { basis: null, lineSupplier: {}, lineNotes: {} };
     doorHardware.hardwareAward = award;
   }
   if(!award.lineSupplier || typeof award.lineSupplier !== 'object') award.lineSupplier = {};
@@ -5794,13 +5908,44 @@ function _dhwPickLineSupplier(matchKey, supplierName, bestSupplierName){
   }
 }
 
-// W8b: stub click handler for the non-cheapest flag in the Best-by-Line
-// view. The flag is wired now (cursor + onclick) so W8c only needs to
-// fill in the body — the notes-list UI that opens to let the user
-// annotate each non-cheapest selection. Inert in W8b per the brief.
+// W8c: open/close the non-cheapest notes panel. Transient UI state only —
+// the notes themselves persist via hardwareAward.lineNotes (set by
+// _dhwSetLineNote on each textarea blur). Re-render is needed for both so
+// the Best-by-Line view repaints with the panel shown/hidden.
 function _dhwOpenNonCheapestNotes(){
-  // W8c will replace this body with the notes list. Inert today —
-  // clicking the flag is harmless (the title tooltip says so).
+  _dhwNotesPanelOpen = true;
+  renderDoorHardwareModal();
+}
+function _dhwCloseNonCheapestNotes(){
+  _dhwNotesPanelOpen = false;
+  renderDoorHardwareModal();
+}
+
+// W8c: per-line notes setter — writes free-text into hardwareAward.lineNotes
+// at the given matchKey. Empty/whitespace-only deletes the entry to keep the
+// save shape minimal (parallels _dhwSetLineSupplier's "" → delete branch).
+// Bound to the notes textarea's onchange (blur-triggered), so re-render
+// during typing is unnecessary — the panel rebuilds from state on the next
+// render (open/close, or any other modal mutation). Skipping the re-render
+// here avoids destroying focus mid-edit and avoids gratuitous DOM churn.
+function _dhwSetLineNote(matchKey, text){
+  if(matchKey == null) return;
+  var award = doorHardware.hardwareAward;
+  // Initialize the same "staging" award shell _dhwSetLineSupplier uses,
+  // so a user can drop a note even before staging a manual supplier pick.
+  if(!award){
+    award = { basis: null, lineSupplier: {}, lineNotes: {} };
+    doorHardware.hardwareAward = award;
+  }
+  if(!award.lineNotes || typeof award.lineNotes !== 'object') award.lineNotes = {};
+  var s = (text == null) ? '' : String(text);
+  var trimmed = s.replace(/^\s+|\s+$/g, '');
+  if(trimmed === ''){
+    delete award.lineNotes[matchKey];
+  } else {
+    award.lineNotes[matchKey] = s;
+  }
+  markDirty();
 }
 
 // W7a: per-line Exclude — a display/filter layer on top of resolveAward.
