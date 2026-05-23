@@ -1238,7 +1238,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .ac-variant-row select { flex:1; padding:5px 8px; border:1px solid var(--border); border-radius:4px; font:600 11px var(--font-ui); background:#fff; }
 .ac-variant-row select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 2px var(--primary-faint); }
 
-.lp-tier3-list { max-height:200px; overflow-y:auto; margin-bottom:8px; border:1px solid var(--border); border-radius:3px; background:#fff; }
+/* Panel-cleanup P1: model list converted to a 5-column tile grid. Outer
+   container still owns max-height + vertical scroll + frame; INNER layout
+   is the grid (tiles flow row-by-row, scrolling vertically when they
+   overflow). align-content:start keeps tiles top-anchored when the grid
+   has fewer than a full first row. */
+.lp-tier3-list { max-height:200px; overflow-y:auto; margin-bottom:8px; border:1px solid var(--border); border-radius:3px; background:#fff; padding:4px; display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; align-content:start; }
 /* Catalog-Tier1: smart-apartment two-tier drill-down. Tier 1 (brand row)
    and Tier 2 (SKU grid) use the SAME tile chrome — .smart-apt-tile sized
    to match the camera Tier-2 dimensions exactly (padding 7/4/5, icon
@@ -1318,6 +1323,34 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .tier3-row.active .t3-radio { color:var(--blue); }
 .tier3-row .t3-name { font-weight:700; color:#111; font-family:var(--font-mono); }
 .tier3-row .t3-spec { font:700 9px var(--font-ui); color:#9ca3af; text-align:right; white-space:nowrap; }
+/* Panel-cleanup P1: model tile — replaces .tier3-row for the cameras
+   panel. Same outer rhythm as .brand-tile / .tier2-tile (2px border, 4px
+   radius, white bg, primary-red active treatment using --mode-cam). Spec
+   line sits below the model name; both ellipsis-truncated to keep the
+   tile chrome stable. */
+.tier3-tile {
+  border:2px solid var(--border); border-radius:4px; background:#fff;
+  padding:5px 3px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  min-width:0; min-height:42px; box-sizing:border-box;
+  cursor:pointer; transition:all .12s; text-align:center;
+}
+.tier3-tile:hover:not(.active) { background:#f9fafb; border-color:#9ca3af; }
+.tier3-tile.active {
+  border-color:var(--mode-cam); background:var(--mode-cam-soft);
+  box-shadow:0 0 0 2px rgba(220,38,38,.12);
+}
+.tier3-tile .t3-name {
+  font:700 10px var(--font-mono); color:#111;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  line-height:1.15;
+}
+.tier3-tile.active .t3-name { color:var(--mode-cam); }
+.tier3-tile .t3-spec {
+  font:600 8px var(--font-ui); color:#9ca3af; letter-spacing:.02em;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  line-height:1.15;
+}
 
 /* CMVR head-end placement — relocated from the old #type-row. Charcoal-
    accented to match the canvas head-end marker. */
@@ -7296,16 +7329,22 @@ function renderLeftPaneDrillDown(mode){
 
   var models = modelsForBrandStyle(currentBrand, currentType);
   if(models.length === 0){
-    t3.innerHTML = '<div style="padding:20px 12px;text-align:center;color:#9ca3af;font-size:10px;font-style:italic;">No ' + escapeHtml(styleLabel) + ' models for ' + escapeHtml(brandLabelFor(currentBrand)) + '.</div>';
+    // Panel-cleanup P1: empty-state spans the full grid width so the
+    // message centers cleanly across all 5 columns instead of collapsing
+    // into a single-column cell.
+    t3.innerHTML = '<div style="grid-column:1/-1;padding:20px 12px;text-align:center;color:#9ca3af;font-size:10px;font-style:italic;">No ' + escapeHtml(styleLabel) + ' models for ' + escapeHtml(brandLabelFor(currentBrand)) + '.</div>';
     return;
   }
+  // Panel-cleanup P1: rendered as a 5-column tile grid (.tier3-tile inside
+  // the .lp-tier3-list grid container). Tile content = model name + spec
+  // line (resolution · FOV°). Selected tile gets the red-border active
+  // treatment; no separate radio glyph (the highlight IS the selection
+  // signal). Same data-key + onclick wiring as before.
   var t3Html = '';
   models.forEach(function(m){
     var resTxt = m.spec.hPx >= 3840 ? '4K' : m.spec.hPx >= 2592 ? '5MP' : m.spec.hPx >= 2560 ? '4MP' : m.spec.hPx >= 1920 ? '2MP' : (m.spec.hPx + 'px');
     var activeCls = (m.key === currentModelKey) ? ' active' : '';
-    var radio = (m.key === currentModelKey) ? '●' : '○';
-    t3Html += '<div class="tier3-row' + activeCls + '" data-key="' + m.key + '" onclick="lpPickCamerasModel(\'' + m.key + '\')" title="' + escapeHtml(m.spec.desc || '') + '">' +
-              '<div class="t3-radio">' + radio + '</div>' +
+    t3Html += '<div class="tier3-tile' + activeCls + '" data-key="' + m.key + '" onclick="lpPickCamerasModel(\'' + m.key + '\')" title="' + escapeHtml(m.spec.desc || '') + '">' +
               '<div class="t3-name">' + escapeHtml(m.spec.model) + '</div>' +
               '<div class="t3-spec">' + resTxt + ' · ' + m.spec.fov + '°</div>' +
               '</div>';
