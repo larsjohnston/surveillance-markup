@@ -1378,6 +1378,10 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #panel[data-mode="parcel"]   .panel-body[data-mode-section="parcel"]   { display:flex; }
 #panel[data-mode="mailbox"]  .panel-body[data-mode-section="mailbox"]  { display:flex; }
 #panel[data-mode="suite"]    .panel-body[data-mode-section="suite"]    { display:flex; }
+/* Hardware-Module M2 tidy: the panel's bottom status strip ("Ready" /
+   "Scale: ...") is meaningless on the dashboard (no canvas state to
+   report). Hide it in hardware mode only — canvas modes are unaffected. */
+#panel[data-mode="hardware"] #footer { display:none; }
 
 /* ── Access Control: drill-down container ──────────────────────────────── */
 #ac-controls { padding:12px 16px; border-bottom:1px solid var(--border); }
@@ -1630,10 +1634,6 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div id="hardware-home">
       <div class="hw-home-scroll">
         <div class="hw-home-inner">
-          <header class="hw-home-header">
-            <div class="hw-home-title">Door Hardware</div>
-            <p class="hw-home-sub">Work this checklist as the job&rsquo;s information lands. Steps aren&rsquo;t gated &mdash; take them in any order; each row tells you where you stand.</p>
-          </header>
           <div class="hw-checklist" id="hw-checklist"></div>
         </div>
       </div>
