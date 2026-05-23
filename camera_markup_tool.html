@@ -100,7 +100,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 
 .submenu { position:relative; width:100%; }
 .submenu-trigger { padding-right:8px; }
-.submenu-arrow { color:var(--text-faint); font-size:10px; }
+.submenu-arrow { color:var(--text-faint); font-size:10px; margin-left:auto; }
 .submenu > .submenu-dropdown {
   display:none;
   position:absolute; top:-4px; left:calc(100% + 6px);
@@ -108,6 +108,23 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 }
 .submenu:hover > .submenu-dropdown,
 .submenu:focus-within > .submenu-dropdown { display:block; }
+/* Menu-cleanup C2: visual chrome for hover-revealed flyout submenus —
+   matches .menu-dropdown styling so the popout reads as a continuation of
+   the parent menu. Background/shadow/radius mirror the top-level dropdown
+   tokens; padding:4px nests menu-item rows the same way. The ::before
+   pseudo-element fills the small gap between the parent menu-item and the
+   popout so the cursor doesn't lose hover state when transiting across. */
+.submenu > .submenu-dropdown.menu-dropdown-style {
+  background:var(--surface); border-radius:6px;
+  padding:4px;
+  box-shadow:0 4px 16px rgba(0,0,0,.1), 0 0 0 1px rgba(0,0,0,.06);
+  z-index:41;
+}
+.submenu > .submenu-dropdown.menu-dropdown-style::before {
+  content:""; position:absolute;
+  top:0; bottom:0; left:-8px; width:8px;
+  background:transparent;
+}
 
 .topbar-spacer { flex:1; }
 .topbar-icon-btn {
@@ -1444,16 +1461,24 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <button class="menu-trigger">View</button>
       <div class="menu-dropdown">
         <button class="menu-item" id="btn-fov" onclick="setViewToggle('fov')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Camera FOV</span></button>
-        <!-- Cleanup M5: Equipment Labels tri-state master + 6 family children. Replaces the
-             single "Unit Labels" toggle that previously only covered suites. Master click
-             cycles all-on ↔ all-off; child clicks toggle just that family. -->
-        <button class="menu-item label-master" id="btn-labels-master" onclick="setAllLabelVisibility()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Equipment Labels</span></button>
-        <button class="menu-item label-child" id="btn-label-camera"        onclick="setLabelVisibility('camera')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Camera Labels</span></button>
-        <button class="menu-item label-child" id="btn-label-accessControl" onclick="setLabelVisibility('accessControl')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Access Control Labels</span></button>
-        <button class="menu-item label-child" id="btn-label-intercom"      onclick="setLabelVisibility('intercom')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Intercom Labels</span></button>
-        <button class="menu-item label-child" id="btn-label-parcel"        onclick="setLabelVisibility('parcel')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Parcel Labels</span></button>
-        <button class="menu-item label-child" id="btn-label-mailbox"       onclick="setLabelVisibility('mailbox')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Mailbox Labels</span></button>
-        <button class="menu-item label-child" id="btn-label-suite"         onclick="setLabelVisibility('suite')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Suite Labels</span></button>
+        <!-- Cleanup M5 (prior): Equipment Labels tri-state master + 6 family children.
+             Replaces the single "Unit Labels" toggle that previously only covered suites.
+             Master click cycles all-on ↔ all-off; child clicks toggle just that family.
+             Menu-cleanup C2: children moved into a hover-flyout submenu so the View
+             menu collapses to one row at rest. Master keeps its click → tri-state
+             behavior (submenu-trigger class skips closeAllMenus on click); children
+             still close the menu on click (single-toggle, then dismiss). -->
+        <div class="submenu">
+          <button class="menu-item submenu-trigger label-master" id="btn-labels-master" onclick="setAllLabelVisibility()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Equipment Labels</span><span class="submenu-arrow">&#9656;</span></button>
+          <div class="submenu-dropdown menu-dropdown-style">
+            <button class="menu-item label-child" id="btn-label-camera"        onclick="setLabelVisibility('camera')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Camera Labels</span></button>
+            <button class="menu-item label-child" id="btn-label-accessControl" onclick="setLabelVisibility('accessControl')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Access Control Labels</span></button>
+            <button class="menu-item label-child" id="btn-label-intercom"      onclick="setLabelVisibility('intercom')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Intercom Labels</span></button>
+            <button class="menu-item label-child" id="btn-label-parcel"        onclick="setLabelVisibility('parcel')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Parcel Labels</span></button>
+            <button class="menu-item label-child" id="btn-label-mailbox"       onclick="setLabelVisibility('mailbox')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Mailbox Labels</span></button>
+            <button class="menu-item label-child" id="btn-label-suite"         onclick="setLabelVisibility('suite')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Suite Labels</span></button>
+          </div>
+        </div>
         <button class="menu-item" id="btn-cables" onclick="setViewToggle('cables')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Cables</span></button>
         <button class="menu-item" id="btn-dori" onclick="setViewToggle('dori')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">DORI Zones</span></button>
         <button class="menu-item" id="btn-blind" onclick="setViewToggle('blind')" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Blind Spots</span></button>
