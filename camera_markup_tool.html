@@ -531,6 +531,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    box has no top border so it sits flush under the modal title. */
 .export-section-hdr { font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em; margin:14px 0 4px; padding-top:10px; border-top:1px solid var(--border); }
 .export-section-hdr:first-of-type { margin-top:6px; padding-top:0; border-top:0; }
+/* Hardware-Module M5: 2x2 presentation sub-controls for the Hardware
+   Schedule section. Indented + soft-surface fill so the relationship to
+   the parent checkbox reads visually; hidden by default, shown by JS when
+   the Hardware Schedule checkbox is on. */
+.export-sub-opts { margin:2px 0 6px 26px; padding:8px 12px; background:var(--surface-soft); border:1px solid var(--border); border-radius:5px; }
+.export-sub-row { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center; padding:3px 0; font:600 11px var(--font-ui); color:var(--text); }
+.export-sub-label { font:700 10px var(--font-ui); color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; min-width:48px; }
+.export-sub-opts label { display:inline-flex; align-items:center; gap:5px; padding:2px 0; font:500 11px var(--font-ui); color:var(--text); cursor:pointer; }
+.export-sub-opts input[type=radio] { margin:0; transform:scale(1.05); accent-color:var(--primary); cursor:pointer; }
 /* Pass A.6: × dismiss button in Export modal top-right. Scoped position
    to #export-modal so other modals using .modal-box aren't disturbed. */
 #export-modal .modal-box { position:relative; }
@@ -2285,6 +2294,23 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <label><input type="checkbox" id="export-bom"   oninput="updateExportAllDisabledHint()" checked> Bill of Materials</label>
       <label><input type="checkbox" id="export-takeoff" oninput="updateExportAllDisabledHint()" checked> Take-Off Page</label>
       <label><input type="checkbox" id="export-riser" oninput="updateExportAllDisabledHint()" checked> Riser Diagram</label>
+      <!-- Hardware-Module M5: Hardware Schedule section toggle. Off by default
+           until the user opts in. Drives projectInfo.proposalSections.hardware
+           (persists immediately so the home-canvas row 6 stays in sync).
+           When ON, reveals the 2x2 presentation controls below. -->
+      <label><input type="checkbox" id="export-hardware" oninput="updateExportHardwareInclusion()"> Hardware Schedule</label>
+      <div id="export-hardware-opts" class="export-sub-opts" style="display:none;">
+        <div class="export-sub-row">
+          <span class="export-sub-label">Detail:</span>
+          <label><input type="radio" name="export-hw-detail" value="lineByLine" oninput="updateExportHardwareMode()" checked> Line-by-line</label>
+          <label><input type="radio" name="export-hw-detail" value="lump"       oninput="updateExportHardwareMode()"> Lump sum</label>
+        </div>
+        <div class="export-sub-row">
+          <span class="export-sub-label">Split:</span>
+          <label><input type="radio" name="export-hw-split"  value="separate"   oninput="updateExportHardwareMode()" checked> Hardware &amp; labour separate</label>
+          <label><input type="radio" name="export-hw-split"  value="combined"   oninput="updateExportHardwareMode()"> Combined</label>
+        </div>
+      </div>
       <label><input type="checkbox" id="export-plans" oninput="updateExportAllDisabledHint()" checked> Floor Plan Pages</label>
     </div>
     <p id="export-empty-hint" style="display:none; color:var(--text-muted); font:italic 11px var(--font-ui); margin:4px 0 0;">All sections off &mdash; PDF will contain only page headers.</p>
@@ -4246,9 +4272,23 @@ function renderHardwareHome(){
   // Row 6: Add to Proposal (M5 toggle). M2 ships a disabled placeholder per
   // the brief — "until M5 wires the export, this can be a disabled 'coming
   // in this pass' row."
-  var row6Done = false;
-  var row6Status = 'Not in proposal';
-  var row6Hint = 'Wired in M5 &mdash; the Hardware Schedule page lands in the proposal export then.';
+  // Hardware-Module M5: row 6 is now a live toggle for the Hardware
+  // Schedule proposal section. Reads projectInfo.proposalSections.hardware;
+  // click hits _hwHomeToggleProposal() which flips the flag + markDirty.
+  // The 2x2 presentation controls live in the Export PDF modal — not on
+  // the canvas — so row 6 stays a single-action tile.
+  var proposalOn = !!(projectInfo.proposalSections && projectInfo.proposalSections.hardware);
+  var row6Done = proposalOn;
+  var row6Status = proposalOn ? 'Included in proposal' : 'Not in proposal';
+  // Surface the unresolved count as a soft hint when the section is ON —
+  // gives the integrator a heads-up before the loud export-gate warning.
+  // When OFF, no hint (the section isn't going out anyway).
+  var row6Unresolved = proposalOn ? _dhwCountUnresolved() : 0;
+  var row6Hint = '';
+  if(proposalOn && row6Unresolved > 0){
+    row6Hint = '&#9888; ' + row6Unresolved + ' line' + (row6Unresolved === 1 ? '' : 's') +
+      ' not yet priced or excluded &mdash; export will warn before generating.';
+  }
 
   list.innerHTML =
     _hwHomeRenderTile({
@@ -4296,9 +4336,8 @@ function renderHardwareHome(){
       label:'Add to Proposal',
       status:row6Status, done:row6Done,
       hint:row6Hint,
-      actionLabel:'Coming in M5',
-      onClick:'',
-      disabled:true
+      actionLabel:proposalOn ? 'Remove from proposal' : 'Add to proposal',
+      onClick:'_hwHomeToggleProposal()'
     });
 }
 
@@ -4307,6 +4346,20 @@ function renderHardwareHome(){
 // short-circuit when hardware mode isn't active.
 function _dhwRefreshHomeIfVisible(){
   if(panelMode === 'hardware') renderHardwareHome();
+}
+
+// Hardware-Module M5: row-6 toggle handler. Flips
+// projectInfo.proposalSections.hardware on/off, marks the project dirty,
+// and repaints the home canvas so the tile reflects the new state. The
+// export modal also reads/writes this flag — both surfaces stay in sync
+// because they both go through projectInfo as the single source of truth.
+function _hwHomeToggleProposal(){
+  if(!projectInfo.proposalSections){
+    projectInfo.proposalSections = { cover:true, bom:true, takeOff:true, riser:true, hardware:false, plans:true };
+  }
+  projectInfo.proposalSections.hardware = !projectInfo.proposalSections.hardware;
+  markDirty();
+  renderHardwareHome();
 }
 
 
@@ -5455,11 +5508,28 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       '</div>'
     : '';
 
-  // Items-not-priced count + Project Totals box (unchanged W6+ behavior).
-  var unpricedLine = '<p style="margin:10px 0 0; font:600 11px var(--font-ui); color:' +
-    (unpricedCount > 0 ? '#b45309' : 'var(--text-muted)') + ';">' +
-    unpricedCount + ' item' + (unpricedCount === 1 ? '' : 's') + ' not priced' +
-  '</p>';
+  // Items-not-priced count + Project Totals box. Hardware-Module M5
+  // strengthens this into the early-catch resolution-safeguard warning.
+  // The number here IS the unresolved count: activeResolved excludes the
+  // W7 excluded/by-others map, so any line still showing unpriced AND
+  // appearing here is exactly the "neither priced nor excluded" set the
+  // M5 export gate fires on. Amber banner styling matches the W7c
+  // zero-labour warning so the two read as the same severity language.
+  var unpricedLine;
+  if(unpricedCount > 0){
+    unpricedLine =
+      '<div class="dhw-nolabour-warn" style="margin-top:12px;">' +
+        '&#9888; ' + unpricedCount + ' line' + (unpricedCount === 1 ? '' : 's') +
+        ' not yet priced or excluded &mdash; ' +
+        (unpricedCount === 1 ? 'it' : 'they') +
+        ' won&rsquo;t show a price on the customer Hardware Schedule. ' +
+        'Price ' + (unpricedCount === 1 ? 'it' : 'them') +
+        ' on the Comparison step, or mark ' + (unpricedCount === 1 ? 'it' : 'them') +
+        ' by-others on the Hardware step.' +
+      '</div>';
+  } else {
+    unpricedLine = '<p style="margin:10px 0 0; font:600 11px var(--font-ui); color:var(--text-muted);">All awarded lines resolved (priced or marked by-others).</p>';
+  }
 
   var projectTotal     = equipmentSell + labourTotalEngine;
   var expectedMargin   = projectTotal - hardwareCost;
@@ -6313,6 +6383,42 @@ function _dhwToggleExclude(matchKey){
   }
   markDirty();
   renderDoorHardwareModal();
+}
+
+// Hardware-Module M5: resolution safeguard. Returns the count of awarded
+// takeoff lines that are UNRESOLVED — i.e. not priced (the awarded supplier
+// didn't price the line, OR no basis is confirmed) AND not excluded by the
+// W7 "by others" map. Both priced AND excluded count as resolved.
+//
+// Used in two places:
+//   • Step 5 Summary — surfaces an early-catch banner so the integrator
+//     sees missed lines BEFORE reaching the export step.
+//   • runExportPDF — confirm() gate when the Hardware Schedule section is
+//     included AND count > 0, requiring an explicit acknowledgement to
+//     proceed (the brief's "loud, must-acknowledge warning, not a hard
+//     block").
+//
+// With no award confirmed (basis is null), resolveAward returns every
+// line as unpriced. Treat that as 0 unresolved here so the warning only
+// fires when there's an actual award in progress — pre-award the user is
+// still working on the comparison step and the proposal export wouldn't
+// have meaningful figures anyway. The runExportPDF gate fires AFTER
+// opts.hardware is checked; opting in WITH no award AND triggering this
+// path is a corner case (the M4 page renders an empty-state notice in
+// that scenario; no false-positive warning needed).
+function _dhwCountUnresolved(){
+  var award = doorHardware.hardwareAward;
+  if(!award || !award.basis) return 0;
+  var takeoff = doorHardware.importedTakeoff;
+  var quotes  = doorHardware.hardwareQuotes || [];
+  if(!takeoff || !Array.isArray(takeoff.lines) || takeoff.lines.length === 0) return 0;
+  var resolved = resolveAward(takeoff, quotes, award);
+  var count = 0;
+  for(var i = 0; i < resolved.length; i++){
+    var r = resolved[i];
+    if(!r.priced && !_dhwIsExcluded(r.matchKey)) count++;
+  }
+  return count;
 }
 
 // ─── Pricing & Labour controls (M3d) ───────────────────────────────────────
@@ -13134,6 +13240,18 @@ function openExportModal(){
   document.getElementById('export-takeoff').checked = sec.takeOff !== false;
   document.getElementById('export-riser').checked   = sec.riser   !== false;
   document.getElementById('export-plans').checked   = sec.plans   !== false;
+  // Hardware-Module M5: hardware section + 2x2 presentation controls. The
+  // default-off semantics differ from the other sections — `=== true`
+  // (not `!== false`) so missing/undefined stays off, not on. Then sync the
+  // 2x2 radios from projectInfo.proposalHardware and show/hide the
+  // sub-controls block based on the checkbox.
+  document.getElementById('export-hardware').checked = (sec.hardware === true);
+  var hwCfg = projectInfo.proposalHardware || {};
+  var detail = (hwCfg.detail === 'lump') ? 'lump' : 'lineByLine';
+  var split  = (hwCfg.split  === 'combined') ? 'combined' : 'separate';
+  document.querySelectorAll('input[name="export-hw-detail"]').forEach(function(r){ r.checked = (r.value === detail); });
+  document.querySelectorAll('input[name="export-hw-split"]').forEach(function(r){ r.checked = (r.value === split); });
+  document.getElementById('export-hardware-opts').style.display = (sec.hardware === true) ? '' : 'none';
   updateExportAllDisabledHint();
   document.getElementById('export-modal').classList.add('show');
 }
@@ -13144,14 +13262,53 @@ function closeExportModal(){
 // Pass A.6: toggle the subtle "all sections off" hint reactively as the
 // user (un)checks the four section boxes. Soft warning only — Export PDF
 // still proceeds and produces a header-only document.
+// Hardware-Module M5: include export-hardware in the anyOn check so a
+// hardware-only export doesn't falsely trip the "all off" hint.
 function updateExportAllDisabledHint(){
-  var anyOn = ['export-cover','export-bom','export-takeoff','export-riser','export-plans']
+  var anyOn = ['export-cover','export-bom','export-takeoff','export-riser','export-hardware','export-plans']
     .some(function(id){
       var el = document.getElementById(id);
       return el && el.checked;
     });
   var hint = document.getElementById('export-empty-hint');
   if(hint) hint.style.display = anyOn ? 'none' : 'block';
+}
+
+// Hardware-Module M5: section-toggle change handler. Persists immediately
+// to projectInfo.proposalSections.hardware (markDirty), shows/hides the
+// 2x2 sub-controls block, and refreshes the home-canvas row 6 if visible
+// (so the canvas tile and the modal toggle stay in sync).
+function updateExportHardwareInclusion(){
+  var on = document.getElementById('export-hardware').checked;
+  if(!projectInfo.proposalSections){
+    projectInfo.proposalSections = { cover:true, bom:true, takeOff:true, riser:true, hardware:false, plans:true };
+  }
+  projectInfo.proposalSections.hardware = !!on;
+  document.getElementById('export-hardware-opts').style.display = on ? '' : 'none';
+  markDirty();
+  if(typeof _dhwRefreshHomeIfVisible === 'function') _dhwRefreshHomeIfVisible();
+  updateExportAllDisabledHint();
+}
+
+// Hardware-Module M5: 2x2 detail/split radio change handler. Reads the
+// active radio in each group and writes to projectInfo.proposalHardware
+// (markDirty). Backfill defaults persist if the user only flips one of
+// the two groups.
+function updateExportHardwareMode(){
+  var detail = 'lineByLine';
+  var split  = 'separate';
+  var dRadios = document.querySelectorAll('input[name="export-hw-detail"]');
+  for(var i = 0; i < dRadios.length; i++){
+    if(dRadios[i].checked){ detail = dRadios[i].value; break; }
+  }
+  var sRadios = document.querySelectorAll('input[name="export-hw-split"]');
+  for(var j = 0; j < sRadios.length; j++){
+    if(sRadios[j].checked){ split = sRadios[j].value; break; }
+  }
+  if(detail !== 'lump') detail = 'lineByLine';
+  if(split  !== 'combined') split = 'separate';
+  projectInfo.proposalHardware = { detail: detail, split: split };
+  markDirty();
 }
 
 async function runExportPDF(){
@@ -13166,11 +13323,34 @@ async function runExportPDF(){
     riser:       document.getElementById('export-riser').checked,
     plans:       document.getElementById('export-plans').checked,
     currentOnly: document.getElementById('exp-current-only').checked,
-    // Hardware-Module M4: no export-modal checkbox yet (M5 adds it). Read
-    // directly from projectInfo.proposalSections.hardware so the page is
-    // gated on the persisted toggle; defaults to false → page omitted.
-    hardware:    !!(projectInfo.proposalSections && projectInfo.proposalSections.hardware)
+    // Hardware-Module M5: hardware section is driven by the export-modal
+    // checkbox (added in M5). The checkbox already persists to
+    // projectInfo.proposalSections.hardware on change via
+    // updateExportHardwareInclusion, but read live here so any in-modal
+    // toggle since the last persist is honored too.
+    hardware:    document.getElementById('export-hardware').checked
   };
+  // Hardware-Module M5: resolution safeguard. When the hardware section
+  // is included, count awarded lines that are NEITHER priced NOR excluded
+  // — those would render as "—" on the customer page with no explanation
+  // of why. Show a loud confirm() before generating; the user must click
+  // OK to proceed (Cancel keeps the modal open). Not a hard block — the
+  // brief allows the user to ship-with-warning, but the acknowledgement
+  // must be explicit, not passive.
+  if(opts.hardware){
+    var unresolved = _dhwCountUnresolved();
+    if(unresolved > 0){
+      var noun = (unresolved === 1) ? 'line is' : 'lines are';
+      var pronoun = (unresolved === 1) ? "it won't" : "they won't";
+      var ack = window.confirm(
+        '⚠  ' + unresolved + ' hardware ' + noun + ' neither priced nor excluded.\n\n' +
+        pronoun + ' show a price to the customer on the Hardware Schedule page.\n\n' +
+        'Price them on the wizard, or mark them by-others/excluded, before sending.\n\n' +
+        'Generate the PDF anyway?'
+      );
+      if(!ack) return;  // user cancelled — modal stays open, no PDF generated.
+    }
+  }
   projectInfo.proposalSections = {
     cover:    opts.cover,
     bom:      opts.bom,
