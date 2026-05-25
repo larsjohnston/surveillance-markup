@@ -13725,9 +13725,7 @@ function applyProjectState(data){
   // Pass C: deferred so the canvas paints with the migrated cones before the
   // modal blocks. setTimeout 0 lets the current task finish.
   if(_legacyReachMigrated){
-    setTimeout(function(){
-      alert('Camera reach values updated to reflect manufacturer specs. FOV cones now scale to real-world coverage.');
-    }, 0);
+    console.info('[migration] camera reach values migrated to spec (v13).');
   }
   // Pass Left-Pane M5: AC migration banner. Fires only when at least
   // one device was backfilled. Once the user re-saves (now v15-shape),
@@ -13737,9 +13735,7 @@ function applyProjectState(data){
   // same load, the user dismisses two banners in sequence (reach first
   // since its setTimeout was queued first).
   if(_legacyAcMigrated){
-    setTimeout(function(){
-      alert('AC reader categorization updated. Existing readers preserved with their original SKUs.');
-    }, 0);
+    console.info('[migration] AC readers backfilled to v15 metadata; SKUs unchanged.');
   }
 }
 
