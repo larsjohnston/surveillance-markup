@@ -1499,9 +1499,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="menu" data-menu="file">
       <button class="menu-trigger">File</button>
       <div class="menu-dropdown">
-        <button class="menu-item" onclick="document.getElementById('file-input').click()" data-shortcut="O"><span class="menu-check">&#10003;</span><span class="menu-label">Open PDF&hellip;</span></button>
+        <!-- file-menu-rename: menu label is "New Project" but the modal it
+             opens is still titled "Open Floorplan" — intentional split per
+             the rename brief. Same file-input click; no handler change. -->
+        <button class="menu-item" onclick="document.getElementById('file-input').click()" data-shortcut="O"><span class="menu-check">&#10003;</span><span class="menu-label">New Project</span></button>
         <div class="menu-divider"></div>
-        <button class="menu-item" id="btn-save" onclick="saveJSON()" data-shortcut="S" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save Project</span></button>
+        <!-- file-menu-rename: Save is a one-click silent download. Filename
+             derived from projectInfo.name (sanitized) — the pre-branch
+             behavior. No prompt; no Save As. -->
+        <button class="menu-item" id="btn-save" onclick="saveJSON()" data-shortcut="S" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save</span></button>
         <button class="menu-item" id="btn-load" onclick="document.getElementById('json-input').click()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Project&hellip;</span></button>
         <!-- Menu-cleanup C1: Load Pricing / Clear Pricing menu entries
              removed. Their handlers (openPricingFilePicker,
@@ -2508,8 +2514,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <table class="help-shortcuts">
       <tr><td><kbd>Esc</kbd></td><td>Deselect / cancel current operation</td></tr>
       <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Remove selected device</td></tr>
-      <tr><td><kbd class="kbd-mod">Ctrl</kbd> + <kbd>S</kbd></td><td>Save project</td></tr>
-      <tr><td><kbd class="kbd-mod">Ctrl</kbd> + <kbd>O</kbd></td><td>Open PDF</td></tr>
+      <tr><td><kbd class="kbd-mod">Ctrl</kbd> + <kbd>S</kbd></td><td>Save</td></tr>
+      <tr><td><kbd class="kbd-mod">Ctrl</kbd> + <kbd>O</kbd></td><td>New Project</td></tr>
       <tr><td><kbd>1</kbd></td><td>Cameras mode</td></tr>
       <tr><td><kbd>2</kbd></td><td>Access Control mode</td></tr>
     </table>
@@ -12802,7 +12808,7 @@ function autoSaveTick(){
     markClean('autosave');
   } catch(e){
     autoSaveAvailable = false;
-    showOneShotToast('Auto-save unavailable. Use Save Project regularly.');
+    showOneShotToast('Auto-save unavailable. Use Save (Ctrl+S) regularly.');
   }
   checkReminderToast();
 }
@@ -12847,7 +12853,7 @@ function checkReminderToast(){
   if(Date.now() - dirtySinceMs   < REMINDER_AGE_MS) return;
   if(Date.now() - lastReminderMs < REMINDER_AGE_MS) return;
   lastReminderMs = Date.now();
-  showToast('It’s been 10 minutes since you saved. Save Project (Ctrl+S) to embed the PDF.', 'reminder');
+  showToast('It’s been 10 minutes since you saved. Save (Ctrl+S) to embed the PDF.', 'reminder');
 }
 
 // ─── Pass D: relative-time formatter ─────────────────────────────────────────
@@ -12951,6 +12957,11 @@ function closeRecoveryModal(){
   if(modal) modal.classList.remove('show');
 }
 
+// file-menu-rename: one-click silent save — no prompt, no tracking layer.
+// Filename derived from projectInfo.name (sanitized: lowercase, alpha-
+// numeric + underscore; falls back to 'project' if name is empty). The
+// "Save As / tracked _currentProjectName" flow that briefly lived here
+// was reverted — Save is meant to be friction-free.
 async function saveJSON(){
   showProgress('Saving project (this may take a moment for large files)…', 5);
   // Yield once so the overlay paints before the encode work blocks the thread.
