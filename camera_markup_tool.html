@@ -2992,17 +2992,12 @@ var BRIVO_CATALOG = [
   { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Keypad',       sku:'B-ACS100-E-BSPK-B', name:'Brivo ACS100 Controller + Keypad Reader' }
 ];
 
-// Restructure-v2 M2: SKU allowlist that routes its AC auto-rows to BOM §2.2
-// Overhead Door Control instead of §2.1 Access Control. Empty for now:
-// transmitter and long-range receiver SKUs aren't catalogued yet (they
-// arrive via overhead-door credential types later), and ACS300 is general
-// AC hardware — placed-ACS300-serving-an-overhead-door will be flagged via
-// a per-device "For use with Overhead Door" checkbox in a later pass.
-// Until any of that ships, §2.2 stays empty (hidden by the zero-row rule).
-// INTERIM hardcode — replace with a data-driven catalog 'section' field in
-// the materials-model/pricing pass. Band-aid for the missing user-facing
-// section assignment.
-var OVERHEAD_DOOR_SKUS = [];
+// Overhead-door-flag M2: the OVERHEAD_DOOR_SKUS allowlist was removed
+// once the per-device "For use with Overhead Door" checkbox (M1) became
+// the user-facing routing signal. AC reader/controller rows route to
+// §2.2 Overhead Door Control when dev.overheadDoor is true; OH credential
+// types (ohTransmitters/ohReceiver) carry their own r.section:'2.2'
+// markers in CREDENTIAL_TYPE_DEFS. No hardcoded SKU list remains.
 
 // Pass N+1 M2 (D3): placeholder catalogs for the three smart-apartment
 // device families. Real curated SKU lists (Comelit / Aiphone / Parcel
@@ -16449,6 +16444,12 @@ function computeAutoRows(){
   var acRows = [];
   var acGroups = {};
   var readerCountForCredentials = 0;
+  // Overhead-door flag M2: group-key splits flagged from unflagged so the
+  // same SKU produces TWO BOM rows when both states exist (one routed to
+  // §2.1 Access Control, one routed to §2.2 Overhead Door Control). The
+  // group key shape is `<sku>|` (unflagged) or `<sku>|OH` (flagged) —
+  // empty-suffix keeps unflagged groups visually grep-friendly + collisions
+  // with the (existing) credentials helper keys impossible.
   acDevices.forEach(function(d){
     var cat = acCategoryOf(d);
     if(cat !== 'Readers' && cat !== 'Controllers') return;
@@ -16456,31 +16457,48 @@ function computeAutoRows(){
     if(!sku) return;
     var mult = pageMultiplier(d.page);
     if(cat === 'Readers') readerCountForCredentials += mult;
-    if(!acGroups[sku]){
+    var oh = !!d.overheadDoor;
+    var groupKey = sku + '|' + (oh ? 'OH' : '');
+    if(!acGroups[groupKey]){
       var catalogEntry = null;
       for(var ci = 0; ci < BRIVO_CATALOG.length; ci++){
         if(BRIVO_CATALOG[ci].sku === sku){ catalogEntry = BRIVO_CATALOG[ci]; break; }
       }
       var desc = catalogEntry ? (catalogEntry.name + ' — ' + sku) : (sku + ' (custom AC device)');
-      acGroups[sku] = { desc: desc, qty: 0, sku: sku, cat: cat };
+      acGroups[groupKey] = { desc: desc, qty: 0, sku: sku, cat: cat, overheadDoor: oh };
     }
-    acGroups[sku].qty += mult;
+    acGroups[groupKey].qty += mult;
   });
-  // Sort group keys for stable output: readers first (alphabetical by SKU),
-  // controllers second (alphabetical by SKU). Same precedence as the M2
-  // riser-rail sort.
+  // Sort: readers first, controllers second; within each cat alphabetical
+  // by SKU; same SKU → unflagged before its flagged sibling so a "(OH)"
+  // split-off reads as a follow-on row directly beneath its main entry.
   var acGroupKeys = Object.keys(acGroups).sort(function(a, b){
-    var ca = acGroups[a].cat === 'Controllers' ? 1 : 0;
-    var cb = acGroups[b].cat === 'Controllers' ? 1 : 0;
+    var ga = acGroups[a], gb = acGroups[b];
+    var ca = ga.cat === 'Controllers' ? 1 : 0;
+    var cb = gb.cat === 'Controllers' ? 1 : 0;
     if(ca !== cb) return ca - cb;
-    return a < b ? -1 : (a > b ? 1 : 0);
+    if(ga.sku !== gb.sku) return ga.sku < gb.sku ? -1 : 1;
+    return (ga.overheadDoor ? 1 : 0) - (gb.overheadDoor ? 1 : 0);
   });
-  acGroupKeys.forEach(function(sku){
-    var g = acGroups[sku];
-    acRows.push({
-      auto: true, src: 'accessControl', key: 'auto-ac-' + sku,
-      desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
-    });
+  acGroupKeys.forEach(function(groupKey){
+    var g = acGroups[groupKey];
+    // Flagged group: distinct key 'auto-ac-oh-<SKU>' + r.section:'2.2'
+    // marker. The M3 r.section priority branch in computeBomTree routes
+    // directly to §2.2 — no need for the legacy OVERHEAD_DOOR_SKUS allow-
+    // list path (now removed). Unflagged keeps the legacy 'auto-ac-<SKU>'
+    // key so bomAutoOverrides for an existing un-suffixed entry survives
+    // unchanged. NOTE: flipping a placed device's overheadDoor checkbox
+    // changes its emitted row key (auto-ac-<SKU> → auto-ac-oh-<SKU>), so
+    // any bomAutoOverrides on the old key orphans. Inert today (unit:0
+    // throughout), real concern in Pass 2 pricing — track, don't fix now.
+    var row = { auto: true, src: 'accessControl', desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true };
+    if(g.overheadDoor){
+      row.key     = 'auto-ac-oh-' + g.sku;
+      row.section = '2.2';
+    } else {
+      row.key = 'auto-ac-' + g.sku;
+    }
+    acRows.push(row);
   });
   // Credentials rows — combines manual entries (projectInfo.credentials)
   // with the derived reader-count estimate. D1 (tightened): the derived
@@ -17079,14 +17097,18 @@ var BOM_TEMPLATE = {
 // a flat bucket map keyed by tier-2 id ('1.1', '1.2', '2.1', '2.2', '2.3',
 // '3.1', '3.2', '4.1', '5.1', '5.2', '5.3', 'unclassified', 'other').
 // recalcBom walks BOM_TEMPLATE.tiers and pulls each bucket.
-// Restructure-v2 M2 routing rules:
+// Restructure-v2 M2 routing rules (updated through overhead-door-flag M2):
 //   Auto rows:
 //     cameras                        → 1.1  (Cameras & Surveillance)
 //     recording (auto-nvr/auto-hdd)  → 1.2  (Networking)
 //     network (auto-switch/placed-)  → 1.2  (Networking)
-//     accessControl                  → 2.2  if AC SKU ∈ OVERHEAD_DOOR_SKUS
-//                                      else credentials → 2.1 (with guard)
-//                                      else other AC    → 2.1 (with guard)
+//     accessControl                  → 2.2  if r.section === '2.2' (overhead-
+//                                      door-flag M2 flagged AC rows AND
+//                                      credentials-entry M3 OH credentials).
+//                                      else 2.1 (with guard) — derived
+//                                      auto-ac-credentials + unflagged AC
+//                                      readers/controllers + manual 2.1
+//                                      credential rows (r.section === '2.1').
 //     smartApartment                 → 'auto-sa-intercom-*'  → 2.3 (with guard)
 //                                      'auto-sa-parcel-*'    → 3.1
 //                                      'auto-sa-mailbox-*'   → 3.2
@@ -17109,7 +17131,7 @@ var BOM_TEMPLATE = {
 // can't land in §2.1 or §2.3 — those belong in §5.1 Security Hardware. The
 // guard fires at 2.1-bound and 2.3-bound entry points; matches route to
 // 'other' (visible, not silently dropped). §2.2 Overhead Door Control has
-// no guard (the SKU allowlist is the gate there).
+// no guard (routing-by-design via r.section, not by token).
 // Custom rows are wrapped with {section, idx, line} so the row-render code
 // can emit data-section/data-idx attributes that match the legacy section
 // key — updateCustomRow / removeBomLine continue to find bomCustomLines[sec]
@@ -17150,13 +17172,17 @@ function computeBomTree(){
   auto.network.forEach(function(r){ buckets['1.2'].auto.push(r); });
 
   // §2 split:
-  //   r.section === '2.1'  → §2.1 Access Control (with guard).
   //   r.section === '2.2'  → §2.2 Overhead Door Control (no guard).
-  //                          Credentials-entry M3 manual rows carry this
-  //                          marker from CREDENTIAL_TYPE_DEFS so the
-  //                          type→section mapping stays single-source.
-  //   else AC SKU ∈ OVERHEAD_DOOR_SKUS → 2.2 (no guard).
-  //   else credentials/auto-ac-<SKU> → 2.1 (with guard).
+  //                          Source: (a) credentials-entry M3 OH credential
+  //                          rows from CREDENTIAL_TYPE_DEFS, (b) overhead-
+  //                          door-flag M2 flagged AC reader/controller rows
+  //                          (key 'auto-ac-oh-<SKU>'). The type→section
+  //                          mapping stays single-source in those helpers.
+  //   r.section === '2.1'  → §2.1 Access Control (with guard). Source:
+  //                          credentials-entry M3 building-credential rows.
+  //   else credentials/auto-ac-<SKU> → 2.1 (with guard). Source: derived
+  //                          auto-ac-credentials + unflagged AC readers/
+  //                          controllers.
   auto.accessControl.forEach(function(r){
     var k = r.key || '';
     if(r.section === '2.2'){
@@ -17168,17 +17194,13 @@ function computeBomTree(){
       else                          buckets['2.1'].auto.push(r);
       return;
     }
-    if(k === 'auto-ac-credentials'){
+    if(k === 'auto-ac-credentials' || k.indexOf('auto-ac-') === 0){
+      // Unflagged AC reader/controller rows + the derived credentials
+      // estimate row. Overhead-door-flag M2 removed the OVERHEAD_DOOR_SKUS
+      // allowlist branch — the per-device checkbox is now the sole 2.2
+      // signal for placed devices (via r.section above).
       if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
       else                          buckets['2.1'].auto.push(r);
-    } else if(k.indexOf('auto-ac-') === 0){
-      var sku = k.slice('auto-ac-'.length);
-      if(OVERHEAD_DOOR_SKUS.indexOf(sku) !== -1){
-        buckets['2.2'].auto.push(r);  // OD destination — no guard
-      } else {
-        if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
-        else                          buckets['2.1'].auto.push(r);
-      }
     } else {
       // Unrecognized AC key shape — defensive, surface in Other rather
       // than silently land in 2.1.
