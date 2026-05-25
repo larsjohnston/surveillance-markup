@@ -14178,10 +14178,24 @@ function drawProposalBOM(doc, W, H){
     y += 4;
   }
 
-  // Orphan-guard sizing: tier-1 hdr (22pt) + tier-2 hdr (18pt) + a
-  // possibly-2-line first row (~48pt = 16 line-1 + 28 line-2 + 4 gap) =
-  // ~88pt. Pad to 95 for safety margin.
-  var MIN_TIER1_FIT = 95;
+  // Banded-header palette. Hardcoded RGB for now — the cover-redesign
+  // branch will eventually own a projectInfo.branding.palette and these
+  // two values should resolve from there.
+  // TODO: unify with projectInfo.branding.palette when the cover-redesign branch merges.
+  var BAND_NAVY_RGB = [40, 54, 92];   // tier-1 fill — SMART MF brand navy
+  var BAND_BLUE_RGB = [74, 110, 180]; // tier-2 fill — SMART MF brand blue
+  var BAND_LEFT = 40;
+  var BAND_RIGHT = W - 40;
+  var BAND_TEXT_X = BAND_LEFT + 6;       // ~6pt left-padded text
+  var BAND_QTY_X  = BAND_RIGHT - 6;      // right-aligned QTY label
+  var BAND_H1 = 18;
+  var BAND_H2 = 15;
+
+  // Orphan-guard sizing: tier-1 band (18pt + 4pt gap) + tier-2 band (15pt
+  // + 4pt gap) + a possibly-2-line first row (~48pt = 16 line-1 + 28
+  // line-2 + 4 gap) = ~89pt. Pad to 100 for safety so a navy band never
+  // renders as the last thing on a page above its first tier-2 + row.
+  var MIN_TIER1_FIT = 100;
 
   BOM_TEMPLATE.tiers.forEach(function(tier){
     var visibleSubs = tier.subs.filter(function(sub){
@@ -14192,26 +14206,35 @@ function drawProposalBOM(doc, W, H){
 
     if(y + MIN_TIER1_FIT > H - 60) _newContPage();
 
-    // Tier-1 header — bold 13pt navy uppercase. Bumped from M4's 11pt to
-    // stay above the new 12pt row-line-1; +2pt size + UPPERCASE keeps the
-    // visual hierarchy: tier-1 (13) > tier-2 (12) > row line-1 (12 mixed-
-    // case) > row line-2 (11 regular).
-    doc.setFont('courier','bold'); doc.setFontSize(13); doc.setTextColor(31, 41, 55);
-    doc.text(tier.title.toUpperCase(), 40, y); y += 22;
+    // Tier-1 BAND — filled navy strip spanning the content width with
+    // white bold text. "QTY" right-aligned on every tier-1 band as a
+    // column-less label cue (rows carry Qty inline on line 1).
+    doc.setFillColor(BAND_NAVY_RGB[0], BAND_NAVY_RGB[1], BAND_NAVY_RGB[2]);
+    doc.rect(BAND_LEFT, y, BAND_RIGHT - BAND_LEFT, BAND_H1, 'F');
+    doc.setFont('courier','bold'); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
+    // Text baseline at ~75% of band height — visually vertically centered
+    // for caps-height type. 12pt courier cap ~9pt, band 18pt → y+13 puts
+    // the baseline 5pt above band bottom (cap-top sits 4pt below band top).
+    doc.text(tier.title.toUpperCase(), BAND_TEXT_X, y + BAND_H1 - 5);
+    doc.text('QTY', BAND_QTY_X, y + BAND_H1 - 5, {align:'right'});
+    y += BAND_H1 + 4;
 
     visibleSubs.forEach(function(sub){
       var b = buckets[sub.id];
 
-      // Within-tier-1 page-break for tier-2 headers (mirrors the legacy
+      // Within-tier-1 page-break for tier-2 bands (mirrors the legacy
       // per-section guard). After the orphan check above this only fires
       // for subsequent tier-2s in a multi-sub tier-1 (e.g. §2's 2.1+2.2,
       // §5's 5.1/5.2/5.3/unclassified).
       if(y > H - 90) _newContPage();
 
-      // Tier-2 header — bold 12pt navy uppercase. Bumped from M4's 10pt
-      // in concert with the row-text bump.
-      doc.setFont('courier','bold'); doc.setFontSize(12); doc.setTextColor(31, 41, 55);
-      doc.text(sub.title.toUpperCase(), 40, y); y += 18;
+      // Tier-2 BAND — filled blue strip with white bold text, same edge
+      // alignment as the tier-1 band so the hierarchy reads cleanly.
+      doc.setFillColor(BAND_BLUE_RGB[0], BAND_BLUE_RGB[1], BAND_BLUE_RGB[2]);
+      doc.rect(BAND_LEFT, y, BAND_RIGHT - BAND_LEFT, BAND_H2, 'F');
+      doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
+      doc.text(sub.title.toUpperCase(), BAND_TEXT_X, y + BAND_H2 - 4);
+      y += BAND_H2 + 4;
 
       // Auto rows first, then custom rows (matches drawer ordering).
       b.auto.forEach(_drawCustomerRow);
