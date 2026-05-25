@@ -14316,6 +14316,22 @@ function _stripOhPrefix(s){
   return (s.indexOf('oh-') === 0) ? s.slice(3) : s;
 }
 
+// Pricing M4 (Fix 2): normalize a bomAutoOverrides key so a flagged AC
+// row (auto-ac-oh-<SKU>) and its unflagged sibling (auto-ac-<SKU>) share
+// ONE override entry. Composes via _stripOhPrefix so the 'oh-' literal
+// stays single-source. Non-AC keys (auto-dh-*, auto-sa-*, placed-switch,
+// custom-line keys, etc.) and non-strings pass through unchanged.
+// Called from BOTH the override read site (computeAutoRows wrapper) AND
+// the write site (updateAutoRow). No load-time migration — a v21 save
+// pre-dating M4 may carry legacy auto-ac-oh-<SKU> override entries; they
+// sit inert (no row's normalized key matches), harmless ghost data.
+function _normalizeBomKey(key){
+  if(typeof key !== 'string') return key;
+  var prefix = 'auto-ac-';
+  if(key.indexOf(prefix) !== 0) return key;
+  return prefix + _stripOhPrefix(key.slice(prefix.length));
+}
+
 function bomRowSku(row){
   if(!row) return { sku: '', typeLabel: 'CUSTOM' };
   var k = row.key || '';
@@ -17427,7 +17443,10 @@ var bomAutoOverrides = {}; // key -> { unit, qty }
 
 function updateAutoRow(input){
   var row = input.closest('.bom-row');
-  var key = row.dataset.key;
+  // Pricing M4 (Fix 2): normalize the override key so a user-set price on
+  // either the flagged OH row or the unflagged sibling of the same SKU
+  // writes to ONE shared entry.
+  var key = _normalizeBomKey(row.dataset.key);
   var field = input.dataset.field;
   var val = parseFloat(input.value) || 0;
   if(!bomAutoOverrides[key]) bomAutoOverrides[key] = {};
@@ -17458,9 +17477,14 @@ computeAutoRows = function(){
         var _p   = (_it && typeof _it.unit_cost === 'number' && isFinite(_it.unit_cost)) ? _it.unit_cost : null;
         if(_p) r.unit = _p;
       }
-      if(bomAutoOverrides[r.key]){
-        if(bomAutoOverrides[r.key].unit !== undefined) r.unit = bomAutoOverrides[r.key].unit;
-        if(bomAutoOverrides[r.key].qty  !== undefined && r.src !== 'cameras') r.qty = bomAutoOverrides[r.key].qty;
+      // Pricing M4 (Fix 2): look up the override under the normalized
+      // key so a flagged AC row and its unflagged sibling pick up the
+      // same user-set price. Mirrors the WRITE-side normalization in
+      // updateAutoRow.
+      var ovKey = _normalizeBomKey(r.key);
+      if(bomAutoOverrides[ovKey]){
+        if(bomAutoOverrides[ovKey].unit !== undefined) r.unit = bomAutoOverrides[ovKey].unit;
+        if(bomAutoOverrides[ovKey].qty  !== undefined && r.src !== 'cameras') r.qty = bomAutoOverrides[ovKey].qty;
       }
     });
   });
