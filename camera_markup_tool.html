@@ -1140,9 +1140,9 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .rp-reset-link:hover { color:var(--primary); }
 
 /* Number-input + unit (e.g. mount height + m/ft). */
-.rp-input-with-unit { display:flex; align-items:center; gap:10px; }
-.rp-input-with-unit input { flex:1; }
-.rp-input-with-unit .rp-input-unit { font:500 11px var(--font-ui); color:var(--text-muted); min-width:24px; }
+/* camera-details-tweaks CDT2: .rp-input-with-unit / .rp-input-unit rules
+   removed — their sole consumer was the Mount Height number input, which
+   was converted to a slider. */
 
 /* Sub-fields inside the custom-specs collapse (Resolution / FOV / Reach). */
 .rp-sub-field { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
@@ -2007,19 +2007,21 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           </div>
         </div>
 
+        <!-- camera-details-tweaks CDT1: Manufacturer & Model and Specs merged
+             into a single readout block. Model name (e.g. "Eagle Eye PB02")
+             is the visual heading; Resolution + FOV rows + the descriptor
+             (lens/IP/IR) sit beneath as one unified block. The custom-camera
+             editable inputs live in the same field — visibility toggled by
+             updateRightPanelDisplay between read-only spec rows and editable
+             inputs depending on whether cam.model resolves in CAMERA_DB. -->
         <div class="rp-field">
-          <label class="rp-label">Manufacturer &amp; Model</label>
           <div class="rp-readout" id="rp-model-readout">
             <div class="rp-model-name">Custom Camera</div>
+            <div id="rp-specs-readout">
+              <div class="rp-spec-row"><span>Resolution</span><b id="rp-spec-res">&mdash;</b></div>
+              <div class="rp-spec-row"><span>FOV</span><b id="rp-spec-fov">&mdash;</b></div>
+            </div>
             <div class="rp-model-desc"></div>
-          </div>
-        </div>
-
-        <div class="rp-field">
-          <label class="rp-label">Specs</label>
-          <div class="rp-readout" id="rp-specs-readout">
-            <div class="rp-spec-row"><span>Resolution</span><b id="rp-spec-res">&mdash;</b></div>
-            <div class="rp-spec-row"><span>FOV</span><b id="rp-spec-fov">&mdash;</b></div>
           </div>
           <div class="rp-custom-specs" id="rp-custom-specs" style="display:none">
             <div class="rp-sub-field">
@@ -2055,11 +2057,16 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
           </div>
         </div>
 
+        <!-- camera-details-tweaks CDT2: Mount Height converted from number
+             input to slider, matching the Reach + Angle sliders. Range
+             1-100; readout shows "N ft" or "N m" depending on the page's
+             calibration unit (syncLabels keeps the suffix in step). The
+             underlying cam.mountHeight value path is unchanged. -->
         <div class="rp-field">
           <label class="rp-label">Mount Height</label>
-          <div class="rp-slot rp-input-with-unit" data-rp-slot="mount">
-            <input type="number" id="inp-mount" min="0" max="20" step="0.1" value="3.0" oninput="updateSelected()">
-            <span class="rp-input-unit" id="v-mount-unit">m</span>
+          <div class="rp-slot rp-slider" data-rp-slot="mount">
+            <input type="range" id="inp-mount" min="1" max="100" step="1" value="3" oninput="updateSelected()">
+            <span class="rp-slider-val" id="v-mount">3 ft</span>
           </div>
         </div>
 
@@ -12516,9 +12523,12 @@ function clearPage(){
 function syncLabels(){
   document.getElementById('v-angle').textContent=document.getElementById('inp-angle').value+'\u00b0';
   document.getElementById('v-fov').textContent  =document.getElementById('inp-fov').value  +'\u00b0';
-  // Mount height unit indicator — match calibration unit if present
+  // camera-details-tweaks CDT2: mount-height slider readout = number +
+  // unit (ft / m) matching the page's calibration unit. Slider range is
+  // a fixed 1-100; the unit suffix swaps with calib like Reach below.
   var mountUnit = getCalibUnit(currentPage);
-  document.getElementById('v-mount-unit').textContent = mountUnit==='ft' ? 'ft' : 'm';
+  var mSlider = document.getElementById('inp-mount');
+  document.getElementById('v-mount').textContent = mSlider.value + (mountUnit === 'ft' ? ' ft' : ' m');
   // Pass C: slider value is real-world (ft or m). Suffix matches data-unit.
   var rSlider = document.getElementById('inp-reach');
   var rUnit   = rSlider.getAttribute('data-unit') || 'm';
