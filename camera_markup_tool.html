@@ -14185,13 +14185,12 @@ function drawProposalBOM(doc, W, H){
   var BAND_H1 = 18;
   var BAND_H2 = 15;
 
-  // Orphan-guard sizing: tier-1 band (18pt + 6pt gap) + tier-2 band (15pt
-  // + 14pt post-band gap so the row's 11pt cap-top clears the band bottom
-  // by ~6pt of whitespace) + a single-line first row (~14pt + 4pt inter-
-  // row gap) = ~67pt. Pad to 75 so a navy band never renders as the last
-  // thing on a page above its first tier-2 + row. Lower than the previous
-  // 120pt because the row is now one line (was two with SKU+desc).
-  var MIN_TIER1_FIT = 75;
+  // Orphan-guard sizing: tier-1 band (18pt, FLUSH against tier-2) + tier-2
+  // band (15pt + 14pt post-band gap so the row's 11pt cap-top clears the
+  // band bottom by ~6pt of whitespace) + a single-line first row (~14pt
+  // + 4pt inter-row gap) = ~65pt. Pad to 72 so a navy band never renders
+  // as the last thing on a page above its first tier-2 + row.
+  var MIN_TIER1_FIT = 72;
 
   BOM_TEMPLATE.tiers.forEach(function(tier){
     var visibleSubs = tier.subs.filter(function(sub){
@@ -14213,9 +14212,10 @@ function drawProposalBOM(doc, W, H){
     // the baseline 5pt above band bottom (cap-top sits 4pt below band top).
     doc.text(tier.title.toUpperCase(), BAND_TEXT_X, y + BAND_H1 - 5);
     doc.text('QTY', BAND_QTY_X, y + BAND_H1 - 5, {align:'right'});
-    // Fix-1: bump 4 → 6 for a slightly more comfortable visual stripe
-    // between the navy tier-1 band and the blue tier-2 band.
-    y += BAND_H1 + 6;
+    // Restructure-v2 M1: navy tier-1 band sits flush against the blue
+    // tier-2 band below — no whitespace stripe between them. Reads as a
+    // single stacked header unit.
+    y += BAND_H1;
 
     visibleSubs.forEach(function(sub){
       var b = buckets[sub.id];
