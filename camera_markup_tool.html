@@ -14138,11 +14138,13 @@ function drawProposalBOM(doc, W, H){
   }
 
   // Two-line row emitter. Line 1: bold 12pt — SKU navy (real part number)
-  // or [TYPE LABEL] lighter gray (derived / no-SKU rows). Followed by a
-  // " · Qty N" suffix. Line 2: regular 11pt charcoal — full description,
-  // wraps up to 2 lines max (mirrors the M6 wrapping logic; we now have
-  // full page width since the price columns are gone). The line-2 indent
-  // (x=55 vs x=45 on line 1) visually nests the desc under the heading.
+  // or [TYPE LABEL] lighter gray (derived / no-SKU rows), LEFT-anchored.
+  // Quantity rendered as a bare right-aligned number under the band's QTY
+  // header (column alignment via BAND_QTY_X). Line 2: regular 11pt
+  // charcoal — full description, wraps up to 2 lines max (mirrors the M6
+  // wrapping logic; full width since the price columns are gone). Line-2
+  // indent (x=55 vs x=45 on line 1) visually nests the desc under the
+  // heading.
   function _drawCustomerRow(row){
     var meta = bomRowSku(row);
     var qtyN = (typeof row.qty === 'number' && isFinite(row.qty)) ? row.qty : 0;
@@ -14156,17 +14158,19 @@ function drawProposalBOM(doc, W, H){
     var rowH = 16 + (displayLines.length * 14) + 4;
     if(y + rowH > H - 50) _newContPage();
 
-    // Line 1
+    // Line 1 — SKU/[label] left-anchored + bare qty right-aligned under
+    // the band's QTY header (fix 2: replaces the "  ·  Qty N" suffix).
     doc.setFont('courier','bold'); doc.setFontSize(12);
     var headText;
     if(meta.sku){
-      headText = meta.sku + '  ·  Qty ' + qtyN;
+      headText = meta.sku;
       doc.setTextColor(31, 41, 55);  // navy — real part number
     } else {
-      headText = '[' + meta.typeLabel + ']  ·  Qty ' + qtyN;
+      headText = '[' + meta.typeLabel + ']';
       doc.setTextColor(110, 110, 130);  // lighter — clearly not a literal SKU
     }
     doc.text(headText, 45, y);
+    doc.text(String(qtyN), BAND_QTY_X, y, {align:'right'});
     y += 16;
 
     // Line 2+
@@ -14191,11 +14195,12 @@ function drawProposalBOM(doc, W, H){
   var BAND_H1 = 18;
   var BAND_H2 = 15;
 
-  // Orphan-guard sizing: tier-1 band (18pt + 4pt gap) + tier-2 band (15pt
-  // + 4pt gap) + a possibly-2-line first row (~48pt = 16 line-1 + 28
-  // line-2 + 4 gap) = ~89pt. Pad to 100 for safety so a navy band never
+  // Orphan-guard sizing: tier-1 band (18pt + 6pt gap) + tier-2 band (15pt
+  // + 21pt gap so the first row's line-1 cap-top clears the band bottom
+  // by ~12pt of whitespace) + a possibly-2-line first row (~48pt = 16
+  // line-1 + 28 line-2 + 4 gap) = ~108pt. Pad to 120 so a navy band never
   // renders as the last thing on a page above its first tier-2 + row.
-  var MIN_TIER1_FIT = 100;
+  var MIN_TIER1_FIT = 120;
 
   BOM_TEMPLATE.tiers.forEach(function(tier){
     var visibleSubs = tier.subs.filter(function(sub){
@@ -14217,7 +14222,9 @@ function drawProposalBOM(doc, W, H){
     // the baseline 5pt above band bottom (cap-top sits 4pt below band top).
     doc.text(tier.title.toUpperCase(), BAND_TEXT_X, y + BAND_H1 - 5);
     doc.text('QTY', BAND_QTY_X, y + BAND_H1 - 5, {align:'right'});
-    y += BAND_H1 + 4;
+    // Fix-1: bump 4 → 6 for a slightly more comfortable visual stripe
+    // between the navy tier-1 band and the blue tier-2 band.
+    y += BAND_H1 + 6;
 
     visibleSubs.forEach(function(sub){
       var b = buckets[sub.id];
@@ -14234,7 +14241,12 @@ function drawProposalBOM(doc, W, H){
       doc.rect(BAND_LEFT, y, BAND_RIGHT - BAND_LEFT, BAND_H2, 'F');
       doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
       doc.text(sub.title.toUpperCase(), BAND_TEXT_X, y + BAND_H2 - 4);
-      y += BAND_H2 + 4;
+      // Fix-1: bump 4 → 21 (the post-band gap before line-1 baseline).
+      // 12pt bold courier cap-height ~9pt, so a 21pt y-advance after the
+      // band puts the first row's cap-top at band_bottom + (21 - 9) = +12pt
+      // of clear whitespace. Before this fix the line-1 text overlapped
+      // the band's bottom edge by ~5pt.
+      y += BAND_H2 + 21;
 
       // Auto rows first, then custom rows (matches drawer ordering).
       b.auto.forEach(_drawCustomerRow);
