@@ -1504,12 +1504,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
              the rename brief. Same file-input click; no handler change. -->
         <button class="menu-item" onclick="document.getElementById('file-input').click()" data-shortcut="O"><span class="menu-check">&#10003;</span><span class="menu-label">New Project</span></button>
         <div class="menu-divider"></div>
-        <!-- file-menu-rename: Save downloads under the tracked current
-             project name (set on Load and Save As). First Save with no
-             tracked name prompts like Save As, then reuses the name. -->
-        <button class="menu-item" id="btn-save"    onclick="saveJSON()"      data-shortcut="S" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save</span></button>
-        <button class="menu-item" id="btn-save-as" onclick="saveAsJSON()"                       disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save As&hellip;</span></button>
-        <button class="menu-item" id="btn-load"    onclick="document.getElementById('json-input').click()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Project&hellip;</span></button>
+        <!-- file-menu-rename: Save is a one-click silent download. Filename
+             derived from projectInfo.name (sanitized) — the pre-branch
+             behavior. No prompt; no Save As. -->
+        <button class="menu-item" id="btn-save" onclick="saveJSON()" data-shortcut="S" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save</span></button>
+        <button class="menu-item" id="btn-load" onclick="document.getElementById('json-input').click()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Project&hellip;</span></button>
         <!-- Menu-cleanup C1: Load Pricing / Clear Pricing menu entries
              removed. Their handlers (openPricingFilePicker,
              confirmClearPricing) remain in the JS for a future price-book
@@ -7636,17 +7635,10 @@ wrap.addEventListener('drop',function(e){
 function routeFile(f){
   var ext = (f.name || '').toLowerCase().split('.').pop();
   if(ext === 'json' || f.type === 'application/json'){
-    // file-menu-rename: JSON load — loadProjectFromFile sets
-    // _currentProjectName itself from the file's basename.
     loadProjectFromFile(f);
   } else if(f.type === 'application/pdf' || ext === 'pdf'){
-    // file-menu-rename: fresh project from a PDF — clear any tracked
-    // name so the first Save prompts for one (no surprise re-use of a
-    // previously-loaded project's filename).
-    _currentProjectName = null;
     loadPDF(f);
   } else if(/^image\//.test(f.type) || /\.(png|jpe?g)$/i.test(f.name)){
-    _currentProjectName = null;
     loadImage(f);
   } else {
     alert('Unsupported file. Please use PDF, PNG, JPG, or saved Project (JSON).');
@@ -7711,7 +7703,7 @@ async function loadImage(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-save-as','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -7764,7 +7756,7 @@ async function loadPDF(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-save-as','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -8136,9 +8128,6 @@ function deletePage(idx){
 function rewindToNoPdf(){
   // Reset state. Pass N+1 M1: clears all six selection states + the four
   // new smart-apartment / suites arrays so a fresh PDF lands cleanly.
-  // file-menu-rename: also clear the tracked project name — there's no
-  // project to save anymore; next Save in a new session will prompt.
-  _currentProjectName = null;
   selectedId = null; acSelectedId = null;
   intercomSelectedId = parcelSelectedId = mailboxSelectedId = suiteSelectedId = null;
   var rp = document.getElementById('right-panel');
@@ -8190,7 +8179,7 @@ function rewindToNoPdf(){
   document.getElementById('dropzone').classList.remove('hidden');
   document.getElementById('tabs').innerHTML = '';
   // Disable menu items + corner icons
-  ['btn-save','btn-save-as','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.disabled = true;
   });
   document.body.classList.add('no-pdf');
@@ -12958,66 +12947,12 @@ function closeRecoveryModal(){
   if(modal) modal.classList.remove('show');
 }
 
-// file-menu-rename: tracked current-project-name. The canonical save model
-// is "user downloads a file to their computer" — the project FILE is the
-// source of truth, not browser storage. This name is the download filename
-// that plain Save reuses on every commit.
-//
-// Set in three places:
-//   1. loadProjectFromFile  → from the loaded file's basename (minus .json).
-//   2. saveAsJSON           → from the user's prompt input.
-//   3. saveJSON when null   → first save in a session falls through to a
-//                             Save-As-style prompt and sets it.
-//
-// Persisted? No. Session-only. The filename of the loaded JSON IS the
-// source of truth for the next Save — so reload-after-Save naturally
-// restores the right tracked name without writing it into the save shape.
-var _currentProjectName = null;
-
-// Strip filesystem-invalid chars (Windows + POSIX intersection) but keep
-// case, spaces, dashes — what the user typed should round-trip to the
-// download dialog. Trailing whitespace trimmed. Empty input → null so
-// callers can show a fresh prompt instead of silently saving "untitled".
-function _sanitizeProjectFilename(s){
-  var clean = String(s == null ? '' : s).replace(/[\\/:*?"<>|]+/g, '').replace(/\s+$/g, '').replace(/^\s+/, '');
-  // Drop trailing .json (user-typed) — _writeProjectFile re-appends it.
-  clean = clean.replace(/\.json$/i, '');
-  return clean || null;
-}
-
-// Prompt for a project name. Pre-fills with the current tracked name, or
-// the Project Info "name" field if set, or "project". Returns sanitized
-// name or null on cancel/empty.
-function _promptForProjectName(title){
-  var def = _currentProjectName
-         || (projectInfo && (projectInfo.name || '').trim())
-         || 'project';
-  var input = window.prompt(title, def);
-  if(input == null) return null;
-  return _sanitizeProjectFilename(input);
-}
-
+// file-menu-rename: one-click silent save — no prompt, no tracking layer.
+// Filename derived from projectInfo.name (sanitized: lowercase, alpha-
+// numeric + underscore; falls back to 'project' if name is empty). The
+// "Save As / tracked _currentProjectName" flow that briefly lived here
+// was reverted — Save is meant to be friction-free.
 async function saveJSON(){
-  // file-menu-rename: ensure we have a tracked filename before writing.
-  // No tracked name → prompt (Save-As-style) and remember it for next time.
-  if(!_currentProjectName){
-    var picked = _promptForProjectName('Save project as:');
-    if(!picked) return;     // user cancelled or entered empty
-    _currentProjectName = picked;
-  }
-  await _writeProjectFile(_currentProjectName);
-}
-
-// file-menu-rename: Save As always prompts (versioned copies). Sets the
-// tracked name on commit so subsequent plain Save reuses it.
-async function saveAsJSON(){
-  var picked = _promptForProjectName('Save project as:');
-  if(!picked) return;
-  _currentProjectName = picked;
-  await _writeProjectFile(_currentProjectName);
-}
-
-async function _writeProjectFile(filename){
   showProgress('Saving project (this may take a moment for large files)…', 5);
   // Yield once so the overlay paints before the encode work blocks the thread.
   await new Promise(function(r){ setTimeout(r, 0); });
@@ -13091,12 +13026,8 @@ async function _writeProjectFile(filename){
   showProgress('Saving file…', 95);
   await new Promise(function(r){ setTimeout(r, 0); });
 
-  // file-menu-rename: filename is the tracked project name (passed in by
-  // saveJSON / saveAsJSON). Append .json if it isn't already there. The
-  // legacy "project_info.name → lowercase_underscored" derivation is gone
-  // — the saved filename is now whatever the user picked (case + spaces
-  // preserved through Save As).
-  var fname = String(filename || 'project').replace(/\.json$/i, '') + '.json';
+  // Blob URL — handles ≥10 MB cleanly (data: URL + encodeURIComponent doesn't).
+  var fname = ((projectInfo.name || 'project').replace(/[^a-z0-9]+/gi, '_').toLowerCase() || 'project') + '.json';
   var blob = new Blob([data], { type: 'application/json' });
   var url  = URL.createObjectURL(blob);
   var a = document.createElement('a');
@@ -13427,17 +13358,6 @@ function applyProjectState(data){
 async function loadProjectFromFile(file){
   if(pdfLoaded){
     if(!confirm('Loading this saved project will replace your current work. Continue?')) return;
-  }
-  // file-menu-rename: track the loaded file's basename as the current
-  // project name so subsequent Save reuses it (and Save As prompt pre-
-  // fills with it). file.name typically includes the .json suffix; the
-  // sanitizer strips it. Set AFTER the confirm so a cancel doesn't
-  // pollute the tracked name; set BEFORE loadPDF (called below for
-  // embedded sources) because the routeFile dispatcher does NOT clear
-  // _currentProjectName for the JSON path.
-  if(file && file.name){
-    var loadedName = _sanitizeProjectFilename(file.name);
-    if(loadedName) _currentProjectName = loadedName;
   }
   showProgress('Loading project…', 5);
   await new Promise(function(r){ setTimeout(r, 0); });
