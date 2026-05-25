@@ -17436,12 +17436,28 @@ function updateAutoRow(input){
   recalcBom();
 }
 
-// Re-apply overrides when computing auto rows
+// Re-apply overrides when computing auto rows.
+// Pricing M3: catalogue price-load pass runs INSIDE the row loop, BEFORE
+// the override block — user override always wins on top of the book
+// price. Book is read ONCE per compute pass (hoisted above the rows
+// loop) and indexed directly per row; getUnitPrice would re-parse the
+// localStorage JSON on every call (108 KB book × N rows = visible lag).
+// Truthy-hit only: r.unit stays 0 on miss (price-pending). SKU derived
+// via bomRowSku(r).sku so the M2 OH-strip applies to flagged AC rows.
 var origCompute = computeAutoRows;
 computeAutoRows = function(){
   var rows = origCompute();
+  var _pb = getPricingBook();
+  var _items = (_pb && _pb.items) ? _pb.items : null;
   Object.keys(rows).forEach(function(k){
     rows[k].forEach(function(r){
+      // Load catalogue price first; user override (below) wins on top.
+      if(_items){
+        var _sku = bomRowSku(r).sku;
+        var _it  = _sku ? _items[_sku] : null;
+        var _p   = (_it && typeof _it.unit_cost === 'number' && isFinite(_it.unit_cost)) ? _it.unit_cost : null;
+        if(_p) r.unit = _p;
+      }
       if(bomAutoOverrides[r.key]){
         if(bomAutoOverrides[r.key].unit !== undefined) r.unit = bomAutoOverrides[r.key].unit;
         if(bomAutoOverrides[r.key].qty  !== undefined && r.src !== 'cameras') r.qty = bomAutoOverrides[r.key].qty;
