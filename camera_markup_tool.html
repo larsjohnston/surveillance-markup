@@ -7177,6 +7177,11 @@ var currentReaderModel = null;
 var currentACBrand       = null;       // 'brivo' | 'other' | null (no init)
 var currentACCategory    = null;       // 'Readers' | 'Controllers'
 var currentACSubcategory = null;       // matches BRIVO_CATALOG.subcategory
+// Credentials-entry M1: drill-in mode bit. When true, the AC tier-3 row
+// renders the 5 credential placeholder tiles + a back tile instead of
+// the BRIVO_CATALOG subcategory tiles. Preserves currentACCategory so
+// returning via "Back" restores Readers/Controllers selection state.
+var acCredentialsView    = false;
 // (Pass Left-Pane M6: lastArmedReader removed — variable was write-only,
 // never read. The "restore last-armed form-factor" intent was superseded
 // by the per-subcategory acDefaults map in projectInfo.)
@@ -7631,7 +7636,13 @@ var AC_ICONS = {
   ACS6100:     '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="7" width="16" height="1.2" fill="currentColor"/><rect x="4" y="10" width="16" height="1.2" fill="currentColor"/><rect x="4" y="13" width="16" height="1.2" fill="currentColor"/><rect x="4" y="16" width="16" height="1.2" fill="currentColor"/></svg>',
   ACS300:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="6" y="9" width="12" height="1.2" fill="currentColor"/><rect x="6" y="13" width="12" height="1.2" fill="currentColor"/><circle cx="17" cy="7.5" r="0.5" fill="currentColor"/></svg>',
   SDC:         '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg>',
-  ACS100:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="9" width="10" height="1.2" fill="currentColor"/><rect x="5" y="13" width="10" height="1.2" fill="currentColor"/><rect x="14" y="3" width="6" height="9" rx="0.8" fill="white" stroke="currentColor" stroke-width="1.2"/><circle cx="17" cy="6" r="0.6" fill="currentColor"/><rect x="15.5" y="8" width="3" height="0.6" fill="currentColor"/></svg>'
+  ACS100:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="9" width="10" height="1.2" fill="currentColor"/><rect x="5" y="13" width="10" height="1.2" fill="currentColor"/><rect x="14" y="3" width="6" height="9" rx="0.8" fill="white" stroke="currentColor" stroke-width="1.2"/><circle cx="17" cy="6" r="0.6" fill="currentColor"/><rect x="15.5" y="8" width="3" height="0.6" fill="currentColor"/></svg>',
+  // Credentials-entry M1: key-shaped icon. Circular bow (stroke) +
+  // solid pin centre + horizontal shaft + two tooth notches. Matches the
+  // AC_ICONS style (24×24 viewBox, currentColor, stroke 1.5 outlines +
+  // solid fill accents). Used on the tier-2 "Credentials" tile (only —
+  // the tier-3 small tiles are label-only via .tier3-tile / .t3-name).
+  Credentials: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="8" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="12" r="1.2" fill="currentColor"/><rect x="12" y="11" width="9" height="2" fill="currentColor"/><rect x="17" y="13" width="2" height="3" fill="currentColor"/><rect x="20" y="13" width="1.2" height="2" fill="currentColor"/></svg>'
 };
 function acIconFor(key){ return AC_ICONS[key] || ''; }
 
@@ -7678,12 +7689,16 @@ function lpPickAcBrand(brand){
 }
 
 // Tier 2 click handler — pick first subcategory in this category.
+// Credentials-entry M1: also exits the credentials drill-in (the AC tree
+// has no Back affordance — sibling tier-2 click is the navigation pattern,
+// matching how Readers ↔ Controllers swap today).
 function lpPickAcCategory(category){
   var subs = subcategoriesFor(category);
   if(subs.length === 0){
     console.warn('[left-pane] AC category=' + category + ' has zero subcategories in BRIVO_CATALOG.');
     return;
   }
+  acCredentialsView = false;
   armAcDevice(category, subs[0]);
 }
 
@@ -7691,6 +7706,21 @@ function lpPickAcCategory(category){
 function lpPickAcSubcategory(subcategory){
   armAcDevice(currentACCategory, subcategory);
 }
+
+// ─── Credentials-entry M1: drill-in handlers ───────────────────────────────
+// The Credentials tile sits in the AC tier-2 row but does NOT call
+// lpPickAcCategory — it never arms placement. lpOpenCredentials flips the
+// view bit and repaints; to exit, the user clicks Readers or Controllers
+// (lpPickAcCategory clears the bit). No dedicated Back affordance — that
+// matches the AC tree's existing drill-deeper-only navigation.
+// lpEditCredential is the per-type tier-3 tile handler. M1 stubs it as a
+// silent no-op; M2 wires it to open the quantity modal + write to
+// projectInfo.credentials.
+function lpOpenCredentials(){
+  acCredentialsView = true;
+  _renderAcDrillDown();
+}
+function lpEditCredential(type){ /* M1 stub — M2 opens the qty modal */ }
 
 // Panel-cleanup P5: lpChangeAcVariant() removed along with its inline
 // dropdown. The right-panel variant control (updateReaderVariant) is now
@@ -7737,34 +7767,74 @@ function _renderAcDrillDown(){
   t3.style.display = '';
   if(bc2) bc2.style.display = '';
 
-  // Tier 2 — Readers, Controllers. Smart Devices NOT rendered per D6
-  // (zero affordance, no greyed-out tile).
+  // Tier 2 — Readers, Controllers, Credentials. Smart Devices NOT rendered
+  // per D6 (zero affordance, no greyed-out tile). Credentials-entry M1:
+  // Credentials is the third tile — drills into per-type sub-tiles instead
+  // of arming placement. Readers/Controllers active class suppressed while
+  // acCredentialsView is true so only one tile reads as "selected".
   var categories = ['Readers', 'Controllers'];
   var t2Html = '';
   categories.forEach(function(cat){
-    var activeCls = (cat === currentACCategory) ? ' active' : '';
+    var activeCls = (cat === currentACCategory && !acCredentialsView) ? ' active' : '';
     t2Html += '<div class="tier2-tile' + activeCls + '" data-ac-category="' + escapeHtml(cat) + '" onclick="lpPickAcCategory(\'' + cat + '\')" title="' + escapeHtml(cat) + '">' +
               '<div class="ts-icon">' + acIconFor(cat) + '</div>' +
               '<span class="t2-label">' + escapeHtml(cat) + '</span>' +
               '</div>';
   });
+  // Credentials tier-2 tile — own handler (lpOpenCredentials), not
+  // lpPickAcCategory; never arms floor-plan placement.
+  var credActiveCls = acCredentialsView ? ' active' : '';
+  t2Html += '<div class="tier2-tile' + credActiveCls + '" data-ac-credentials="1" onclick="lpOpenCredentials()" title="Credentials">' +
+            '<div class="ts-icon">' + acIconFor('Credentials') + '</div>' +
+            '<span class="t2-label">Credentials</span>' +
+            '</div>';
   t2.innerHTML = t2Html;
 
-  // Static tier-3 header (Cleanup M1). Generic "AC Models" regardless of
-  // whether the user drilled into Readers or Controllers — per brief, the
-  // header describes the tier, not the active branch.
-  if(bc2) bc2.innerHTML = 'AC Models';
+  // Tier-3 header label — switches between "AC Models" (subcategory drill)
+  // and "Credentials" (when the user is in the credentials drill-in).
+  if(bc2) bc2.innerHTML = acCredentialsView ? 'Credentials' : 'AC Models';
 
-  // Tier 3 — leaves derived from BRIVO_CATALOG for current category.
-  var subs = currentACCategory ? subcategoriesFor(currentACCategory) : [];
+  // Tier 3 — branches on acCredentialsView. In credentials mode, render
+  // 5 small placeholder type tiles. No back affordance — exit by clicking
+  // a sibling tier-2 tile (Readers/Controllers), which clears the view
+  // bit via lpPickAcCategory; this matches the AC tree's existing drill-
+  // deeper-only navigation. Container grid columns override 3 → 5 in
+  // credentials mode so the 5 small tiles sit cleanly in one row.
   var t3Html = '';
-  subs.forEach(function(sub){
-    var activeCls = (sub === currentACSubcategory) ? ' active' : '';
-    t3Html += '<div class="tier2-tile' + activeCls + '" data-ac-subcategory="' + escapeHtml(sub) + '" onclick="lpPickAcSubcategory(\'' + sub + '\')" title="' + escapeHtml(sub) + '">' +
-              '<div class="ts-icon">' + acIconFor(sub) + '</div>' +
-              '<span class="t2-label">' + escapeHtml(sub) + '</span>' +
-              '</div>';
-  });
+  if(acCredentialsView){
+    // 5 placeholder credential type tiles. Type keys mirror
+    // projectInfo.credentials field names (added in M2). Click handler is
+    // an M1 silent no-op; M2 swaps it for an opens-quantity-modal call.
+    // Style matches camera tier-3 (.tier3-tile + .t3-name) — small tiles
+    // so all 5 fit in a single row.
+    var CRED_TILES = [
+      { type:'fobs',           label:'Fobs' },
+      { type:'cards',          label:'Cards' },
+      { type:'mobilePasses',   label:'Mobile Passes' },
+      { type:'ohTransmitters', label:'OH Transmitters' },
+      { type:'ohReceiver',     label:'OH Receiver' }
+    ];
+    CRED_TILES.forEach(function(ct){
+      t3Html += '<div class="tier3-tile" data-ac-cred-type="' + escapeHtml(ct.type) + '" onclick="lpEditCredential(\'' + ct.type + '\')" title="' + escapeHtml(ct.label) + '">' +
+                '<div class="t3-name">' + escapeHtml(ct.label) + '</div>' +
+                '</div>';
+    });
+    t3.style.gridTemplateColumns = 'repeat(5, 1fr)';
+  } else {
+    // Default: BRIVO_CATALOG subcategory leaves for currentACCategory.
+    var subs = currentACCategory ? subcategoriesFor(currentACCategory) : [];
+    subs.forEach(function(sub){
+      var activeCls = (sub === currentACSubcategory) ? ' active' : '';
+      t3Html += '<div class="tier2-tile' + activeCls + '" data-ac-subcategory="' + escapeHtml(sub) + '" onclick="lpPickAcSubcategory(\'' + sub + '\')" title="' + escapeHtml(sub) + '">' +
+                '<div class="ts-icon">' + acIconFor(sub) + '</div>' +
+                '<span class="t2-label">' + escapeHtml(sub) + '</span>' +
+                '</div>';
+    });
+    // Restore the default 3-col grid (from .lp-tier-row) when leaving
+    // credentials mode. Empty string clears the inline override so the
+    // CSS class rule takes over again.
+    t3.style.gridTemplateColumns = '';
+  }
   t3.innerHTML = t3Html;
   // Panel-cleanup P5: inline variant <select> rendering removed. The
   // right-panel variant control (updateReaderVariant) is now the only
