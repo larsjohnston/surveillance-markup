@@ -16239,6 +16239,49 @@ var DEFAULT_HOURS_BY_TYPE = { dome:1.5, bullet:1.5, turret:1.5, fisheye:2.0, ptz
 // for a commercial site is typically 3-10 credentials per reader.
 var CREDENTIAL_MULTIPLIER = 1.0;
 
+// Credentials-entry M3: SINGLE-SOURCE type→{section, key, desc} table.
+// 5 credential types — 3 route to §2.1 Access Control, 2 route to §2.2
+// Overhead Door Control. The catalogue pass replaces the placeholder
+// `desc` strings here with real SKUs in this ONE table; no other site
+// hardcodes the mapping. Keys are stable across catalogue swaps so
+// bomAutoOverrides (keyed by row.key) survives a description change.
+var CREDENTIAL_TYPE_DEFS = [
+  { type:'fobs',           section:'2.1', key:'auto-ac-cred-fob',          desc:'Access Credential — Fob' },
+  { type:'cards',          section:'2.1', key:'auto-ac-cred-card',         desc:'Access Credential — Card' },
+  { type:'mobilePasses',   section:'2.1', key:'auto-ac-cred-mobilepass',   desc:'Access Credential — Mobile Pass' },
+  { type:'ohTransmitters', section:'2.2', key:'auto-ac-cred-oh-tx',        desc:'Overhead Door Transmitter (2-button)' },
+  { type:'ohReceiver',     section:'2.2', key:'auto-ac-cred-oh-rx',        desc:'Overhead Door Long-Range Receiver' }
+];
+
+// Build manual credential BOM rows from projectInfo.credentials counts.
+// Returns { rows, anyManual_2_1_Entered }:
+//   rows                    — auto-rows (qty > 0 only), shape matches the
+//                             rest of computeAutoRows output; carry r.section
+//                             so computeBomTree routes directly via that.
+//   anyManual_2_1_Entered   — true iff fobs OR cards OR mobilePasses > 0.
+//                             Drives D1 (tightened): suppress the derived
+//                             auto-ac-credentials row ONLY when a 2.1-type
+//                             manual entry exists. OH-only entries leave
+//                             the derived 2.1 reader-credential estimate
+//                             intact — OH credentials don't replace the
+//                             building's reader credentials.
+function bomCredentialRows(){
+  var creds = (projectInfo.credentials && typeof projectInfo.credentials === 'object') ? projectInfo.credentials : {};
+  var rows = [];
+  var anyManual_2_1_Entered = false;
+  CREDENTIAL_TYPE_DEFS.forEach(function(def){
+    var n = (typeof creds[def.type] === 'number' && isFinite(creds[def.type])) ? creds[def.type] : 0;
+    if(n <= 0) return;
+    if(def.section === '2.1') anyManual_2_1_Entered = true;
+    rows.push({
+      auto: true, src: 'accessControl', key: def.key,
+      desc: def.desc, qty: n, unit: 0, sectionAuto: true,
+      section: def.section
+    });
+  });
+  return { rows: rows, anyManual_2_1_Entered: anyManual_2_1_Entered };
+}
+
 // Compute auto-derived rows from current cameras
 function computeAutoRows(){
   // BOM Restructure pass: laborRate / defaultHrs were read from the BOM
@@ -16398,8 +16441,15 @@ function computeAutoRows(){
       desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
     });
   });
-  // Credentials row — single line, only when readers exist.
-  if(readerCountForCredentials > 0){
+  // Credentials rows — combines manual entries (projectInfo.credentials)
+  // with the derived reader-count estimate. D1 (tightened): the derived
+  // auto-ac-credentials row is SUPPRESSED only when a 2.1-type manual
+  // entry exists (fobs/cards/mobilePasses > 0). OH-only manual entries
+  // (ohTransmitters/ohReceiver) leave the derived 2.1 row intact because
+  // OH credentials don't substitute for the building's reader credentials.
+  var credResult = bomCredentialRows();
+  credResult.rows.forEach(function(r){ acRows.push(r); });
+  if(readerCountForCredentials > 0 && !credResult.anyManual_2_1_Entered){
     acRows.push({
       auto: true, src: 'accessControl', key: 'auto-ac-credentials',
       desc: 'Smart Credentials — sized for ' + readerCountForCredentials + ' reader' + (readerCountForCredentials === 1 ? '' : 's'),
@@ -17058,10 +17108,25 @@ function computeBomTree(){
   auto.recording.forEach(function(r){ buckets['1.2'].auto.push(r); });
   auto.network.forEach(function(r){ buckets['1.2'].auto.push(r); });
 
-  // §2 split: AC SKU ∈ OVERHEAD_DOOR_SKUS → 2.2 (Overhead Door Control,
-  // no guard). All other AC (incl. credentials) → 2.1 (with guard).
+  // §2 split:
+  //   r.section === '2.1'  → §2.1 Access Control (with guard).
+  //   r.section === '2.2'  → §2.2 Overhead Door Control (no guard).
+  //                          Credentials-entry M3 manual rows carry this
+  //                          marker from CREDENTIAL_TYPE_DEFS so the
+  //                          type→section mapping stays single-source.
+  //   else AC SKU ∈ OVERHEAD_DOOR_SKUS → 2.2 (no guard).
+  //   else credentials/auto-ac-<SKU> → 2.1 (with guard).
   auto.accessControl.forEach(function(r){
     var k = r.key || '';
+    if(r.section === '2.2'){
+      buckets['2.2'].auto.push(r);  // explicit OD routing marker
+      return;
+    }
+    if(r.section === '2.1'){
+      if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
+      else                          buckets['2.1'].auto.push(r);
+      return;
+    }
     if(k === 'auto-ac-credentials'){
       if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
       else                          buckets['2.1'].auto.push(r);
