@@ -14303,13 +14303,42 @@ var _IOT_LABELS = {
   gateway:     'Gateway',
   passageSet:  'Passage Set'
 };
+// Pricing M2 (Fix 1+2): single-source helper that strips a leading
+// "oh-" infix from an AC SKU so a flagged AC row (auto-ac-oh-<SKU>)
+// resolves to the same SKU as its unflagged sibling (auto-ac-<SKU>).
+// Called from BOTH bomRowSku (Fix 1 — pricing lookup) AND the
+// bomAutoOverrides read/write paths (Fix 2 — override persistence
+// across flag flips). Single string literal 'oh-' lives only here.
+// Guard: only strips a LITERAL leading 'oh-' prefix. A SKU that merely
+// contains 'oh' elsewhere (or starts with 'OH-' uppercase) is left alone.
+function _stripOhPrefix(s){
+  if(typeof s !== 'string') return s;
+  return (s.indexOf('oh-') === 0) ? s.slice(3) : s;
+}
+
+// Pricing M4 (Fix 2): normalize a bomAutoOverrides key so a flagged AC
+// row (auto-ac-oh-<SKU>) and its unflagged sibling (auto-ac-<SKU>) share
+// ONE override entry. Composes via _stripOhPrefix so the 'oh-' literal
+// stays single-source. Non-AC keys (auto-dh-*, auto-sa-*, placed-switch,
+// custom-line keys, etc.) and non-strings pass through unchanged.
+// Called from BOTH the override read site (computeAutoRows wrapper) AND
+// the write site (updateAutoRow). No load-time migration — a v21 save
+// pre-dating M4 may carry legacy auto-ac-oh-<SKU> override entries; they
+// sit inert (no row's normalized key matches), harmless ghost data.
+function _normalizeBomKey(key){
+  if(typeof key !== 'string') return key;
+  var prefix = 'auto-ac-';
+  if(key.indexOf(prefix) !== 0) return key;
+  return prefix + _stripOhPrefix(key.slice(prefix.length));
+}
+
 function bomRowSku(row){
   if(!row) return { sku: '', typeLabel: 'CUSTOM' };
   var k = row.key || '';
   if(row.src === 'cameras') return { sku: k, typeLabel: '' };
   if(row.src === 'doorHardware') return { sku: row.sku || '', typeLabel: row.sku ? '' : 'HARDWARE' };
   if(k === 'auto-ac-credentials') return { sku: '', typeLabel: 'CREDENTIALS' };
-  if(k.indexOf('auto-ac-') === 0) return { sku: k.slice('auto-ac-'.length), typeLabel: '' };
+  if(k.indexOf('auto-ac-') === 0) return { sku: _stripOhPrefix(k.slice('auto-ac-'.length)), typeLabel: '' };
   if(k.indexOf('auto-sa-intercom-') === 0) return { sku: k.slice('auto-sa-intercom-'.length), typeLabel: '' };
   if(k.indexOf('auto-sa-parcel-')   === 0) return { sku: k.slice('auto-sa-parcel-'.length),   typeLabel: '' };
   if(k.indexOf('auto-sa-mailbox-')  === 0) return { sku: '', typeLabel: 'MAILBOX BANK' };
@@ -17414,7 +17443,10 @@ var bomAutoOverrides = {}; // key -> { unit, qty }
 
 function updateAutoRow(input){
   var row = input.closest('.bom-row');
-  var key = row.dataset.key;
+  // Pricing M4 (Fix 2): normalize the override key so a user-set price on
+  // either the flagged OH row or the unflagged sibling of the same SKU
+  // writes to ONE shared entry.
+  var key = _normalizeBomKey(row.dataset.key);
   var field = input.dataset.field;
   var val = parseFloat(input.value) || 0;
   if(!bomAutoOverrides[key]) bomAutoOverrides[key] = {};
@@ -17423,15 +17455,36 @@ function updateAutoRow(input){
   recalcBom();
 }
 
-// Re-apply overrides when computing auto rows
+// Re-apply overrides when computing auto rows.
+// Pricing M3: catalogue price-load pass runs INSIDE the row loop, BEFORE
+// the override block — user override always wins on top of the book
+// price. Book is read ONCE per compute pass (hoisted above the rows
+// loop) and indexed directly per row; getUnitPrice would re-parse the
+// localStorage JSON on every call (108 KB book × N rows = visible lag).
+// Truthy-hit only: r.unit stays 0 on miss (price-pending). SKU derived
+// via bomRowSku(r).sku so the M2 OH-strip applies to flagged AC rows.
 var origCompute = computeAutoRows;
 computeAutoRows = function(){
   var rows = origCompute();
+  var _pb = getPricingBook();
+  var _items = (_pb && _pb.items) ? _pb.items : null;
   Object.keys(rows).forEach(function(k){
     rows[k].forEach(function(r){
-      if(bomAutoOverrides[r.key]){
-        if(bomAutoOverrides[r.key].unit !== undefined) r.unit = bomAutoOverrides[r.key].unit;
-        if(bomAutoOverrides[r.key].qty  !== undefined && r.src !== 'cameras') r.qty = bomAutoOverrides[r.key].qty;
+      // Load catalogue price first; user override (below) wins on top.
+      if(_items){
+        var _sku = bomRowSku(r).sku;
+        var _it  = _sku ? _items[_sku] : null;
+        var _p   = (_it && typeof _it.unit_cost === 'number' && isFinite(_it.unit_cost)) ? _it.unit_cost : null;
+        if(_p) r.unit = _p;
+      }
+      // Pricing M4 (Fix 2): look up the override under the normalized
+      // key so a flagged AC row and its unflagged sibling pick up the
+      // same user-set price. Mirrors the WRITE-side normalization in
+      // updateAutoRow.
+      var ovKey = _normalizeBomKey(r.key);
+      if(bomAutoOverrides[ovKey]){
+        if(bomAutoOverrides[ovKey].unit !== undefined) r.unit = bomAutoOverrides[ovKey].unit;
+        if(bomAutoOverrides[ovKey].qty  !== undefined && r.src !== 'cameras') r.qty = bomAutoOverrides[ovKey].qty;
       }
     });
   });
