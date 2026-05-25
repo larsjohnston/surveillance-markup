@@ -1186,13 +1186,15 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #right-panel .rp-intercom-fields,
 #right-panel .rp-parcel-fields,
 #right-panel .rp-mailbox-fields,
-#right-panel .rp-suite-fields { display:none; }
+#right-panel .rp-suite-fields,
+#right-panel .rp-headend-fields { display:none; }
 #right-panel[data-mode="camera"]   .rp-camera-fields   { display:block; }
 #right-panel[data-mode="reader"]   .rp-reader-fields   { display:block; }
 #right-panel[data-mode="intercom"] .rp-intercom-fields { display:block; }
 #right-panel[data-mode="parcel"]   .rp-parcel-fields   { display:block; }
 #right-panel[data-mode="mailbox"]  .rp-mailbox-fields  { display:block; }
 #right-panel[data-mode="suite"]    .rp-suite-fields    { display:block; }
+#right-panel[data-mode="headend"]  .rp-headend-fields  { display:block; }
 .phdr { font:700 10px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; padding:12px 16px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); }
 
 #controls { padding:10px 13px; border-bottom:1px solid var(--border); }
@@ -1272,6 +1274,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .tier2-tile.active-fisheye { border-color:var(--fisheye); background:#f0fdf4; color:var(--fisheye); }
 .tier2-tile.active-ptz     { border-color:var(--ptz);     background:#f5f3ff; color:var(--ptz); }
 .tier2-tile.active-lpr     { border-color:var(--lpr);     background:#fffbeb; color:var(--lpr); }
+/* Accessories tier-2 (CMVR / Network / Accessories) active variant.
+   Light-fill + navy outline + navy glyph/label — parallel to the per-
+   style active-* variants above. Reuses the existing #1e3a8a / #eef2ff
+   palette already used in `.type-btn-cmvr.active` (legacy rule at line
+   ~1426) + the CMVR tile icon rect fill at markup line 1923. */
+.tier2-tile.active-accessory { border-color:#1e3a8a; background:#eef2ff; color:#1e3a8a; }
 /* Generic active treatment for AC Tier 2 / Tier 3 tiles. Per M3 icons
    addendum acceptance #3: navy fill + white text/icon when active,
    white bg + grey border + dark icon when inactive (inherited from the
@@ -1297,6 +1305,18 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    overflow). align-content:start keeps tiles top-anchored when the grid
    has fewer than a full first row. */
 .lp-tier3-list { max-height:200px; overflow-y:auto; margin-bottom:8px; border:1px solid var(--border); border-radius:3px; background:#fff; padding:4px; display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; align-content:start; }
+/* Accessories tier-3 list — fully inherits the shared .lp-tier3-list
+   scroll/border/grid chrome (5-col, same as Camera Models). No
+   per-module column override — single shared tier-3 grid across all
+   modules. Coming-soon entries get dim color + a "coming soon" title
+   tooltip; still selectable per brief. Network + Accessories tier-2
+   tiles show a small stub message inside the same container (no
+   catalog yet) that spans all 5 columns via grid-column:1/-1. */
+#lp-cmvr-models .tier3-tile.dim { opacity:0.55; }
+#lp-cmvr-models .stub {
+  grid-column:1 / -1; padding:14px 8px; text-align:center;
+  font:500 10px var(--font-ui); color:var(--text-muted); font-style:italic;
+}
 /* Catalog-Tier1: smart-apartment two-tier drill-down. Tier 1 (brand row)
    and Tier 2 (SKU grid) use the SAME tile chrome — .smart-apt-tile sized
    to match the camera Tier-2 dimensions exactly (padding 7/4/5, icon
@@ -1417,8 +1437,16 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
    uplink) is a future pass — this is placement-only. */
 .type-btn-switch { font-size:7.5px; }
 .type-btn-switch.active   { border-color:#0e7490;        background:#ecfeff; color:#0e7490; }
-#lp-cmvr-row { margin:6px 0 9px; display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+/* Accessories tier-2 row sits OUTSIDE #controls (sibling of the
+   cameras drill-down block), so it doesn't inherit #controls's
+   `padding:10px 13px;` horizontal inset (rule at line 1200). Mirror
+   the 13px on #lp-cmvr-row + #lp-cmvr-models so the accessory
+   tier-2/3 align with the camera tier-2/3 inside #controls. Same
+   13px value — not a new inset, just the same one reapplied at the
+   matching scope. */
+#lp-cmvr-row { margin:6px 0 9px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; padding:0 13px; }
 #lp-cmvr-row .type-btn { padding:8px 6px 6px; min-width:0; }
+#lp-cmvr-models { margin-left:13px; margin-right:13px; }
 
 .ctrl { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
 .ctrl label { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:#9ca3af; min-width:50px; }
@@ -1812,8 +1840,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
       <!-- Tier-3 section header (Cleanup M1). -->
       <div class="sa-tier-breadcrumb" id="lp-bc2"></div>
 
-      <!-- Tier 3 model list, dynamically rendered. Hidden when brand=other. -->
-      <div id="lp-tier3-cameras" class="lp-tier3-list"></div>
+      <!-- Tier 3 model list, dynamically rendered. Hidden by default
+           (single-open accordion rule: tier-3 only shows after a tier-2
+           style tile is clicked). Revealed by lpPickCamerasStyle. Also
+           hidden when brand=other. -->
+      <div id="lp-tier3-cameras" class="lp-tier3-list" style="display:none;"></div>
 
       <!-- Editable detail fields (Label / Resolution / Angle / FOV / Reach /
            Mount / Notes) live in #right-panel now. Tier and Floor remain
@@ -1896,16 +1927,31 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
          Switch is a basic placeable for now — fuller topology (downstream
          cameras, ports, uplink) is a future Switch Topology pass. -->
     <div class="phdr">Camera Accessories</div>
+    <!-- Tier-2 accessories grid: CMVR / Network / Accessories. Each is a
+         .tier2-tile (same chrome as the camera Styles tier-2 row), and
+         clicking toggles which tier-3 sub-list shows in #lp-cmvr-models
+         below. NONE of them start placement directly — placement is
+         always armed by a tier-3 model click. -->
     <div id="lp-cmvr-row">
-      <button class="type-btn type-btn-cmvr" id="tb-cmvr" onclick="startHeadendPlacement()" title="Place CMVR / NVR head-end on this page">
-        <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="6" rx="1"/><rect x="4" y="14" width="16" height="6" rx="1"/><circle cx="8" cy="7" r=".7" fill="currentColor"/><circle cx="8" cy="17" r=".7" fill="currentColor"/><path d="M12 7h4M12 17h4"/></svg>
-        CMVR / NVR
-      </button>
-      <button class="type-btn type-btn-switch" id="tb-switch" onclick="startSwitchPlacement()" title="Place network switch on this page">
-        <svg viewBox="0 0 24 24" class="ts-icon" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="9" width="18" height="6" rx="1"/><path d="M6 15v2M9 15v2M12 15v2M15 15v2M18 15v2"/><circle cx="6" cy="12" r=".8" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r=".8" fill="currentColor" stroke="none"/></svg>
-        Network
-      </button>
+      <div class="tier2-tile" id="tb-cmvr" onclick="pickAccessoryTier2('cmvr')" title="Choose a CMVR / NVR model, then click on the page to place">
+        <div class="ts-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="1" fill="#1e3a8a" stroke="#fff" stroke-width="1.5"/><text x="12" y="13.5" font-family="Courier New, monospace" font-weight="bold" font-size="6" fill="#fff" text-anchor="middle" dominant-baseline="middle">NVR</text></svg></div>
+        <span class="t2-label">CMVR</span>
+      </div>
+      <div class="tier2-tile" id="tb-network" onclick="pickAccessoryTier2('network')" title="Network switches (catalog coming soon)">
+        <div class="ts-icon"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="9" width="18" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 15v2M9 15v2M12 15v2M15 15v2M18 15v2" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="6" cy="12" r=".8" fill="currentColor"/><circle cx="9" cy="12" r=".8" fill="currentColor"/></svg></div>
+        <span class="t2-label">Network</span>
+      </div>
+      <div class="tier2-tile" id="tb-accessories" onclick="pickAccessoryTier2('accessories')" title="Accessories (catalog coming soon)">
+        <div class="ts-icon"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="6" width="14" height="13" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="3" width="6" height="4" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="9" cy="13" r="0.9" fill="currentColor"/><circle cx="15" cy="13" r="0.9" fill="currentColor"/><rect x="8" y="15.5" width="8" height="0.8" fill="currentColor"/></svg></div>
+        <span class="t2-label">Accessories</span>
+      </div>
     </div>
+    <!-- Shared accessories tier-3 container. Hidden by default; a
+         #lp-cmvr-row tile click opens it and populates from the chosen
+         tier-2 (CMVR catalog rows, or a "coming soon" stub for Network /
+         Accessories). Fully inherits the shared .lp-tier3-list chrome
+         including its 5-col grid — same as Camera Models tier-3. -->
+    <div id="lp-cmvr-models" class="lp-tier3-list" style="display:none;"></div>
 
     <!-- Panel-cleanup P7: DORI Range section removed from the panel —
          redundant with the View menu's DORI Zones toggle (which paints
@@ -2183,6 +2229,43 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
             <input type="checkbox" id="inp-overhead-door-reader" onchange="updateReaderOverheadDoor(this.checked)">
             <span>For use with Overhead Door</span>
           </label>
+        </div>
+      </div>
+
+      <!-- Head-end (CMVR) right-panel block. Visible when data-mode is
+           "headend" — opened on tier-3 model arm by openRightPanelForHeadend
+           (read-only readouts; no editable fields yet). All 5 readouts
+           populate from CMVR_CATALOG[sku] + getUnitPrice(sku). -->
+      <div class="rp-headend-fields">
+        <div class="rp-field">
+          <label class="rp-label">Manufacturer &amp; Model</label>
+          <div class="rp-readout" id="rp-headend-model-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Capacity</label>
+          <div class="rp-readout" id="rp-headend-capacity-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">PoE</label>
+          <div class="rp-readout" id="rp-headend-poe-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">AI</label>
+          <div class="rp-readout" id="rp-headend-ai-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Unit Price</label>
+          <div class="rp-readout" id="rp-headend-price-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
         </div>
       </div>
 
@@ -2860,6 +2943,33 @@ var CAMERA_DB = {
   'hwa-PNV-9081R': {brand:'Hanwha',model:'PNV-9081R', type:'dome',  hPx:3840,fov:96, desc:'4K P-Series AI Vandal Dome · 4.4-9.3mm motorized · WiseAI · WDR 150dB · IK10'},
   // Hanwha Wisenet — Specialty/LPR
   'hwa-TNO-7180RLP':{brand:'Hanwha',model:'TNO-7180RLP',type:'lpr', hPx:1920,fov:30, desc:'2MP LPR Bullet · 7-90mm zoom · License plate · IP67'}
+};
+
+// CMVR head-end catalog (catalog-as-code; mirrors CAMERA_DB pattern). Keys
+// are the vendor SKU (kebab-free, EN-* prefix); price comes live from the
+// loaded pricingBook.json via getUnitPrice(sku), NOT from this table.
+// Capacity fields (maxCams / usableTB / poe) feed the BOM row description;
+// `ai` + `comingSoon` are display badges. Sole writer = armCmvrModel +
+// placeHeadend; sole reader at BOM time = recordingRows roll-up.
+var CMVR_CATALOG = {
+  'EN-BR224p-0': { code:'224+',  model:'CMVR 224+',  name:'Eagle Eye CMVR 224+',  maxCams:6,   usableTB:2,   poe:0,   ai:false },
+  'EN-BR225-0':  { code:'225',   model:'CMVR 225',   name:'Eagle Eye CMVR 225',   maxCams:6,   usableTB:1,   poe:4,   ai:false },
+  'EN-BR225p-0': { code:'225+',  model:'CMVR 225+',  name:'Eagle Eye CMVR 225+',  maxCams:6,   usableTB:2,   poe:8,   ai:false },
+  'EN-BR320-0':  { code:'320',   model:'CMVR 320',   name:'Eagle Eye CMVR 320',   maxCams:20,  usableTB:16,  poe:0,   ai:false },
+  'EN-BR323g-0': { code:'323g',  model:'CMVR 323g',  name:'Eagle Eye CMVR 323g',  maxCams:20,  usableTB:16,  poe:8,   ai:false },
+  'EN-BR324p-0': { code:'324+',  model:'CMVR 324+',  name:'Eagle Eye CMVR 324+',  maxCams:20,  usableTB:16,  poe:0,   ai:false },
+  'EN-BR325-0':  { code:'325',   model:'CMVR 325',   name:'Eagle Eye CMVR 325',   maxCams:8,   usableTB:2,   poe:4,   ai:false },
+  'EN-BR325p-0': { code:'325+',  model:'CMVR 325+',  name:'Eagle Eye CMVR 325+',  maxCams:20,  usableTB:4,   poe:8,   ai:false },
+  'EN-BR420-0':  { code:'420',   model:'CMVR 420',   name:'Eagle Eye CMVR 420',   maxCams:35,  usableTB:24,  poe:0,   ai:false },
+  'EN-BR420ai-0':{ code:'420ai', model:'CMVR 420ai', name:'Eagle Eye CMVR 420ai', maxCams:35,  usableTB:24,  poe:0,   ai:true  },
+  'EN-BR426p-0': { code:'426+',  model:'CMVR 426+',  name:'Eagle Eye CMVR 426+',  maxCams:20,  usableTB:24,  poe:0,   ai:false },
+  'EN-BR520-0':  { code:'520',   model:'CMVR 520',   name:'Eagle Eye CMVR 520',   maxCams:50,  usableTB:48,  poe:0,   ai:false },
+  'EN-BR520ai-0':{ code:'520ai', model:'CMVR 520ai', name:'Eagle Eye CMVR 520ai', maxCams:35,  usableTB:24,  poe:0,   ai:true, comingSoon:true },
+  'EN-BR526p-0': { code:'526+',  model:'CMVR 526+',  name:'Eagle Eye CMVR 526+',  maxCams:25,  usableTB:24,  poe:0,   ai:false },
+  'EN-BR620-0':  { code:'620',   model:'CMVR 620',   name:'Eagle Eye CMVR 620',   maxCams:100, usableTB:72,  poe:0,   ai:false },
+  'EN-BR620e-0': { code:'620e',  model:'CMVR 620e',  name:'Eagle Eye CMVR 620e (Enterprise)', maxCams:100, usableTB:72,  poe:0, ai:false },
+  'EN-BR820-0':  { code:'820',   model:'CMVR 820',   name:'Eagle Eye CMVR 820',   maxCams:165, usableTB:160, poe:0,   ai:false },
+  'EN-BR820e-0': { code:'820e',  model:'CMVR 820e',  name:'Eagle Eye CMVR 820e (Enterprise)', maxCams:165, usableTB:160, poe:0, ai:false }
 };
 
 // ─── DORI ─────────────────────────────────────────────────────────────────────
@@ -7359,6 +7469,236 @@ function armModel(key){
   if(typeof renderLeftPaneDrillDown === 'function') renderLeftPaneDrillDown('cameras');
 }
 
+// CMVR head-end model arming. Mirrors armModel — pure navigation, no
+// state mutation beyond currentCmvrSku, no markDirty (arming is nav, not
+// commit). placeHeadend reads currentCmvrSku at commit time. Sku must be
+// a CMVR_CATALOG key for placement to fire; null = no model armed (only
+// reached via legacy save load + applyProjectState null-backfill).
+// Side-effect: arms the right-panel "headend" mode so the user sees
+// capacity / PoE / AI / price for the chosen model.
+var currentCmvrSku = null;
+function armCmvrModel(sku){
+  if(sku !== null && !CMVR_CATALOG.hasOwnProperty(sku)) return;
+  currentCmvrSku = sku;
+  if(typeof _renderCmvrModelList === 'function') _renderCmvrModelList();
+  if(sku && typeof openRightPanelForHeadend === 'function') openRightPanelForHeadend(sku);
+}
+
+// Single-open accordion state. Tracks which left-pane tier-2 section is
+// currently expanded — exactly one of: 'cameras' (a camera-style tier-2
+// is active and the camera tier-3 model list is showing), 'cmvr',
+// 'network', 'accessories' (one of the accessory tier-2 tiles is active
+// and the shared accessory tier-3 container is showing), or null (no
+// tier-2 active, both tier-3 lists hidden). The cameras section and the
+// accessories section are mutually exclusive — opening one closes the
+// other via resetLeftPaneDrilldown.
+var leftPaneOpenSection = null;
+
+// Centralized visibility owner for the two tier-3 drill-down containers.
+// SINGLE SOURCE OF TRUTH for whether #lp-tier3-cameras and
+// #lp-cmvr-models are visible. Reads state only — never mutates state.
+// Call after any state change that could affect visibility (reset,
+// pickStyle, pickAccessory, cold-start). All OTHER writes to
+// .style.display on these two ids have been removed; the previous
+// distributed-ownership pattern (renderLeftPaneDrillDown,
+// _renderAccessoryTier3, etc. each setting display) caused the
+// cold-start-shows-tier3 and toggle-off-doesn't-collapse bugs (root
+// cause: renderLeftPaneDrillDown's unconditional `t3.style.display=''`
+// for non-"other" brands overrode the accordion's hide). Brand="other"
+// keeps tier-3 hidden even if leftPaneOpenSection==='cameras' because
+// there are zero models to show.
+function _syncDrilldownVisibility(){
+  // Camera side: tier-3 grid + its dedicated "Camera Models" header
+  // (#lp-bc2) move in lockstep. Same showCam condition for both — when
+  // the cameras section is collapsed (or brand="other"), both hide so
+  // the static header doesn't orphan above an empty grid.
+  var showCam = (leftPaneOpenSection === 'cameras' && currentBrand !== 'other');
+  var t3c = document.getElementById('lp-tier3-cameras');
+  if(t3c) t3c.style.display = showCam ? '' : 'none';
+  var bc2 = document.getElementById('lp-bc2');
+  if(bc2) bc2.style.display = showCam ? '' : 'none';
+  // Accessory side: only the tier-3 grid (#lp-cmvr-models) has a
+  // dedicated visibility owner. The static "Camera Accessories" phdr at
+  // markup line 1915 is the section header for the WHOLE accessories
+  // block (tier-2 tiles + tier-3 grid) and must stay visible regardless
+  // of accordion state — hiding it would also orphan the always-visible
+  // CMVR/Network/Accessories tier-2 tile row. No accessory tier-3
+  // header element exists.
+  var showAcc = (leftPaneOpenSection === 'cmvr' || leftPaneOpenSection === 'network' || leftPaneOpenSection === 'accessories');
+  var t3a = document.getElementById('lp-cmvr-models');
+  if(t3a) t3a.style.display = showAcc ? '' : 'none';
+}
+
+// Hide the right-panel ONLY if it's currently showing the head-end
+// readouts (data-mode === 'headend'). Used when the user collapses /
+// switches away from the accessories chain, since the head-end panel
+// is the one mode tied to a left-pane arm. Does NOT touch selectedId,
+// acSelectedId, intercomSelectedId, parcelSelectedId, mailboxSelectedId,
+// suiteSelectedId — those are canvas-selection identities, not left-pane
+// arms, and must survive an accordion swap. Contrast closeRightPanel,
+// which wipes all six and would deselect a placed canvas device as a
+// side effect of a nav switch.
+function _closeHeadendPanel(){
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  if(rp.getAttribute('data-mode') !== 'headend') return;
+  rp.classList.remove('open');
+  rp.setAttribute('aria-hidden', 'true');
+}
+
+// Single-open accordion helper. Clears every tier-2/tier-3 expansion in
+// the left pane EXCEPT the one named in `except` (one of: 'cameras',
+// 'cmvr', 'network', 'accessories', or null = clear everything).
+//   - Camera chain: tier-3 hide + currentModelKey=null UNLESS
+//     except==='cameras' (preserves tier-3 visibility for a style→style
+//     switch — the new style's first model arms next).
+//   - Accessory chain: ALWAYS cleared. Switching between accessory
+//     tier-2 tiles (cmvr↔network) counts as a chain swap and must
+//     disarm any prior CMVR sku — otherwise a stale currentCmvrSku +
+//     headendMode would let the next canvas click stamp the wrong sku.
+//   - In-flight head-end placement mode is cancelled for the same
+//     reason.
+//   - Head-end right-panel is closed via _closeHeadendPanel (panel-mode
+//     gated; no selection-state wipe).
+//   - Camera/AC/intercom/parcel/mailbox/suite right panels driven by
+//     canvas selection are NEVER touched.
+// Caller is responsible for re-setting currentAccessoryTier2 +
+// _renderAccessoryTier3 (accessory chain) or revealing tier-3 +
+// armModel (camera chain) AFTER reset returns. Reset finishes by
+// repainting tier-2 highlights from the post-reset state, so the
+// caller's follow-up render lands on a clean baseline.
+function resetLeftPaneDrilldown(except){
+  if(except !== 'cameras'){
+    currentModelKey = null;
+  }
+  var t3a = document.getElementById('lp-cmvr-models');
+  if(t3a) t3a.innerHTML = '';
+  currentCmvrSku = null;
+  currentAccessoryTier2 = null;
+  if(typeof headendMode !== 'undefined' && headendMode && typeof cancelHeadendPlacement === 'function'){
+    cancelHeadendPlacement();
+  }
+  _closeHeadendPanel();
+  leftPaneOpenSection = (except === 'cameras' || except === 'cmvr' || except === 'network' || except === 'accessories') ? except : null;
+  renderLeftPaneDrillDown('cameras');
+  _renderAccessoryTier2Active();
+  _syncDrilldownVisibility();
+}
+
+// Accessories tier-2 picker. Replaces toggleCmvrModelList — drives a
+// 3-tile tier-2 row (CMVR / Network / Accessories) where each tile
+// chooses which tier-3 sub-list is shown in the shared #lp-cmvr-models
+// container. Click an already-active tile to close (single-open
+// accordion: re-clicking the open tier-2 collapses it). Opening a
+// different tier-2 (whether within accessories or switching from the
+// cameras chain) goes through resetLeftPaneDrilldown to disarm any
+// prior CMVR sku + close the head-end right panel. None of these arm
+// placement directly; placement is always armed by a tier-3 click.
+var currentAccessoryTier2 = null;
+function pickAccessoryTier2(t){
+  if(leftPaneOpenSection === t){
+    resetLeftPaneDrilldown(null);
+    return;
+  }
+  resetLeftPaneDrilldown(t);
+  currentAccessoryTier2 = t;
+  _renderAccessoryTier2Active();
+  _renderAccessoryTier3();
+  _syncDrilldownVisibility();
+}
+
+// Sync the .active-accessory class on the 3 tier-2 tiles to
+// currentAccessoryTier2. Uses .active-accessory (light navy-on-light-
+// blue, parallel to the .active-<style> variants) — NOT the generic
+// .active class which is reserved for AC Tier 2/3 (solid-blue/white
+// reader treatment).
+function _renderAccessoryTier2Active(){
+  ['cmvr', 'network', 'accessories'].forEach(function(t){
+    var el = document.getElementById('tb-' + t);
+    if(el) el.classList.toggle('active-accessory', currentAccessoryTier2 === t);
+  });
+}
+
+// Populate the shared #lp-cmvr-models container based on the active
+// tier-2 selection. Hidden when no tier-2 is picked; populated with the
+// CMVR text-tile grid for 'cmvr'; "coming soon" stub for the placeholder
+// Network and Accessories tier-2s (no catalog yet).
+function _renderAccessoryTier3(){
+  var el = document.getElementById('lp-cmvr-models');
+  if(!el) return;
+  // Visibility is owned by _syncDrilldownVisibility — this function
+  // only paints content. When currentAccessoryTier2 === null the
+  // container will be hidden by sync; the innerHTML clear here keeps
+  // stale content out of the DOM tree.
+  if(currentAccessoryTier2 === null){
+    el.innerHTML = '';
+    return;
+  }
+  if(currentAccessoryTier2 === 'cmvr'){
+    _renderCmvrModelList();
+  } else if(currentAccessoryTier2 === 'network'){
+    el.innerHTML = '<div class="stub">Switch catalog coming soon</div>';
+  } else if(currentAccessoryTier2 === 'accessories'){
+    el.innerHTML = '<div class="stub">Accessories catalog coming soon</div>';
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+// Render the CMVR_CATALOG into #lp-cmvr-models as text-only .tier3-tile
+// entries inside the shared .lp-tier3-list 5-col grid (same chrome as
+// Camera Models). Tile label = entry.code (e.g. "320", "224+", "323g")
+// — short codes, no icon or price. Live pricing + capacity live on the
+// right panel (Headend fields), not the tile. comingSoon (EN-BR520ai-0)
+// gets the .dim class + a tooltip; still selectable.
+function _renderCmvrModelList(){
+  var el = document.getElementById('lp-cmvr-models');
+  if(!el) return;
+  var html = '';
+  Object.keys(CMVR_CATALOG).forEach(function(sku){
+    var c = CMVR_CATALOG[sku];
+    var activeCls = (sku === currentCmvrSku) ? ' active' : '';
+    var dimCls    = c.comingSoon ? ' dim' : '';
+    var title = c.name + (c.comingSoon ? ' — coming soon' : '');
+    html += '<div class="tier3-tile' + activeCls + dimCls + '"'
+         +  ' data-sku="' + escapeHtml(sku) + '"'
+         +  ' onclick="armCmvrModel(\'' + sku + '\'); startHeadendPlacement();"'
+         +  ' title="' + escapeHtml(title) + '">'
+         +    '<div class="t3-name">' + escapeHtml(c.code) + '</div>'
+         +  '</div>';
+  });
+  el.innerHTML = html;
+}
+
+// Right-panel populator for the head-end "headend" mode. Mirrors
+// openRightPanelForCamera structure — opens the panel, sets data-mode,
+// populates all 5 readouts from CMVR_CATALOG[sku] + getUnitPrice(sku).
+// "—" placeholder for missing/null values (PoE === 0, no price book).
+function openRightPanelForHeadend(sku){
+  var c = CMVR_CATALOG[sku];
+  if(!c) return;
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  var modelEl = document.querySelector('#rp-headend-model-readout .rp-model-name');
+  var capEl   = document.querySelector('#rp-headend-capacity-readout .rp-model-name');
+  var poeEl   = document.querySelector('#rp-headend-poe-readout .rp-model-name');
+  var aiEl    = document.querySelector('#rp-headend-ai-readout .rp-model-name');
+  var priceEl = document.querySelector('#rp-headend-price-readout .rp-model-name');
+  if(modelEl) modelEl.textContent = c.name + (c.comingSoon ? ' (coming soon)' : '');
+  if(capEl)   capEl.textContent   = c.maxCams + ' cams · ' + c.usableTB + 'TB';
+  if(poeEl)   poeEl.textContent   = (typeof c.poe === 'number' && c.poe > 0) ? (c.poe + ' W') : '—';
+  if(aiEl)    aiEl.textContent    = c.ai ? 'yes' : 'no';
+  var price = getUnitPrice(sku);
+  if(priceEl) priceEl.textContent = (typeof price === 'number' && isFinite(price))
+    ? '$' + price.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    : '—';
+  rp.setAttribute('data-mode', 'headend');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Head-End Details';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
+}
+
 // applyModelToSelected(key) — mutates the currently-selected camera's
 // type / resolution / fov / model / reachM / notes (when notes empty).
 // No-op when there's no selection or the key isn't in CAMERA_DB. Called
@@ -7525,24 +7865,31 @@ function renderLeftPaneDrillDown(mode){
   // (brand chosen and not "Other"). Text describes the tier's purpose.
   if(bc1) bc1.innerHTML = (currentBrand && currentBrand !== 'other') ? 'Camera Styles' : '';
 
-  // "Other" hides Tier 2/3 and the inter-tier breadcrumb. Per brief #8.
+  // "Other" hides Tier 2 and clears tier-3 content + the inter-tier
+  // breadcrumb's text. Tier-3 (#lp-tier3-cameras) AND its header
+  // (#lp-bc2) visibility are owned by _syncDrilldownVisibility — this
+  // function does NOT write t3.style.display OR bc2.style.display (root
+  // cause of cold-start + toggle-off bugs was distributed-ownership).
+  // Sync gates "other" via the currentBrand check + leftPaneOpenSection
+  // and hides bc2 in lockstep with t3.
   if(currentBrand === 'other'){
     t2.innerHTML = '';
     t3.innerHTML = '';
     t2.style.display = 'none';
-    t3.style.display = 'none';
-    if(bc2){ bc2.innerHTML = ''; bc2.style.display = 'none'; }
+    if(bc2) bc2.innerHTML = '';
     return;
   }
   t2.style.display = '';
-  t3.style.display = '';
-  if(bc2) bc2.style.display = '';
 
   var styles = stylesForBrand(currentBrand);
   var t2Html = '';
   styles.forEach(function(s){
     var sm = STYLE_META[s];
-    var activeCls = (s === currentType) ? ' active-' + s : '';
+    // Single-open accordion: only highlight the active style when the
+    // cameras section is the open one. Otherwise currentType may be set
+    // from cold-start defaults (or a stale prior arm) but no tier-2
+    // tile should appear active in the collapsed/other-section state.
+    var activeCls = (leftPaneOpenSection === 'cameras' && s === currentType) ? ' active-' + s : '';
     t2Html += '<div class="tier2-tile' + activeCls + '" data-style="' + s + '" onclick="lpPickCamerasStyle(\'' + s + '\')" title="' + escapeHtml(sm.label) + '">' +
               '<div class="ts-icon" style="color:' + sm.color + '">' + sm.svg + '</div>' +
               '<span class="t2-label">' + escapeHtml(sm.label) + '</span>' +
@@ -7581,16 +7928,21 @@ function renderLeftPaneDrillDown(mode){
 }
 
 // Tier 1 click handler. "Other" short-circuits to generic placement.
+// Accordion behavior: brand-click is a tier-1 nav and does NOT by
+// itself open the cameras section. If cameras is already open, the new
+// brand's first model arms (preserves the open-and-armed state). If
+// cameras is closed (leftPaneOpenSection !== 'cameras'), the tier-2
+// styles row just repaints with the new brand's styles — tier-3 stays
+// hidden until the user explicitly clicks a style tile.
 function lpPickCamerasBrand(brand){
   currentBrand = brand;
   if(brand === 'other'){
     currentModelKey = null;
     setActiveBrandTile('other');
     renderLeftPaneDrillDown('cameras');
+    _syncDrilldownVisibility();
     return;
   }
-  // Brand changed — fall to first style in new brand if currentType isn't
-  // available there. Then arm the first model in (brand, style).
   var styles = stylesForBrand(brand);
   if(styles.length === 0){
     // Defensive: CAMERA_DB has no entries for this brand. Render an empty
@@ -7598,24 +7950,48 @@ function lpPickCamerasBrand(brand){
     console.warn('[left-pane] CAMERA_DB has no models for brand=' + brand);
     setActiveBrandTile(brand);
     renderLeftPaneDrillDown('cameras');
+    _syncDrilldownVisibility();
     return;
   }
-  var style = (styles.indexOf(currentType) >= 0) ? currentType : styles[0];
-  setType(style, true);
-  var models = modelsForBrandStyle(brand, style);
-  if(models.length > 0){
-    // Arming only — Tier 1 click must not mutate the selected camera.
-    // See CLAUDE.md "Drill-down arming vs model assignment".
-    armModel(models[0].key);
+  if(leftPaneOpenSection === 'cameras'){
+    var style = (styles.indexOf(currentType) >= 0) ? currentType : styles[0];
+    setType(style, true);
+    var models = modelsForBrandStyle(brand, style);
+    if(models.length > 0){
+      // Arming only — Tier 1 click must not mutate the selected camera.
+      // See CLAUDE.md "Drill-down arming vs model assignment".
+      armModel(models[0].key);
+    } else {
+      console.warn('[left-pane] brand=' + brand + ' style=' + style + ' has zero models — repainting drill-down.');
+      setActiveBrandTile(brand);
+      renderLeftPaneDrillDown('cameras');
+    }
   } else {
-    console.warn('[left-pane] brand=' + brand + ' style=' + style + ' has zero models — arming legacy currentModelKey.');
+    // Cameras section is closed (or another section is open). Repaint
+    // the tier-2 styles row for the new brand WITHOUT arming or opening
+    // the section. Tier-3 stays hidden via _syncDrilldownVisibility +
+    // the accordion active-class gate suppresses tier-2 highlight.
     setActiveBrandTile(brand);
     renderLeftPaneDrillDown('cameras');
   }
+  _syncDrilldownVisibility();
 }
 
 // Tier 2 click handler — arm first model in (currentBrand, style).
+// Single-open accordion: clicking the currently-open style tile
+// collapses the cameras section (toggle-off); clicking a different
+// style (or opening cameras from a collapsed/other-section state) goes
+// through resetLeftPaneDrilldown to close any prior accessory chain
+// before revealing the camera tier-3 list and arming the first model.
 function lpPickCamerasStyle(style){
+  if(leftPaneOpenSection === 'cameras' && currentType === style){
+    resetLeftPaneDrilldown(null);
+    return;
+  }
+  resetLeftPaneDrilldown('cameras');
+  // Visibility owned by _syncDrilldownVisibility (called by reset);
+  // reset already set leftPaneOpenSection='cameras' so tier-3 is
+  // showing by the time we return from reset.
   setType(style, true);
   var models = modelsForBrandStyle(currentBrand, style);
   if(models.length > 0){
@@ -7624,6 +8000,7 @@ function lpPickCamerasStyle(style){
   } else {
     renderLeftPaneDrillDown('cameras');
   }
+  _syncDrilldownVisibility();
 }
 
 // Tier 3 click handler — explicit "pick this model" act. When a camera
@@ -9323,6 +9700,12 @@ function testReadScaleInputs(){
 // ─── Head-End Placement & Cable Runs ──────────────────────────────────────────
 function startHeadendPlacement(){
   if(!pdfLoaded) return;
+  // cmvr-headend-models rework: placement requires an armed CMVR model.
+  // The tier-2 CMVR tile only toggles the model list — it does NOT call
+  // startHeadendPlacement. Tier-3 model tiles arm + then call this.
+  // Defensive guard: not reachable from the UI today, but bails if a
+  // console caller invokes us without arming first.
+  if(!currentCmvrSku) return;
   // Pass A.5: block placement on typical-floor pages with multiplier > 1.
   // A head-end is a single physical device; placing it on a typical page
   // would imply N copies. Tell the user where it should go instead.
@@ -9332,7 +9715,8 @@ function startHeadendPlacement(){
   }
   if(calibMode) cancelCalibrationFlow();
   headendMode = true;
-  var cmvr = document.getElementById('tb-cmvr'); if(cmvr) cmvr.classList.add('active');
+  // Note: the tier-2 CMVR tile already wears .active via pickAccessoryTier2
+  // when the user opened the model list. Leave that visual state alone.
   document.getElementById('calib-banner').classList.add('show');
   document.getElementById('calib-msg').textContent = 'Click to place CMVR / NVR head-end on this page';
   redraw();
@@ -9340,13 +9724,18 @@ function startHeadendPlacement(){
 
 function cancelHeadendPlacement(){
   headendMode = false;
-  var cmvr = document.getElementById('tb-cmvr'); if(cmvr) cmvr.classList.remove('active');
+  // cmvr-headend-models rework: tb-cmvr is now a tier-2 tile whose
+  // .active reflects currentAccessoryTier2, NOT placement mode. Do NOT
+  // toggle it here (the model list visibility is independent of whether
+  // placement is currently armed).
   document.getElementById('calib-banner').classList.remove('show');
   redraw();
 }
 
 function placeHeadend(cssX, cssY){
-  headends[currentPage] = { x: cssX/viewScale, y: cssY/viewScale };
+  // CMVR head-end models: stamp the currently-armed sku at commit time.
+  // null = no model armed → BOM falls back to the generic auto-nvr row.
+  headends[currentPage] = { x: cssX/viewScale, y: cssY/viewScale, sku: currentCmvrSku || null };
   markDirty();
   cancelHeadendPlacement();
   // Placing a head-end implies the user wants to see cables. Force the
@@ -13145,7 +13534,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 21,             // generation tag — v21 adds dev.overheadDoor per placed AC device (overhead-door-flag pass M1)
+      version: 22,             // generation tag — v22 adds headends[*].sku per placed CMVR head-end (cmvr-headend-models pass)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -13360,7 +13749,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 21,            // Overhead-door-flag M1: dev.overheadDoor boolean on each placed AC device (default false)
+    version: 22,            // cmvr-headend-models: headends[*].sku (string|null) per placed CMVR head-end (default null)
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -13433,6 +13822,14 @@ function applyProjectState(data){
   if(data.cameras) cameras = data.cameras;
   if(data.calibrations) calibrations = data.calibrations;
   if(data.headends) headends = data.headends;
+  // cmvr-headend-models (v22): backfill sku:null on any pre-v22 entry
+  // that doesn't carry the field. Runs UNCONDITIONALLY on every load —
+  // no version branch — so legacy v21/v20/... saves get the field
+  // defaulted without rejection. BOM roll-up treats null as "no model"
+  // → generic fallback row.
+  Object.keys(headends).forEach(function(p){
+    if(headends[p] && typeof headends[p].sku === 'undefined') headends[p].sku = null;
+  });
   // Panel-cleanup P8: backfill switches map from save. Older saves
   // (pre-P8) have no switches key → start with an empty map.
   switches = (data.switches && typeof data.switches === 'object') ? data.switches : {};
@@ -16402,9 +16799,39 @@ function computeAutoRows(){
   // BOM matches the real installed count across typical floors.
   var multCount = multipliedTotal(filteredCams);
 
-  // Auto-recording: NVR sized to channel count + storage drives
+  // Auto-recording: CMVR head-end models (preferred — emitted from
+  // placed-head-ends carrying a sku) OR generic NVR fallback (no models
+  // armed). cmvr-headend-models pass: group placed head-ends by sku;
+  // qty = count of pages carrying that sku (head-ends are single-floor,
+  // NO pageMultiply — typical-floor guard already prevents placement on
+  // multiplied pages). When ≥1 CMVR sku is placed, the generic NVR row
+  // is SUPPRESSED + the auto-hdd row is also suppressed (storage is
+  // onboard for CMVR — over-capacity expansion drives are a future pass,
+  // see TODO below).
   var recordingRows = [];
-  if(filteredCams.length > 0){
+  var cmvrSkuGroups = {};
+  Object.keys(headends).forEach(function(p){
+    var he = headends[p];
+    if(!he || !he.sku) return;
+    if(!CMVR_CATALOG.hasOwnProperty(he.sku)) return;
+    if(!cmvrSkuGroups[he.sku]) cmvrSkuGroups[he.sku] = 0;
+    cmvrSkuGroups[he.sku] += 1;
+  });
+  var cmvrSkuKeys = Object.keys(cmvrSkuGroups).sort();
+  cmvrSkuKeys.forEach(function(sku){
+    var c = CMVR_CATALOG[sku];
+    var unit = getUnitPrice(sku);
+    recordingRows.push({
+      auto:true, src:'recording', key:'cmvr-'+sku, sku:sku,
+      desc: c.name + ' — ' + c.maxCams + ' cams · ' + c.usableTB + 'TB',
+      qty: cmvrSkuGroups[sku],
+      unit: (typeof unit === 'number' && isFinite(unit)) ? unit : 0,
+      sectionAuto:true
+    });
+  });
+  var hasCmvrModelRow = cmvrSkuKeys.length > 0;
+
+  if(filteredCams.length > 0 && !hasCmvrModelRow){
     var ch = multCount;
     var channels = ch <= 4 ? 4 : ch <= 8 ? 8 : ch <= 16 ? 16 : ch <= 32 ? 32 : ch <= 64 ? 64 : 128;
     recordingRows.push({
@@ -16434,6 +16861,11 @@ function computeAutoRows(){
       qty: driveCount, unit: 0, sectionAuto:true
     });
   }
+  // TODO (future pass): when hasCmvrModelRow AND requiredTB > Σ usableTB
+  // across the placed CMVR fleet, emit expansion-drive rows for the
+  // over-capacity remainder. Drive-math is deliberately NOT faked here —
+  // CMVR onboard capacity is the assumed default until expansion math
+  // (per-model expansion bay count, drive size selection) lands.
 
   // Auto-network: PoE switch sized to multiplied camera count.
   // BOM two-tier M1: placed switches[] override the camera-count-derived
@@ -17850,30 +18282,18 @@ window.addEventListener('resize',function(){
 });
 
 // ─── Pass Left-Pane: cameras drill-down cold-start ───────────────────────────
-// Eagle Eye → Dome → een-PD01 (first EE dome in CAMERA_DB declaration
-// order). Defensive fallback to the first available Eagle Eye dome with a
-// console.warn if the canonical default model is missing — D4.
-// Wrapped in an IIFE so the inits run in order (pickModel must see Tier 1
-// state set first, renderLeftPaneDrillDown reads all three current* vars).
+// Single-open accordion: cold-start seeds Tier 1 brand (Eagle Eye) and
+// initializes form-input defaults via setType('dome'), but does NOT
+// auto-arm a model. leftPaneOpenSection stays null → no tier-2 style
+// tile shows active, tier-3 model list stays hidden (inline display:
+// none on #lp-tier3-cameras). User must explicitly click a tier-2 style
+// tile to open the cameras section. Wrapped in an IIFE so the brand +
+// setType state lands before renderLeftPaneDrillDown reads them.
 (function _initLeftPaneCameras(){
   currentBrand = 'een';
   setType('dome', true);
-  var canonical = 'een-PD01';
-  // Boot-time arming — no selection exists yet, so armModel and pickModel
-  // would have identical effect. Using armModel keeps the arming-vs-apply
-  // boundary consistent for future readers of this code.
-  if(CAMERA_DB[canonical]){
-    armModel(canonical);
-  } else {
-    console.warn('[left-pane] default model ' + canonical + ' missing from CAMERA_DB; falling back to first Eagle Eye dome.');
-    var fallback = modelsForBrandStyle('een', 'dome')[0];
-    if(fallback){
-      armModel(fallback.key);
-    } else {
-      console.warn('[left-pane] no Eagle Eye dome present in CAMERA_DB; drill-down will render empty.');
-      renderLeftPaneDrillDown('cameras');
-    }
-  }
+  renderLeftPaneDrillDown('cameras');
+  _syncDrilldownVisibility();
 })();
 </script>
 <script>
