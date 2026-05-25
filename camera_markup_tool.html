@@ -14137,46 +14137,36 @@ function drawProposalBOM(doc, W, H){
     y = 80;
   }
 
-  // Two-line row emitter. Line 1: bold 12pt — SKU navy (real part number)
-  // or [TYPE LABEL] lighter gray (derived / no-SKU rows), LEFT-anchored.
-  // Quantity rendered as a bare right-aligned number under the band's QTY
-  // header (column alignment via BAND_QTY_X). Line 2: regular 11pt
-  // charcoal — full description, wraps up to 2 lines max (mirrors the M6
-  // wrapping logic; full width since the price columns are gone). Line-2
-  // indent (x=55 vs x=45 on line 1) visually nests the desc under the
-  // heading.
+  // Single-line row emitter. Description LEFT-anchored at x=45, regular
+  // 11pt charcoal. Bare numeric quantity RIGHT-aligned at BAND_QTY_X
+  // (same column as the band's "QTY" header — pixel-aligned). Description
+  // wraps up to 2 lines max (ellipsis past 2); quantity stays on the
+  // first line's baseline regardless of wrap. Desc max-width is column-
+  // constrained so wrapped text cannot visually run under the qty column.
+  // SKU/TYPE LABEL rendering was dropped in this pass — bomRowSku() is no
+  // longer called from drawProposalBOM (function definition remains; see
+  // step report for dead-code-sweep note).
   function _drawCustomerRow(row){
-    var meta = bomRowSku(row);
     var qtyN = (typeof row.qty === 'number' && isFinite(row.qty)) ? row.qty : 0;
     var desc = bomDisplayDesc(row);
-    var descLines = doc.splitTextToSize(desc || '', W - 80);
+    var descMaxW = BAND_QTY_X - 45 - 12;
+    var descLines = doc.splitTextToSize(desc || '', descMaxW);
     var displayLines = descLines.slice(0, 2);
     if(descLines.length > 2){
       displayLines[1] = (displayLines[1] || '').replace(/.{0,3}$/, '…');
     }
-    // line-1 ~16pt advance; each line-2 wrap line ~14pt; +4pt inter-row gap.
-    var rowH = 16 + (displayLines.length * 14) + 4;
+    // 11pt regular courier ~14pt advance per line; +4pt inter-row gap.
+    var rowH = (displayLines.length * 14) + 4;
     if(y + rowH > H - 50) _newContPage();
 
-    // Line 1 — SKU/[label] left-anchored + bare qty right-aligned under
-    // the band's QTY header (fix 2: replaces the "  ·  Qty N" suffix).
-    doc.setFont('courier','bold'); doc.setFontSize(12);
-    var headText;
-    if(meta.sku){
-      headText = meta.sku;
-      doc.setTextColor(31, 41, 55);  // navy — real part number
-    } else {
-      headText = '[' + meta.typeLabel + ']';
-      doc.setTextColor(110, 110, 130);  // lighter — clearly not a literal SKU
-    }
-    doc.text(headText, 45, y);
-    doc.text(String(qtyN), BAND_QTY_X, y, {align:'right'});
-    y += 16;
-
-    // Line 2+
     doc.setFont('courier','normal'); doc.setFontSize(11); doc.setTextColor(60, 60, 70);
-    for(var i = 0; i < displayLines.length; i++){
-      doc.text(displayLines[i] || '', 55, y);
+    // First line + qty share the same baseline so qty column-aligns with
+    // the desc's opening words.
+    doc.text(displayLines[0] || '', 45, y);
+    doc.text(String(qtyN), BAND_QTY_X, y, {align:'right'});
+    y += 14;
+    if(displayLines[1]){
+      doc.text(displayLines[1], 45, y);
       y += 14;
     }
     y += 4;
@@ -14196,11 +14186,12 @@ function drawProposalBOM(doc, W, H){
   var BAND_H2 = 15;
 
   // Orphan-guard sizing: tier-1 band (18pt + 6pt gap) + tier-2 band (15pt
-  // + 21pt gap so the first row's line-1 cap-top clears the band bottom
-  // by ~12pt of whitespace) + a possibly-2-line first row (~48pt = 16
-  // line-1 + 28 line-2 + 4 gap) = ~108pt. Pad to 120 so a navy band never
-  // renders as the last thing on a page above its first tier-2 + row.
-  var MIN_TIER1_FIT = 120;
+  // + 14pt post-band gap so the row's 11pt cap-top clears the band bottom
+  // by ~6pt of whitespace) + a single-line first row (~14pt + 4pt inter-
+  // row gap) = ~67pt. Pad to 75 so a navy band never renders as the last
+  // thing on a page above its first tier-2 + row. Lower than the previous
+  // 120pt because the row is now one line (was two with SKU+desc).
+  var MIN_TIER1_FIT = 75;
 
   BOM_TEMPLATE.tiers.forEach(function(tier){
     var visibleSubs = tier.subs.filter(function(sub){
@@ -14241,12 +14232,13 @@ function drawProposalBOM(doc, W, H){
       doc.rect(BAND_LEFT, y, BAND_RIGHT - BAND_LEFT, BAND_H2, 'F');
       doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
       doc.text(sub.title.toUpperCase(), BAND_TEXT_X, y + BAND_H2 - 4);
-      // Fix-1: bump 4 → 21 (the post-band gap before line-1 baseline).
-      // 12pt bold courier cap-height ~9pt, so a 21pt y-advance after the
-      // band puts the first row's cap-top at band_bottom + (21 - 9) = +12pt
-      // of clear whitespace. Before this fix the line-1 text overlapped
-      // the band's bottom edge by ~5pt.
-      y += BAND_H2 + 21;
+      // 11pt regular courier cap-height ~8pt, so a 14pt y-advance after
+      // the band puts the row's first-line cap-top at band_bottom +
+      // (14 - 8) = ~6pt of clear whitespace. Smaller than the previous
+      // 21pt because the row is now 11pt regular (was 12pt bold) — needs
+      // less clearance and the lighter text reads cleanly against the
+      // smaller gap.
+      y += BAND_H2 + 14;
 
       // Auto rows first, then custom rows (matches drawer ordering).
       b.auto.forEach(_drawCustomerRow);
