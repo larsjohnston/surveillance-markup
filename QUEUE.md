@@ -1,91 +1,64 @@
 # Surveillance / Door Hardware Markup Tool — Work Queue
 
-_Canonical manually-maintained queue. Last regenerated at main `a598d44`, after the overhead-door-flag pass. Save schema is at **v21**._
+_Canonical manually-maintained queue. Last regenerated after Pricing M2 (SKU→price-book lookup) merged to main._
 
 ---
 
 ## THE REFRAME (terminology — affects everything below)
 
-- **Security Quote** = the on-screen "BOM" drawer/modal. Internal **priced** workspace; sibling to the Door Hardware wizard. Floor-plan placements + manual entries → materials → SKU → (Pass 2) price-book lookup → margin/tax/totals. Pricing machinery lives here.
-- **Door Hardware Quote** = the existing DHW wizard (import → price → award → markup → schedule). Door-hardware prices come from supplier RFQ, NOT the Brivo/Eagle Eye list.
-- **Bill of Materials** = the customer-facing proposal-export PDF page only. Description · Qty, **no SKU, no pricing**. Navy/blue banded section headers, courier.
-- Code symbols stay `bom*` (UI says "Security Quote"; symbol rename deferred — housekeeping).
+- **Security Quote** = the on-screen "BOM" drawer/modal. Internal **priced** workspace. Floor-plan placements → materials → SKU → price-book lookup → margin/tax/totals. Pricing machinery lives here.
+- **Door Hardware Quote** = the DHW wizard (import → price → award → markup → schedule).
+- **Bill of Materials** = the customer-facing proposal-export PDF page only. Qty · SKU · Description, no pricing. Two-line rows.
+- Code symbols stay `bom*` (UI says "Security Quote"; symbol rename deferred).
 
 ---
 
-## CURRENT BOM STRUCTURE (5 majors + Other, on both surfaces)
-- **1. Cameras & Networking** — 1.1 Cameras & Surveillance (cameras) · 1.2 Networking (NVR/CMVR/HDD + PoE switches)
-- **2. Access Control & Intercom** — 2.1 Access Control (readers/panels/Trove/expansion + 2.1-credentials) · 2.2 Overhead Door Control (OH-flagged devices + OH credentials) · 2.3 Intercoms
-- **3. Parcel Lockers & Mailboxes** — 3.1 Smart Parcel & Delivery · 3.2 Mailboxes
-- **4. Smart Suites** — 4.1
-- **5. Door Hardware** — 5.1 Security / 5.2 Door / 5.3 Key / Unclassified (from DHW wizard)
-- **Other** — catch-all
-"&" never "and" in tier titles. Routing is by `r.section` (priority) then `src`+key-prefix.
+## JUST SHIPPED (on main)
+
+- **Pricing M2 — SKU→price-book lookup wired.** `aa1b5619`. SKU resolves via `bomRowSku` (with `_stripOhPrefix` for OH-flagged AC rows); `computeAutoRows` wrapper does a hoisted single price-book read then applies unit prices, override-wins. `_normalizeBomKey` shares overrides across a SKU's flagged/unflagged variants. Coverage validated (7 Group-A rows, 3 hits / 4 expected misses; OH-strip proven). Brief + `build_pricing_json.py` folded.
+- **Pricing Data Foundation** (prior) — load/clear helpers, status banner, `pricing.json` schema v1, `getPricingBook`/`getUnitPrice`/`isPricingLoaded`.
+- **CLAUDE.md regenerated** for expanded Smart Building scope (`d2c23ec`).
 
 ---
 
-## JUST SHIPPED THIS SESSION (all on main)
-- **BOM two-tier restructure** — `43fdd4a` (tag `bom-two-tier-pass`). M1–M8. Flat 6-section → 5 majors; one `computeBomTree()` feeds drawer+PDF+CSV. IoT expansion + **v18→v19**. DHW §5 classifier.
-- **Centered BOM modal** — `45d1afd` (CSS-only).
-- **Customer BOM export page** — `29d0ccd`. Rename → "Security Quote"; two-line Qty·SKU·Desc, no pricing.
-- **Banded BOM headers** — `678e69f`. Navy tier-1 / blue tier-2 filled bands, white text, "QTY" label. Hardcoded RGB navy `(40,54,92)` / blue `(74,110,180)` + TODO to unify with `branding.palette`.
-- **Band/Qty fixes** — `70f122a`. Flush band/row gap, right-aligned Qty under QTY.
-- **SKU removal from BOM PDF** — `8fd3237`. Rows collapsed to description + right-aligned Qty (no SKU). `bomRowSku()` now dead code.
-- **Restructure-v2** — `4db0d6d`. The 5-major/7-sub template above + routing rewire + courier-sweep (was already all courier, no-op) + flush bands + "&"-not-"and". `OVERHEAD_DOOR_SKUS` introduced empty `[]`.
-- **Credentials entry** — `3889598` (**v19→v20**). "Credentials" tile in AC level-2 (fob icon, drill-in, no Back); 5 tier-3 tiles → qty modal. `projectInfo.credentials = {fobs,cards,mobilePasses,ohTransmitters,ohReceiver}`. fobs/cards/mobilePasses→2.1, ohTransmitters/ohReceiver→2.2 via `CREDENTIAL_TYPE_DEFS` single-source helper. D1: manual 2.1-type entry>0 suppresses derived `auto-ac-credentials`; OH-only leaves it intact.
-- **Overhead-door flag** — `a598d44` (**v20→v21**). "For use with Overhead Door" right-panel checkbox → `dev.overheadDoor`. AC grouping key split `sku + '|' + OH` so same-SKU flagged/unflagged → separate rows; flagged → `auto-ac-oh-<SKU>` + `section:'2.2'`. **Removed `OVERHEAD_DOOR_SKUS` entirely** — 2.2 is now pure user intent (checkbox + OH credentials).
+## 🔴 IMMEDIATE — do before anything else
+
+- **Restore Load/Clear Pricing File-menu buttons.** `btn-pricing-load` / `btn-pricing-clear` are absent from the File-menu markup (handlers `openPricingFilePicker` / `confirmClearPricing` survive as orphans). The pricing feature just merged is **UI-unreachable on a fresh localStorage** — no way to load a price book without DevTools. Markup-only restore; handlers already exist. Branch `fix-pricing-menu-restore`. Root-cause why they were dropped (was it intentional?) but restore regardless.
 
 ---
 
-## 🔴 HARD DEPENDENCY — resolve before any client-facing export
-- **Cover GRAND TOTAL shows $0.00.** `drawProposalCover` sums `computeBomTree()` × margin/tax = $0 (all unit prices 0 until pricing lands). A proposal exported today shows a $0 cover — looks broken to a client. **Resolved by Pass 2 (real prices)** OR the cover-redesign branch hiding the $0. Do not ship a client proposal until one lands.
+## 🔴 $0-COVER DEPENDENCY — partially resolved
+
+- Cover GRAND TOTAL now renders real totals for **priced** SKUs (Brivo AC). Still $0 for unpriced families (cameras `een-*`/`EE-*` vs book `EN-*`; Doorbird `DB-*`; parcel placeholder). A proposal leaning on camera/intercom/parcel pricing still undercounts. Fully resolved when those families get prices or a no-price marker (see SKU-mapping items below) OR the cover-redesign hides $0.
 
 ---
 
-## NEXT — Pass 2: Pricing module (NEW CHAT)  *(the big one)*
+## NEXT UP
 
-Wire SKU → Brivo/Eagle Eye price list so the Security Quote drawer + CSV show real unit/line/margin/tax/grand-total, and the cover total becomes real (kills the $0-cover dependency).
+### SKU coverage gaps (surfaced by M5 coverage dump)
+- **`cred-fob` credentials row** — falls through `bomRowSku` `auto-ac-credentials` exact-match into the `auto-ac-` prefix strip, yields a non-SKU string, always misses. Give it a real SKU or a no-price marker so it stops reading as a false miss.
+- **Camera SKU mapping** — tool keys `een-*`/`EE-*` don't match book `EN-*`. Decide mapping table or no-price marker.
+- **Doorbird intercom + parcel** — `DB-*` and `LUX-PCL-PLACEHOLDER` not in the Brivo book. Need LuxerOne / Doorbird price sources or no-price markers.
+- **8 Brivo SKUs absent from reseller book** — `B-D21xx` intercom line, `B-9002`, `B-A1101`, `B-P1-N`. Brivo-intercom price addendum when source available.
 
-**Source file:** `27_3_Brivo_Price_List_NA1_Reseller_L3_CDN_20260401.xlsx` (in project files). User: "always in this format; v1 just pull from this Excel as stated; dynamic solution later."
-
-**File structure (confirmed by inspection):**
-- 5 sheets. Equipment SKUs live in **"Access Reseller - NA1 L3"** (571 rows: Brivo `B-*` AC + suites + door-hw incl. Kwikset `KW-*`/Yale `YL-*`/Honeywell `HON-*`) and **"Video Reseller - NA1 L3"** (677 rows: Eagle Eye `EN-*` cameras/switches/CMVRs).
-- Other sheets: "Video Complete" (OpEx variant), "Video Sub Price Matrix L3" (cloud VMS subscription grid — recurring, not equipment), "Summary of Changes" (changelog).
-- Column layout (both equipment sheets): rows 0–11 = title/preamble/headers (SKIP). Data rows: **col A = SKU, col B = description, col C = spec/sub-desc, col D = Price CDN (list), col E = Reseller L3 CDN (cost basis), col F = notes.** Category-section header rows have text in col A but empty D/E (skip/treat as headers).
-
-**🔑 TWO DECISIONS PENDING (answer at the start of the pricing chat — they gate the architecture):**
-1. **Ingestion path:** (A) add SheetJS CDN dep → tool parses the raw `.xlsx` directly (matches "pull as stated"; seeds the eventual dynamic solution; **violates no-new-deps rule → needs explicit approval**), OR (B) offline-convert the 2 equipment sheets to a checked-in `pricing.json` loaded via the existing Pricing Foundation pipe (no new dep; manual convert step per price update). **Claude's rec: (B) for v1** ("dynamic later" = the SheetJS path). NOTE: a JSON loader may be scaffolded already — grep `loadPricing`/`pricing.json`/`priceBook` on current main to confirm its shape (only a stale comment found at line ~2802 so far).
-2. **Camera SKU mismatch (make-or-break):** Brivo `B-*` price-list SKUs MATCH the tool's `BRIVO_CATALOG` → AC/credentials prices hit. But Eagle Eye cameras DON'T: price list `EN-CDUD-010a` vs tool catalog `een-DD10` — different schemes, lookup misses, camera prices come back $0. Either **build an `een-* → EN-*` crosswalk now** (needs user product knowledge to map each pair) OR **scope v1 to Brivo/AC-only prices** with cameras showing $0/"price pending" until the crosswalk lands. Claude's rec: decide live.
-
-**Defaults Claude will bake in unless told otherwise:**
-- Cost basis = **Reseller L3 (CDN), col E**; margin → sell.
-- Scope v1 = one-time equipment for SKUs the tool emits (cameras, AC, credentials, suites, intercom if present). **§5 door hardware stays on the DHW quote/RFQ path** (not in this list). **Subscriptions/recurring out of scope v1.**
-- Require a **SKU-match coverage report** (how many of the tool's emitted SKUs found a price, which missed) before trusting the lookup.
-
-**Prerequisite within the pass:** promote `sku` to a real per-material field where needed (cameras/AC/intercom/parcel/DHW have a source; mailbox/IoT/derived need SKU assignment or a no-price marker).
-
----
-
-## ACTIVE — OTHER BRANCH (proposal-cover chat)
-- **Proposal cover redesign** — SMART-MF-branded title page (angled navy/white jsPDF geometry; logo + photo base64; Project/Client/Date) from `projectInfo.branding`. Logo IN; **building photo PENDING** (free-license `cover-photo.jpg`). Helvetica not courier (NOTE: rest of export is courier on main — known conflict to resolve at merge). Rebase onto current main before merge.
-  - **ON MERGE — palette unification (REQUIRED):** reconcile the BOM-band navy `(40,54,92)`/blue `(74,110,180)` + the older gray-navy `(31,41,55)` into one `branding.palette`. Pick one canonical brand navy for the whole proposal.
-  - Could also resolve the $0-cover dependency (hide the $0 total).
+### Price discrepancy to reconcile (one-time)
+- Two builders produced different `B-BSMF-B` costs (254.07 vs 206.75). CC's `build_pricing_json.py` output (206.75 reseller / 397.6 list) matches the Brivo sheet and is canonical. Confirm no other SKUs were mis-columned by the losing builder. (My throwaway pricing.json discarded — CC's is the keeper.)
 
 ---
 
 ## QUEUED PASSES
 
-### Classifier v2 — DHW keyword expansion (from M8's 28-unclassified real-data dump)
+### Classifier v2 — DHW keyword expansion
 - Extend `DHW_CLASSIFIER_RULES`: rule 4 (→5.2) astragal, coordinator, threshold, gasketing, door bottom/sweep, track, viewer, pocket door lock, latching bolt, mounting plate; rule 3 fire exit hardware; rule 5 (→5.3) `cyl`. Drops unclassified ~28→~5.
-- Door-operator components → §2.2 (couples to deferred door-operator modeling — §2.2 has none).
-- **Ride-along:** add `\b` word boundaries to `SECURITY_HARDWARE_PATTERN` (fixes "REX" in "CORE EXTRACTOR"; touches classifier rule 2 + the 2.1/2.3 guard).
+- Door-operator components → §2.2 (couples to deferred door-operator modeling).
+- **Ride-along:** add `\b` word boundaries to `SECURITY_HARDWARE_PATTERN` (fixes "REX" inside "CORE EXTRACTOR").
 
-### Foundational — Materials model (fold into / follow Pass 2)
-- General **data-driven section assignment** — every material carries an editable `section`/`sectionOverride` field; routing reads it instead of hardcoded prefixes. `dev.overheadDoor` was the first targeted instance; generalize to `dev.sectionOverride`.
-- Manual line-item entry surface for non-placed items beyond credentials (services, subscriptions, master-key). Credentials entry already shipped as the first slice.
+### UX / copy
+- **Migration-alert removal** (parked from pricing chat) — drop the AC + camera-reach migration `alert()`s, keep the migrations, add silent `console.info` breadcrumbs. Decision pending: both + breadcrumbs / both, no breadcrumbs / AC only. **NOTE: not on pricing branch — own cleanup branch off main.**
+- **User-facing copy audit** — migration alerts and other strings are jargon-written for the integrator; needs a plain-language pass before multi-tenant SaaS.
 
 ### Other backlog
-- **Switch Topology** (partial) — two-tier camera→switch→CMVR cabling; multi-switch-per-page; switch right-panel. Likely merges with Manual Cable Routing.
+- **Switch Topology** — two-tier camera→switch→CMVR cabling; multi-switch-per-page; switch right-panel. Likely merges with Manual Cable Routing.
 - **Manual Cable Routing + Conduit** — user-drawn polylines replacing straight-line × multiplier; conduit per-segment → BOM row.
 - **Camera Details Panel Redesign** — sliders w/ two-way canvas sync.
 - **PDF scale-marker auto-recognition** — select scale bar → calibration. OCR lib TBD.
@@ -94,25 +67,21 @@ Wire SKU → Brivo/Eagle Eye price list so the Security Quote drawer + CSV show 
 ---
 
 ## HOUSEKEEPING
-- **`bomAutoOverrides` orphans on flag-flip** — flagging a device changes its row key (`auto-ac-<SKU>`→`auto-ac-oh-<SKU>`), orphaning any unit-price override. Inert today (unit:0); **fix in Pass 2** (migrate override to new key, or key overrides by `<sku,flag>` tuple).
-- **Unify proposal navy/blue into one palette** — see cover-branch merge note. Three values float: BOM-band navy `(40,54,92)` + blue `(74,110,180)`, older gray-navy `(31,41,55)`.
-- **Dead-code sweep** — `bomRowSku()` (now fully unreferenced after SKU removal) + stale comment at ~line 4038; `.lp-breadcrumb`; `computeAutoCableRows()`; orphaned PNG assets.
-- **"QTY" band label is decorative-only** consideration resolved (Qty right-aligned under it) — no action.
-- **Centralize `IOT_DEFAULT_FLAGS`** — dup'd in `onIotDeviceToggle` + `applyProjectState`.
-- **DHW BOM override re-apply hook** — `dhwBomRows()` not re-decorated by `bomAutoOverrides` on reload.
-- **Defer `bom*` code-symbol rename** — UI says "Security Quote", symbols stay `bom*`.
-- **`switches`/`headends` don't reset on raw PDF re-import.**
-- **Install LibreOffice** on Windows — kills the docs-PDF regen caveat.
-- **User guide** — everything from the wizard onward through this session (BOM two-tier, modal, Security-Quote rename, customer BOM page, banded headers, restructure-v2, credentials entry, overhead-door flag) is undocumented.
 
-### Process lessons that worked
-- **Resync anchor `[HEAD: <hash> | branch | tree]` on every CC block** — prevents stale-state drift.
-- **Fold each pass brief into its CLOSING commit's `git add`** — credentials + overhead-door briefs both landed tracked this way (the recurring dangling-brief problem is solved when followed).
-- **Commit after each milestone's browser review — don't defer.** One pass stalled three turns on an uncommitted milestone being re-reported.
-- **PowerShell doesn't chain with `&&`** — one command at a time, or `;`.
+- **`.gitignore` UTF-16 LE re-encoding** — a Windows editor re-saved it as UTF-16 LE (shows as spaced-out `s o u r c e`). Discard with `git checkout .gitignore`; if it recurs, set the editor to UTF-8 + add `.gitignore text` to `.gitattributes`.
+- **Confirm `source-data/` ignore status vs committed pricing.json** — if `source-data/` is gitignored, a fresh clone has no price book; the Load Pricing button (once restored) is the only way in.
+- **Hard-reload after every CC save before browser testing** — localhost caches the HTML between saves; cost most of a session chasing phantom "didn't take" bugs.
+- Track pass briefs in the closing commit (done for M2). Commit per milestone. Resync anchor on every CC block.
+- **Centralize `IOT_DEFAULT_FLAGS`** — dup'd in `onIotDeviceToggle` + `applyProjectState`.
+- **DHW BOM override re-apply hook** — `dhwBomRows()` output not re-decorated by `bomAutoOverrides` on reload. (May be resolved by M2 lookup — verify.)
+- **Defer `bom*` code-symbol rename** — UI says "Security Quote", symbols stay `bom*`.
+- **Dead-code sweep** — `.lp-breadcrumb`, `computeAutoCableRows()`, orphaned PNG assets.
+- **`switches`/`headends` don't reset on raw PDF re-import** — stale positions; reset in loadPDF.
+- **Install LibreOffice** on Windows — kills the docs-PDF regen caveat.
+- **User guide** — wizard + W7/W8 + Hardware Module + BOM two-tier + centered modal + Security-Quote rename + customer BOM page + pricing load/use all undocumented.
 
 ---
 
 ## RESOLVED (removed from deferred)
-- ~~BOM two-tier template~~ `43fdd4a` · ~~Centered modal~~ `45d1afd` · ~~Customer BOM page~~ `29d0ccd` · ~~Banded headers~~ `678e69f` · ~~Band/Qty fixes~~ `70f122a` · ~~SKU removal~~ `8fd3237` · ~~Restructure-v2~~ `4db0d6d` · ~~Credentials entry~~ `3889598` · ~~Overhead-door flag~~ `a598d44`
-- ~~`OVERHEAD_DOOR_SKUS` allowlist band-aid~~ — removed in the overhead-door-flag pass; replaced by the per-device checkbox + OH credential types.
+- ~~Pricing M2 SKU→price lookup~~ — `aa1b5619`.
+- ~~BOM two-tier template~~ · ~~Centered BOM modal~~ · ~~Customer BOM export page~~.
