@@ -2556,6 +2556,25 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
 </div>
 
+<!-- Credentials-entry M2: quantity-entry modal. Shared by all 5 credential
+     type tiles (fobs / cards / mobilePasses / ohTransmitters / ohReceiver).
+     Title + prefilled value are set by lpEditCredential() before .show is
+     applied. Backdrop click + Cancel both close without writing; OK writes
+     projectInfo.credentials[type] + markDirty + recalcBom. Matches the
+     existing .big-modal + .modal-box pattern. -->
+<div id="credentials-qty-modal" class="big-modal" onclick="if(event.target===this) closeCredentialsQtyModal()">
+  <div class="modal-box" style="min-width:340px;">
+    <h3 id="credentials-qty-title">FOBS</h3>
+    <div class="modal-row">
+      <input type="number" id="credentials-qty-input" min="0" step="1" value="0">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-dark"  onclick="closeCredentialsQtyModal()">Cancel</button>
+      <button class="btn btn-green" onclick="saveCredentialsQty()">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- Pricing Data Foundation M2: error modal for parse + validation failures.
      Reuses .big-modal styling. Body is populated dynamically by
      showPricingError(); localStorage is NOT mutated on failure. -->
@@ -7177,6 +7196,11 @@ var currentReaderModel = null;
 var currentACBrand       = null;       // 'brivo' | 'other' | null (no init)
 var currentACCategory    = null;       // 'Readers' | 'Controllers'
 var currentACSubcategory = null;       // matches BRIVO_CATALOG.subcategory
+// Credentials-entry M1: drill-in mode bit. When true, the AC tier-3 row
+// renders the 5 credential placeholder tiles + a back tile instead of
+// the BRIVO_CATALOG subcategory tiles. Preserves currentACCategory so
+// returning via "Back" restores Readers/Controllers selection state.
+var acCredentialsView    = false;
 // (Pass Left-Pane M6: lastArmedReader removed — variable was write-only,
 // never read. The "restore last-armed form-factor" intent was superseded
 // by the per-subcategory acDefaults map in projectInfo.)
@@ -7239,6 +7263,13 @@ var projectInfo = {
   // distinct rows in the BOM (a unit may carry both a smart lock and a
   // separate keypad — they don't merge). v18 saves backfill all six.
   iotDevices: { smartLock: false, keypad: false, thermostat: false, waterSensor: false, gateway: false, passageSet: false },
+  // Credentials-entry M2 (v20): user-entered counts for non-placed credential
+  // materials. Five types — 3 route to §2.1 Access Control (fobs/cards/
+  // mobilePasses); 2 route to §2.2 Overhead Door Control (ohTransmitters/
+  // ohReceiver). Defaults all 0; the type→section/key/desc mapping lives in
+  // bomCredentialRows() (M3) so the catalogue pass swaps placeholder descs
+  // for real SKUs in one place.
+  credentials: { fobs: 0, cards: 0, mobilePasses: 0, ohTransmitters: 0, ohReceiver: 0 },
   // Cleanup M5: per-family label-visibility flags. All default to true (labels
   // visible). Persisted in the project JSON; on load, applyProjectState
   // backfills missing keys to true. Replaces the per-session suitesHidden
@@ -7631,7 +7662,13 @@ var AC_ICONS = {
   ACS6100:     '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="7" width="16" height="1.2" fill="currentColor"/><rect x="4" y="10" width="16" height="1.2" fill="currentColor"/><rect x="4" y="13" width="16" height="1.2" fill="currentColor"/><rect x="4" y="16" width="16" height="1.2" fill="currentColor"/></svg>',
   ACS300:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="6" y="9" width="12" height="1.2" fill="currentColor"/><rect x="6" y="13" width="12" height="1.2" fill="currentColor"/><circle cx="17" cy="7.5" r="0.5" fill="currentColor"/></svg>',
   SDC:         '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg>',
-  ACS100:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="9" width="10" height="1.2" fill="currentColor"/><rect x="5" y="13" width="10" height="1.2" fill="currentColor"/><rect x="14" y="3" width="6" height="9" rx="0.8" fill="white" stroke="currentColor" stroke-width="1.2"/><circle cx="17" cy="6" r="0.6" fill="currentColor"/><rect x="15.5" y="8" width="3" height="0.6" fill="currentColor"/></svg>'
+  ACS100:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="9" width="10" height="1.2" fill="currentColor"/><rect x="5" y="13" width="10" height="1.2" fill="currentColor"/><rect x="14" y="3" width="6" height="9" rx="0.8" fill="white" stroke="currentColor" stroke-width="1.2"/><circle cx="17" cy="6" r="0.6" fill="currentColor"/><rect x="15.5" y="8" width="3" height="0.6" fill="currentColor"/></svg>',
+  // Credentials-entry M1: key-shaped icon. Circular bow (stroke) +
+  // solid pin centre + horizontal shaft + two tooth notches. Matches the
+  // AC_ICONS style (24×24 viewBox, currentColor, stroke 1.5 outlines +
+  // solid fill accents). Used on the tier-2 "Credentials" tile (only —
+  // the tier-3 small tiles are label-only via .tier3-tile / .t3-name).
+  Credentials: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="8" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="12" r="1.2" fill="currentColor"/><rect x="12" y="11" width="9" height="2" fill="currentColor"/><rect x="17" y="13" width="2" height="3" fill="currentColor"/><rect x="20" y="13" width="1.2" height="2" fill="currentColor"/></svg>'
 };
 function acIconFor(key){ return AC_ICONS[key] || ''; }
 
@@ -7678,18 +7715,87 @@ function lpPickAcBrand(brand){
 }
 
 // Tier 2 click handler — pick first subcategory in this category.
+// Credentials-entry M1: also exits the credentials drill-in (the AC tree
+// has no Back affordance — sibling tier-2 click is the navigation pattern,
+// matching how Readers ↔ Controllers swap today).
 function lpPickAcCategory(category){
   var subs = subcategoriesFor(category);
   if(subs.length === 0){
     console.warn('[left-pane] AC category=' + category + ' has zero subcategories in BRIVO_CATALOG.');
     return;
   }
+  acCredentialsView = false;
   armAcDevice(category, subs[0]);
 }
 
 // Tier 3 click handler — arm the picked subcategory.
 function lpPickAcSubcategory(subcategory){
   armAcDevice(currentACCategory, subcategory);
+}
+
+// ─── Credentials-entry: drill-in + qty-modal handlers ─────────────────────
+// The Credentials tile sits in the AC tier-2 row but does NOT call
+// lpPickAcCategory — it never arms placement. lpOpenCredentials flips the
+// view bit and repaints; to exit, the user clicks Readers or Controllers
+// (lpPickAcCategory clears the bit). No dedicated Back affordance — that
+// matches the AC tree's existing drill-deeper-only navigation.
+// lpEditCredential is the per-type tier-3 tile handler — opens the qty
+// modal prefilled with the stored count. saveCredentialsQty commits;
+// closeCredentialsQtyModal discards.
+var CREDENTIAL_TYPE_LABELS = {
+  fobs:           'FOBS',
+  cards:          'CARDS',
+  mobilePasses:   'MOBILE PASSES',
+  ohTransmitters: 'OH TRANSMITTERS',
+  ohReceiver:     'OH RECEIVER'
+};
+var _credModalActiveType = null;  // session-only — set when modal opens.
+
+function lpOpenCredentials(){
+  acCredentialsView = true;
+  _renderAcDrillDown();
+}
+
+function lpEditCredential(type){
+  if(!CREDENTIAL_TYPE_LABELS.hasOwnProperty(type)) return;
+  _credModalActiveType = type;
+  var modal   = document.getElementById('credentials-qty-modal');
+  var titleEl = document.getElementById('credentials-qty-title');
+  var inputEl = document.getElementById('credentials-qty-input');
+  var creds   = (projectInfo.credentials && typeof projectInfo.credentials === 'object') ? projectInfo.credentials : {};
+  var current = (typeof creds[type] === 'number' && isFinite(creds[type])) ? creds[type] : 0;
+  if(titleEl) titleEl.textContent = CREDENTIAL_TYPE_LABELS[type];
+  if(inputEl) inputEl.value = String(current);
+  if(modal) modal.classList.add('show');
+  if(inputEl){
+    // Defer focus so the modal's display:flex transition lands first.
+    setTimeout(function(){ inputEl.focus(); inputEl.select(); }, 0);
+  }
+}
+
+function closeCredentialsQtyModal(){
+  _credModalActiveType = null;
+  var modal = document.getElementById('credentials-qty-modal');
+  if(modal) modal.classList.remove('show');
+}
+
+function saveCredentialsQty(){
+  var type = _credModalActiveType;
+  if(!type || !CREDENTIAL_TYPE_LABELS.hasOwnProperty(type)){
+    closeCredentialsQtyModal();
+    return;
+  }
+  var inputEl = document.getElementById('credentials-qty-input');
+  var raw = inputEl ? (inputEl.value || '').trim() : '';
+  var n = (raw === '') ? 0 : parseInt(raw, 10);
+  if(!isFinite(n) || n < 0) n = 0;
+  if(!projectInfo.credentials || typeof projectInfo.credentials !== 'object'){
+    projectInfo.credentials = { fobs: 0, cards: 0, mobilePasses: 0, ohTransmitters: 0, ohReceiver: 0 };
+  }
+  projectInfo.credentials[type] = n;
+  markDirty();
+  recalcBom();
+  closeCredentialsQtyModal();
 }
 
 // Panel-cleanup P5: lpChangeAcVariant() removed along with its inline
@@ -7737,34 +7843,74 @@ function _renderAcDrillDown(){
   t3.style.display = '';
   if(bc2) bc2.style.display = '';
 
-  // Tier 2 — Readers, Controllers. Smart Devices NOT rendered per D6
-  // (zero affordance, no greyed-out tile).
+  // Tier 2 — Readers, Controllers, Credentials. Smart Devices NOT rendered
+  // per D6 (zero affordance, no greyed-out tile). Credentials-entry M1:
+  // Credentials is the third tile — drills into per-type sub-tiles instead
+  // of arming placement. Readers/Controllers active class suppressed while
+  // acCredentialsView is true so only one tile reads as "selected".
   var categories = ['Readers', 'Controllers'];
   var t2Html = '';
   categories.forEach(function(cat){
-    var activeCls = (cat === currentACCategory) ? ' active' : '';
+    var activeCls = (cat === currentACCategory && !acCredentialsView) ? ' active' : '';
     t2Html += '<div class="tier2-tile' + activeCls + '" data-ac-category="' + escapeHtml(cat) + '" onclick="lpPickAcCategory(\'' + cat + '\')" title="' + escapeHtml(cat) + '">' +
               '<div class="ts-icon">' + acIconFor(cat) + '</div>' +
               '<span class="t2-label">' + escapeHtml(cat) + '</span>' +
               '</div>';
   });
+  // Credentials tier-2 tile — own handler (lpOpenCredentials), not
+  // lpPickAcCategory; never arms floor-plan placement.
+  var credActiveCls = acCredentialsView ? ' active' : '';
+  t2Html += '<div class="tier2-tile' + credActiveCls + '" data-ac-credentials="1" onclick="lpOpenCredentials()" title="Credentials">' +
+            '<div class="ts-icon">' + acIconFor('Credentials') + '</div>' +
+            '<span class="t2-label">Credentials</span>' +
+            '</div>';
   t2.innerHTML = t2Html;
 
-  // Static tier-3 header (Cleanup M1). Generic "AC Models" regardless of
-  // whether the user drilled into Readers or Controllers — per brief, the
-  // header describes the tier, not the active branch.
-  if(bc2) bc2.innerHTML = 'AC Models';
+  // Tier-3 header label — switches between "AC Models" (subcategory drill)
+  // and "Credentials" (when the user is in the credentials drill-in).
+  if(bc2) bc2.innerHTML = acCredentialsView ? 'Credentials' : 'AC Models';
 
-  // Tier 3 — leaves derived from BRIVO_CATALOG for current category.
-  var subs = currentACCategory ? subcategoriesFor(currentACCategory) : [];
+  // Tier 3 — branches on acCredentialsView. In credentials mode, render
+  // 5 small placeholder type tiles. No back affordance — exit by clicking
+  // a sibling tier-2 tile (Readers/Controllers), which clears the view
+  // bit via lpPickAcCategory; this matches the AC tree's existing drill-
+  // deeper-only navigation. Container grid columns override 3 → 5 in
+  // credentials mode so the 5 small tiles sit cleanly in one row.
   var t3Html = '';
-  subs.forEach(function(sub){
-    var activeCls = (sub === currentACSubcategory) ? ' active' : '';
-    t3Html += '<div class="tier2-tile' + activeCls + '" data-ac-subcategory="' + escapeHtml(sub) + '" onclick="lpPickAcSubcategory(\'' + sub + '\')" title="' + escapeHtml(sub) + '">' +
-              '<div class="ts-icon">' + acIconFor(sub) + '</div>' +
-              '<span class="t2-label">' + escapeHtml(sub) + '</span>' +
-              '</div>';
-  });
+  if(acCredentialsView){
+    // 5 placeholder credential type tiles. Type keys mirror
+    // projectInfo.credentials field names (added in M2). Click handler is
+    // an M1 silent no-op; M2 swaps it for an opens-quantity-modal call.
+    // Style matches camera tier-3 (.tier3-tile + .t3-name) — small tiles
+    // so all 5 fit in a single row.
+    var CRED_TILES = [
+      { type:'fobs',           label:'Fobs' },
+      { type:'cards',          label:'Cards' },
+      { type:'mobilePasses',   label:'Mobile Passes' },
+      { type:'ohTransmitters', label:'OH Transmitters' },
+      { type:'ohReceiver',     label:'OH Receiver' }
+    ];
+    CRED_TILES.forEach(function(ct){
+      t3Html += '<div class="tier3-tile" data-ac-cred-type="' + escapeHtml(ct.type) + '" onclick="lpEditCredential(\'' + ct.type + '\')" title="' + escapeHtml(ct.label) + '">' +
+                '<div class="t3-name">' + escapeHtml(ct.label) + '</div>' +
+                '</div>';
+    });
+    t3.style.gridTemplateColumns = 'repeat(5, 1fr)';
+  } else {
+    // Default: BRIVO_CATALOG subcategory leaves for currentACCategory.
+    var subs = currentACCategory ? subcategoriesFor(currentACCategory) : [];
+    subs.forEach(function(sub){
+      var activeCls = (sub === currentACSubcategory) ? ' active' : '';
+      t3Html += '<div class="tier2-tile' + activeCls + '" data-ac-subcategory="' + escapeHtml(sub) + '" onclick="lpPickAcSubcategory(\'' + sub + '\')" title="' + escapeHtml(sub) + '">' +
+                '<div class="ts-icon">' + acIconFor(sub) + '</div>' +
+                '<span class="t2-label">' + escapeHtml(sub) + '</span>' +
+                '</div>';
+    });
+    // Restore the default 3-col grid (from .lp-tier-row) when leaving
+    // credentials mode. Empty string clears the inline override so the
+    // CSS class rule takes over again.
+    t3.style.gridTemplateColumns = '';
+  }
   t3.innerHTML = t3Html;
   // Panel-cleanup P5: inline variant <select> rendering removed. The
   // right-panel variant control (updateReaderVariant) is now the only
@@ -12962,7 +13108,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 19,             // generation tag — v19 adds gateway/keypad/passageSet to projectInfo.iotDevices + iotCounts (BOM two-tier pass M2)
+      version: 20,             // generation tag — v20 adds projectInfo.credentials (5-type credential counts, credentials-entry pass M2)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -13177,7 +13323,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 19,            // BOM two-tier M2: iotDevices/iotCounts gain gateway, keypad, passageSet keys
+    version: 20,            // Credentials-entry M2: projectInfo.credentials (fobs/cards/mobilePasses/ohTransmitters/ohReceiver counts)
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -13392,6 +13538,17 @@ function applyProjectState(data){
   if(typeof projectInfo.iotDevices.keypad       !== 'boolean') projectInfo.iotDevices.keypad       = false;
   if(typeof projectInfo.iotDevices.gateway      !== 'boolean') projectInfo.iotDevices.gateway      = false;
   if(typeof projectInfo.iotDevices.passageSet   !== 'boolean') projectInfo.iotDevices.passageSet   = false;
+  // Credentials-entry M2 (v19 → v20): new projectInfo.credentials object
+  // with 5 type counts. Missing object OR missing per-key both default 0
+  // so older saves load with no manual credential rows (the derived
+  // auto-ac-credentials estimate continues as the only credentials row
+  // until the user opens the modal and enters a quantity).
+  if(!projectInfo.credentials || typeof projectInfo.credentials !== 'object') projectInfo.credentials = {};
+  if(typeof projectInfo.credentials.fobs           !== 'number') projectInfo.credentials.fobs           = 0;
+  if(typeof projectInfo.credentials.cards          !== 'number') projectInfo.credentials.cards          = 0;
+  if(typeof projectInfo.credentials.mobilePasses   !== 'number') projectInfo.credentials.mobilePasses   = 0;
+  if(typeof projectInfo.credentials.ohTransmitters !== 'number') projectInfo.credentials.ohTransmitters = 0;
+  if(typeof projectInfo.credentials.ohReceiver     !== 'number') projectInfo.credentials.ohReceiver     = 0;
   // Suites Polish M1: backfill per-unit-type iotCounts. Pre-pass saves
   // (every save before this milestone) lack iotCounts entirely; we seed
   // each unit type with 1 for currently-true flags, 0 for false. This
@@ -16082,6 +16239,49 @@ var DEFAULT_HOURS_BY_TYPE = { dome:1.5, bullet:1.5, turret:1.5, fisheye:2.0, ptz
 // for a commercial site is typically 3-10 credentials per reader.
 var CREDENTIAL_MULTIPLIER = 1.0;
 
+// Credentials-entry M3: SINGLE-SOURCE type→{section, key, desc} table.
+// 5 credential types — 3 route to §2.1 Access Control, 2 route to §2.2
+// Overhead Door Control. The catalogue pass replaces the placeholder
+// `desc` strings here with real SKUs in this ONE table; no other site
+// hardcodes the mapping. Keys are stable across catalogue swaps so
+// bomAutoOverrides (keyed by row.key) survives a description change.
+var CREDENTIAL_TYPE_DEFS = [
+  { type:'fobs',           section:'2.1', key:'auto-ac-cred-fob',          desc:'Access Credential — Fob' },
+  { type:'cards',          section:'2.1', key:'auto-ac-cred-card',         desc:'Access Credential — Card' },
+  { type:'mobilePasses',   section:'2.1', key:'auto-ac-cred-mobilepass',   desc:'Access Credential — Mobile Pass' },
+  { type:'ohTransmitters', section:'2.2', key:'auto-ac-cred-oh-tx',        desc:'Overhead Door Transmitter (2-button)' },
+  { type:'ohReceiver',     section:'2.2', key:'auto-ac-cred-oh-rx',        desc:'Overhead Door Long-Range Receiver' }
+];
+
+// Build manual credential BOM rows from projectInfo.credentials counts.
+// Returns { rows, anyManual_2_1_Entered }:
+//   rows                    — auto-rows (qty > 0 only), shape matches the
+//                             rest of computeAutoRows output; carry r.section
+//                             so computeBomTree routes directly via that.
+//   anyManual_2_1_Entered   — true iff fobs OR cards OR mobilePasses > 0.
+//                             Drives D1 (tightened): suppress the derived
+//                             auto-ac-credentials row ONLY when a 2.1-type
+//                             manual entry exists. OH-only entries leave
+//                             the derived 2.1 reader-credential estimate
+//                             intact — OH credentials don't replace the
+//                             building's reader credentials.
+function bomCredentialRows(){
+  var creds = (projectInfo.credentials && typeof projectInfo.credentials === 'object') ? projectInfo.credentials : {};
+  var rows = [];
+  var anyManual_2_1_Entered = false;
+  CREDENTIAL_TYPE_DEFS.forEach(function(def){
+    var n = (typeof creds[def.type] === 'number' && isFinite(creds[def.type])) ? creds[def.type] : 0;
+    if(n <= 0) return;
+    if(def.section === '2.1') anyManual_2_1_Entered = true;
+    rows.push({
+      auto: true, src: 'accessControl', key: def.key,
+      desc: def.desc, qty: n, unit: 0, sectionAuto: true,
+      section: def.section
+    });
+  });
+  return { rows: rows, anyManual_2_1_Entered: anyManual_2_1_Entered };
+}
+
 // Compute auto-derived rows from current cameras
 function computeAutoRows(){
   // BOM Restructure pass: laborRate / defaultHrs were read from the BOM
@@ -16241,8 +16441,15 @@ function computeAutoRows(){
       desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
     });
   });
-  // Credentials row — single line, only when readers exist.
-  if(readerCountForCredentials > 0){
+  // Credentials rows — combines manual entries (projectInfo.credentials)
+  // with the derived reader-count estimate. D1 (tightened): the derived
+  // auto-ac-credentials row is SUPPRESSED only when a 2.1-type manual
+  // entry exists (fobs/cards/mobilePasses > 0). OH-only manual entries
+  // (ohTransmitters/ohReceiver) leave the derived 2.1 row intact because
+  // OH credentials don't substitute for the building's reader credentials.
+  var credResult = bomCredentialRows();
+  credResult.rows.forEach(function(r){ acRows.push(r); });
+  if(readerCountForCredentials > 0 && !credResult.anyManual_2_1_Entered){
     acRows.push({
       auto: true, src: 'accessControl', key: 'auto-ac-credentials',
       desc: 'Smart Credentials — sized for ' + readerCountForCredentials + ' reader' + (readerCountForCredentials === 1 ? '' : 's'),
@@ -16901,10 +17108,25 @@ function computeBomTree(){
   auto.recording.forEach(function(r){ buckets['1.2'].auto.push(r); });
   auto.network.forEach(function(r){ buckets['1.2'].auto.push(r); });
 
-  // §2 split: AC SKU ∈ OVERHEAD_DOOR_SKUS → 2.2 (Overhead Door Control,
-  // no guard). All other AC (incl. credentials) → 2.1 (with guard).
+  // §2 split:
+  //   r.section === '2.1'  → §2.1 Access Control (with guard).
+  //   r.section === '2.2'  → §2.2 Overhead Door Control (no guard).
+  //                          Credentials-entry M3 manual rows carry this
+  //                          marker from CREDENTIAL_TYPE_DEFS so the
+  //                          type→section mapping stays single-source.
+  //   else AC SKU ∈ OVERHEAD_DOOR_SKUS → 2.2 (no guard).
+  //   else credentials/auto-ac-<SKU> → 2.1 (with guard).
   auto.accessControl.forEach(function(r){
     var k = r.key || '';
+    if(r.section === '2.2'){
+      buckets['2.2'].auto.push(r);  // explicit OD routing marker
+      return;
+    }
+    if(r.section === '2.1'){
+      if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
+      else                          buckets['2.1'].auto.push(r);
+      return;
+    }
     if(k === 'auto-ac-credentials'){
       if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
       else                          buckets['2.1'].auto.push(r);
