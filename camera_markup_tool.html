@@ -1588,7 +1588,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         <!-- Door Hardware M3: manager modal. Always enabled — modal handles its
              own empty state when no takeoff is imported. -->
         <button class="menu-item" id="btn-dhw-manager" onclick="openDoorHardwareModal()"><span class="menu-check">&#10003;</span><span class="menu-label">Door Hardware&hellip;</span></button>
-        <button class="menu-item" id="btn-bom" onclick="toggleBom()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Bill of Materials</span></button>
+        <button class="menu-item" id="btn-bom" onclick="toggleBom()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Security Quote</span></button>
         <div class="menu-divider"></div>
         <button class="menu-item" id="btn-pdf" onclick="openExportModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Export Proposal PDF</span></button>
         <button class="menu-item" onclick="exportBomCSV()"><span class="menu-check">&#10003;</span><span class="menu-label">Export BOM as CSV</span></button>
@@ -2658,7 +2658,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 <div id="bom-backdrop" onclick="toggleBom()"></div>
 <aside id="bom-drawer">
   <header id="bom-header">
-    <h2>&#128181; Bill of Materials &amp; Quote</h2>
+    <h2>Security Quote</h2>
     <button class="btn btn-green" onclick="exportBomCSV()">Export CSV</button>
     <button id="bom-close" onclick="toggleBom()" title="Close">&times;</button>
   </header>
