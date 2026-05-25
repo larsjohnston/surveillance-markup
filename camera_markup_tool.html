@@ -2171,6 +2171,19 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
             <textarea id="inp-notes-reader" placeholder="e.g. Exterior; weatherproof box required" oninput="updateSelectedReader()"></textarea>
           </div>
         </div>
+
+        <!-- Overhead-door flag M1: per-device "For use with Overhead Door"
+             checkbox. Routes this device's BOM row to §2.2 instead of §2.1.
+             Applies to all placed AC devices (the .rp-reader-fields block
+             surfaces for readers + controllers alike — variant-axis-less
+             ACS300 still gets this checkbox; the variant <select> above
+             is what hides for those, not the rest of the form). -->
+        <div class="rp-field">
+          <label style="display:flex; align-items:center; gap:8px; font:500 11px var(--font-ui); color:var(--text); cursor:pointer;">
+            <input type="checkbox" id="inp-overhead-door-reader" onchange="updateReaderOverheadDoor(this.checked)">
+            <span>For use with Overhead Door</span>
+          </label>
+        </div>
       </div>
 
       <!-- Pass N+1 M4: smart-apartment right-panel field blocks. Each
@@ -12344,6 +12357,12 @@ function updateRightPanelDisplayForReader(dev){
   var notesInput = document.getElementById('inp-notes-reader');
   if(labelInput) labelInput.value = dev.label || '';
   if(notesInput) notesInput.value = dev.notes || '';
+  // Overhead-door flag M1: reflect dev.overheadDoor on the checkbox. Placed
+  // ABOVE the variant-field block (which may early-return for ACS300 /
+  // legacy v14 / "Other" devices) so the checkbox always syncs even when
+  // the variant select is hidden.
+  var ohInput = document.getElementById('inp-overhead-door-reader');
+  if(ohInput) ohInput.checked = !!dev.overheadDoor;
 
   // Pass Left-Pane M4: per-device variant override dropdown. Shown only
   // when the device has both a category/subcategory and that
@@ -12397,6 +12416,23 @@ function updateReaderVariant(value){
   updateRightPanelDisplayForReader(dev);
   redraw();
   updateAcList();
+}
+
+// Overhead-door flag M1: per-device overhead-door toggle. Mirrors the
+// updateReaderVariant shape (read selection → mutate dev → markDirty →
+// recalc). No redraw / updateAcList because the flag is non-visual —
+// canvas marker is unchanged. M2 wires the BOM grouping split + routing
+// so the §2.1 → §2.2 row migration only happens after both milestones
+// ship. dev.overheadDoor is intentionally narrow-scoped now; a future
+// pass may generalize to dev.sectionOverride (string-typed) when the
+// materials-model work lands.
+function updateReaderOverheadDoor(checked){
+  if(!acSelectedId) return;
+  var dev = acDevices.find(function(x){ return x.id === acSelectedId; });
+  if(!dev) return;
+  dev.overheadDoor = !!checked;
+  markDirty();
+  recalcBom();
 }
 
 function openRightPanelForReader(dev){
@@ -13108,7 +13144,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 20,             // generation tag — v20 adds projectInfo.credentials (5-type credential counts, credentials-entry pass M2)
+      version: 21,             // generation tag — v21 adds dev.overheadDoor per placed AC device (overhead-door-flag pass M1)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -13323,7 +13359,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 20,            // Credentials-entry M2: projectInfo.credentials (fobs/cards/mobilePasses/ohTransmitters/ohReceiver counts)
+    version: 21,            // Overhead-door-flag M1: dev.overheadDoor boolean on each placed AC device (default false)
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -13568,6 +13604,11 @@ function applyProjectState(data){
   // Pass A.8: readers gained an editable `notes` field in v12. Older saves
   // (v9–v11) don't have it; default to empty so the right-panel input is safe.
   acDevices.forEach(function(dev){ if(typeof dev.notes !== 'string') dev.notes = ''; });
+  // Overhead-door-flag M1 (v20 → v21): each placed AC device gains an
+  // overheadDoor boolean (default false). Older saves backfill to false →
+  // all devices stay routed to §2.1 until the user opts a device in via
+  // the right-panel checkbox.
+  acDevices.forEach(function(dev){ if(typeof dev.overheadDoor !== 'boolean') dev.overheadDoor = false; });
   // Pass Left-Pane M5 (v15 migration): legacy v14 AC devices were stored
   // as just {id, page, x, y, model, label, notes}. M3 added per-device
   // category/subcategory/variantValue/sku metadata for the drill-down.
