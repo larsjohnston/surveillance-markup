@@ -14303,13 +14303,26 @@ var _IOT_LABELS = {
   gateway:     'Gateway',
   passageSet:  'Passage Set'
 };
+// Pricing M2 (Fix 1+2): single-source helper that strips a leading
+// "oh-" infix from an AC SKU so a flagged AC row (auto-ac-oh-<SKU>)
+// resolves to the same SKU as its unflagged sibling (auto-ac-<SKU>).
+// Called from BOTH bomRowSku (Fix 1 — pricing lookup) AND the
+// bomAutoOverrides read/write paths (Fix 2 — override persistence
+// across flag flips). Single string literal 'oh-' lives only here.
+// Guard: only strips a LITERAL leading 'oh-' prefix. A SKU that merely
+// contains 'oh' elsewhere (or starts with 'OH-' uppercase) is left alone.
+function _stripOhPrefix(s){
+  if(typeof s !== 'string') return s;
+  return (s.indexOf('oh-') === 0) ? s.slice(3) : s;
+}
+
 function bomRowSku(row){
   if(!row) return { sku: '', typeLabel: 'CUSTOM' };
   var k = row.key || '';
   if(row.src === 'cameras') return { sku: k, typeLabel: '' };
   if(row.src === 'doorHardware') return { sku: row.sku || '', typeLabel: row.sku ? '' : 'HARDWARE' };
   if(k === 'auto-ac-credentials') return { sku: '', typeLabel: 'CREDENTIALS' };
-  if(k.indexOf('auto-ac-') === 0) return { sku: k.slice('auto-ac-'.length), typeLabel: '' };
+  if(k.indexOf('auto-ac-') === 0) return { sku: _stripOhPrefix(k.slice('auto-ac-'.length)), typeLabel: '' };
   if(k.indexOf('auto-sa-intercom-') === 0) return { sku: k.slice('auto-sa-intercom-'.length), typeLabel: '' };
   if(k.indexOf('auto-sa-parcel-')   === 0) return { sku: k.slice('auto-sa-parcel-'.length),   typeLabel: '' };
   if(k.indexOf('auto-sa-mailbox-')  === 0) return { sku: '', typeLabel: 'MAILBOX BANK' };
