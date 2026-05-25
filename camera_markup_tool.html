@@ -310,6 +310,28 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 }
 .bom-sec-hdr .add-btn:hover { background:#1f2937; }
 
+/* BOM two-tier M7: warn variant for tier-2 sub-headings that need integrator
+   attention (currently only "Unclassified — needs review" under §5). Amber
+   palette reused from #bom-config / .tab-warning-badge / .pricing-banner —
+   #fffbeb bg + #d97706 left rule + #92400e text. Goal: the integrator
+   cannot scroll past these without noticing. */
+.bom-sec-hdr.warn {
+  background:#fffbeb; color:#92400e;
+  border-left:3px solid #d97706; padding-left:13px;
+}
+
+/* BOM two-tier M3: tier-1 (major) heading style. Sits above one or more
+   .bom-sec-hdr (tier-2) blocks. Larger + bolder so the user can scan the
+   five major buckets at a glance; tier-2 keeps the existing small-caps
+   accent style as the sub-heading. */
+.bom-tier1 { padding-top: 4px; }
+.bom-tier1-hdr {
+  padding: 12px 16px 6px; font-size: 12px; letter-spacing: .04em;
+  color: var(--text); font-weight: 800;
+  background: var(--surface-soft); border-bottom: 2px solid var(--primary);
+  text-transform: uppercase;
+}
+
 .bom-row {
   display:grid; grid-template-columns: 1fr 50px 70px 70px 80px 22px;
   gap:5px; align-items:center;
@@ -2448,8 +2470,11 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="ut-iot-picker">
       <span class="ut-iot-picker-label">IoT Devices:</span>
       <label><input type="checkbox" id="iot-smart-lock"   onchange="onIotDeviceToggle('smartLock', this.checked)"> Smart Lock</label>
+      <label><input type="checkbox" id="iot-keypad"       onchange="onIotDeviceToggle('keypad', this.checked)"> Keypad</label>
       <label><input type="checkbox" id="iot-thermostat"   onchange="onIotDeviceToggle('thermostat', this.checked)"> Thermostat</label>
       <label><input type="checkbox" id="iot-water-sensor" onchange="onIotDeviceToggle('waterSensor', this.checked)"> Water Sensor</label>
+      <label><input type="checkbox" id="iot-gateway"      onchange="onIotDeviceToggle('gateway', this.checked)"> Gateway</label>
+      <label><input type="checkbox" id="iot-passage-set"  onchange="onIotDeviceToggle('passageSet', this.checked)"> Passage Set</label>
     </div>
     <div id="unit-types-rows-container"></div>
     <p id="unit-types-err" class="calib-error" style="display:none; margin-top:10px;"></p>
@@ -3922,6 +3947,103 @@ function buildRfqCsv(takeoff){
   // Trailing note (matches the Allegion template — parser skips it on read).
   emit(['Populate the Hourly Rate and Install Hours Per Item to calculate labour.']);
   return lines.join('\n') + '\n';
+}
+
+// ─── Door Hardware → BOM §5 classifier + row builder (M6) ─────────────────
+// One centralized keyword classifier with explicit precedence — the FIRST
+// matching rule wins. Order is intentional: "electrified" / "electric latch
+// retraction" must bucket as Security Hardware (5.1) even when the catalog
+// description also contains "exit device" or "lockset" wording.
+//
+// Bucket map:
+//   5.1 Security Hardware  — electrified hardware + REX + door contacts +
+//                            strikes + maglocks + exit detectors
+//   5.2 Door Hardware      — mechanical exit devices + locksets / closers /
+//                            hinges / stops / push-pulls / passage / etc.
+//   5.3 Key System         — cylinders / SFIC / cores / master keying
+//   unclassified           — fallthrough; surfaces as a visible §5 group
+//                            ("Unclassified — needs review") so the
+//                            integrator extends the keyword table rather
+//                            than have lines silently dropped.
+//
+// `haystack` for matching = description + ' ' + catalogNumber (case-
+// insensitive via the /i flag on every pattern). The catalog token gives
+// us a second chance to bucket lines whose description is unusually terse.
+// Shared by DHW_CLASSIFIER_RULES (rule 2 → §5.1) AND by the M7 dedup guard
+// in computeBomTree (security-hardware tokens MUST NOT land in §2.2). Single
+// regex means the §5.1 classifier and the §2.2 reject filter can never drift
+// apart — what classifies as 5.1 is exactly what's blocked from 2.2.
+var SECURITY_HARDWARE_PATTERN = /strike|maglock|mag lock|REX|request to exit|exit detector|door contact|door position/i;
+
+var DHW_CLASSIFIER_RULES = [
+  { bucket: '5.1', pattern: /electrified|electric latch retraction/i },
+  { bucket: '5.1', pattern: SECURITY_HARDWARE_PATTERN },
+  { bucket: '5.2', pattern: /exit device|panic|crash bar/i },
+  { bucket: '5.2', pattern: /lockset|lock set|closer|hinge|stop|kick plate|push plate|pull|passage|privacy|storeroom|lever/i },
+  { bucket: '5.3', pattern: /cylinder|SFIC|core|master key|keying|key system/i }
+];
+function dhwClassifyLine(line){
+  if(!line) return 'unclassified';
+  var haystack = (line.description || '') + ' ' + (line.catalogNumber || '');
+  for(var i = 0; i < DHW_CLASSIFIER_RULES.length; i++){
+    if(DHW_CLASSIFIER_RULES[i].pattern.test(haystack)){
+      return DHW_CLASSIFIER_RULES[i].bucket;
+    }
+  }
+  return 'unclassified';
+}
+
+// Stable djb2-style hash → base36 string. Used to key door-hardware BOM
+// rows by description so bomAutoOverrides (keyed by row.key) survive row
+// reordering and re-imports. Collisions are theoretically possible but
+// vanishingly unlikely on door-hardware desc strings.
+function _dhwHash(s){
+  var h = 5381, str = String(s || '');
+  for(var i = 0; i < str.length; i++){
+    h = ((h << 5) + h) + str.charCodeAt(i);
+    h = h & 0xFFFFFFFF;
+  }
+  return (h >>> 0).toString(36);
+}
+
+// Build BOM §5 rows from doorHardware.importedTakeoff.lines.
+//   - W7-excluded lines are SKIPPED (do not count toward qty).
+//   - Unpriced / unresolved lines are INCLUDED — the line is still real
+//     hardware that needs to be installed regardless of quote coverage.
+//     (Hardware Schedule page renders unpriced as "—"; BOM is procurement-
+//     focused and just needs the qty.)
+//   - Lines group by (bucket, description + finishTag). Same hardware
+//     in two finishes is two distinct procurement rows.
+// Returns {'5.1': [...rows], '5.2': [...], '5.3': [...], 'unclassified': [...]}.
+function dhwBomRows(){
+  var takeoff = (typeof doorHardware !== 'undefined') ? doorHardware.importedTakeoff : null;
+  var empty = { '5.1': [], '5.2': [], '5.3': [], 'unclassified': [] };
+  if(!takeoff || !Array.isArray(takeoff.lines) || takeoff.lines.length === 0) return empty;
+  var groups = {};
+  takeoff.lines.forEach(function(t){
+    var matchKey = dhwMatchKey(t.catalogNumber, t.finish);
+    if(_dhwIsExcluded(matchKey)) return;
+    var bucket = dhwClassifyLine(t);
+    var desc = t.description || t.catalogNumber || '(unspecified)';
+    var finishTag = (t.finish && String(t.finish).trim() !== '') ? ' (' + t.finish + ')' : '';
+    var fullDesc = desc + finishTag;
+    var groupKey = bucket + '|' + fullDesc;
+    if(!groups[groupKey]){
+      groups[groupKey] = { bucket: bucket, desc: fullDesc, qty: 0 };
+    }
+    var qn = (typeof t.qty === 'number' && isFinite(t.qty)) ? t.qty : 0;
+    groups[groupKey].qty += qn;
+  });
+  var out = { '5.1': [], '5.2': [], '5.3': [], 'unclassified': [] };
+  Object.keys(groups).sort().forEach(function(gk){
+    var g = groups[gk];
+    out[g.bucket].push({
+      auto: true, src: 'doorHardware',
+      key:  'auto-dh-' + g.bucket + '-' + _dhwHash(g.desc),
+      desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
+    });
+  });
+  return out;
 }
 
 // ─── End Door Hardware data engine ──────────────────────────────────────────
@@ -7091,7 +7213,11 @@ var projectInfo = {
   // BOM computation. Each flag drives one row in the SMART APARTMENT section
   // with qty = suites.length. Modal #3 (Suites left pane → IoT Devices…)
   // toggles these values.
-  iotDevices: { smartLock: false, thermostat: false, waterSensor: false },
+  // BOM two-tier M2 (v19): six-key set — was three (smartLock/thermostat/
+  // waterSensor) through v18. New keys gateway/keypad/passageSet are
+  // distinct rows in the BOM (a unit may carry both a smart lock and a
+  // separate keypad — they don't merge). v18 saves backfill all six.
+  iotDevices: { smartLock: false, keypad: false, thermostat: false, waterSensor: false, gateway: false, passageSet: false },
   // Cleanup M5: per-family label-visibility flags. All default to true (labels
   // visible). Persisted in the project JSON; on load, applyProjectState
   // backfills missing keys to true. Replaces the per-session suitesHidden
@@ -11137,16 +11263,19 @@ function _formatUnitTypeLabel(br, ba){
 // iotDevices flags (1 if true, 0 if false). Unchecking an iotDevices flag
 // preserves the iotCounts value so re-checking restores prior state.
 
-// Mutates `ut` in place so iotCounts has all three keys. Missing keys are
-// backfilled from current projectInfo.iotDevices flags (1 if true, 0 if
-// false). Present keys are trusted as-is. Safe to call on already-backfilled
-// rows (no-op for fully-populated iotCounts).
+// Mutates `ut` in place so iotCounts has all six keys (was three pre-v19).
+// Missing keys are backfilled from current projectInfo.iotDevices flags
+// (1 if true, 0 if false). Present keys are trusted as-is. Safe to call on
+// already-backfilled rows (no-op for fully-populated iotCounts).
 function _backfillUnitTypeIotCounts(ut){
   var iot = projectInfo.iotDevices || {};
   if(!ut.iotCounts || typeof ut.iotCounts !== 'object') ut.iotCounts = {};
   if(typeof ut.iotCounts.smartLock   !== 'number') ut.iotCounts.smartLock   = iot.smartLock   ? 1 : 0;
+  if(typeof ut.iotCounts.keypad      !== 'number') ut.iotCounts.keypad      = iot.keypad      ? 1 : 0;
   if(typeof ut.iotCounts.thermostat  !== 'number') ut.iotCounts.thermostat  = iot.thermostat  ? 1 : 0;
   if(typeof ut.iotCounts.waterSensor !== 'number') ut.iotCounts.waterSensor = iot.waterSensor ? 1 : 0;
+  if(typeof ut.iotCounts.gateway     !== 'number') ut.iotCounts.gateway     = iot.gateway     ? 1 : 0;
+  if(typeof ut.iotCounts.passageSet  !== 'number') ut.iotCounts.passageSet  = iot.passageSet  ? 1 : 0;
 }
 
 // Returns a fresh iotCounts object for a draft entry. If `ut` is provided and
@@ -11159,8 +11288,11 @@ function _seedDraftIotCounts(ut){
   var src = (ut && ut.iotCounts) ? ut.iotCounts : {};
   return {
     smartLock:   typeof src.smartLock   === 'number' ? src.smartLock   : (iot.smartLock   ? 1 : 0),
+    keypad:      typeof src.keypad      === 'number' ? src.keypad      : (iot.keypad      ? 1 : 0),
     thermostat:  typeof src.thermostat  === 'number' ? src.thermostat  : (iot.thermostat  ? 1 : 0),
-    waterSensor: typeof src.waterSensor === 'number' ? src.waterSensor : (iot.waterSensor ? 1 : 0)
+    waterSensor: typeof src.waterSensor === 'number' ? src.waterSensor : (iot.waterSensor ? 1 : 0),
+    gateway:     typeof src.gateway     === 'number' ? src.gateway     : (iot.gateway     ? 1 : 0),
+    passageSet:  typeof src.passageSet  === 'number' ? src.passageSet  : (iot.passageSet  ? 1 : 0)
   };
 }
 
@@ -11201,11 +11333,17 @@ function openUnitTypesModal(){
   // simpler unified-modal interaction model.
   var iotNow = projectInfo.iotDevices || {};
   var smartLockEl   = document.getElementById('iot-smart-lock');
+  var keypadEl      = document.getElementById('iot-keypad');
   var thermostatEl  = document.getElementById('iot-thermostat');
   var waterSensorEl = document.getElementById('iot-water-sensor');
+  var gatewayEl     = document.getElementById('iot-gateway');
+  var passageSetEl  = document.getElementById('iot-passage-set');
   if(smartLockEl)   smartLockEl.checked   = !!iotNow.smartLock;
+  if(keypadEl)      keypadEl.checked      = !!iotNow.keypad;
   if(thermostatEl)  thermostatEl.checked  = !!iotNow.thermostat;
   if(waterSensorEl) waterSensorEl.checked = !!iotNow.waterSensor;
+  if(gatewayEl)     gatewayEl.checked     = !!iotNow.gateway;
+  if(passageSetEl)  passageSetEl.checked  = !!iotNow.passageSet;
 
   _renderUnitTypesRows();
   document.getElementById('unit-types-err').style.display = 'none';
@@ -11226,8 +11364,11 @@ function closeUnitTypesModal(){
 // Suites Polish M2: display name lookup for the dynamic IoT column headers.
 var _IOT_COLUMN_DISPLAY_NAMES = {
   smartLock:   'SMART LOCK',
+  keypad:      'KEYPAD',
   thermostat:  'THERMOSTAT',
-  waterSensor: 'WATER SENSOR'
+  waterSensor: 'WATER SENSOR',
+  gateway:     'GATEWAY',
+  passageSet:  'PASSAGE SET'
 };
 
 function _renderUnitTypesRows(){
@@ -11239,9 +11380,10 @@ function _renderUnitTypesRows(){
   }
   // Suites Polish M2: dynamic IoT columns. One per currently-checked
   // iotDevices flag, in declared key order so column ordering stays
-  // deterministic (smartLock → thermostat → waterSensor).
+  // deterministic. BOM two-tier M2 (v19) extended to six keys
+  // (smartLock → keypad → thermostat → waterSensor → gateway → passageSet).
   var iotFlags = projectInfo.iotDevices || {};
-  var iotKeys = ['smartLock', 'thermostat', 'waterSensor'].filter(function(k){
+  var iotKeys = ['smartLock', 'keypad', 'thermostat', 'waterSensor', 'gateway', 'passageSet'].filter(function(k){
     return iotFlags[k] === true;
   });
   // Grid template: BR | BA | [80px × N IoT cols] | flex Label | × button.
@@ -11296,7 +11438,7 @@ function onUnitTypeRowEdit(idx, field, inp){
     // blur handler refreshes the visible value to the clamped data.
     var iotKey = field.slice(4);
     if(!_unitTypesDraft[idx].iotCounts || typeof _unitTypesDraft[idx].iotCounts !== 'object'){
-      _unitTypesDraft[idx].iotCounts = { smartLock: 0, thermostat: 0, waterSensor: 0 };
+      _unitTypesDraft[idx].iotCounts = { smartLock: 0, keypad: 0, thermostat: 0, waterSensor: 0, gateway: 0, passageSet: 0 };
     }
     var raw = (inp.value || '').trim();
     var n = (raw === '') ? 0 : parseInt(raw, 10);
@@ -11400,10 +11542,13 @@ function saveUnitTypes(){
     var iotCounts = (ut.iotCounts && typeof ut.iotCounts === 'object')
       ? {
           smartLock:   typeof ut.iotCounts.smartLock   === 'number' ? ut.iotCounts.smartLock   : 0,
+          keypad:      typeof ut.iotCounts.keypad      === 'number' ? ut.iotCounts.keypad      : 0,
           thermostat:  typeof ut.iotCounts.thermostat  === 'number' ? ut.iotCounts.thermostat  : 0,
-          waterSensor: typeof ut.iotCounts.waterSensor === 'number' ? ut.iotCounts.waterSensor : 0
+          waterSensor: typeof ut.iotCounts.waterSensor === 'number' ? ut.iotCounts.waterSensor : 0,
+          gateway:     typeof ut.iotCounts.gateway     === 'number' ? ut.iotCounts.gateway     : 0,
+          passageSet:  typeof ut.iotCounts.passageSet  === 'number' ? ut.iotCounts.passageSet  : 0
         }
-      : { smartLock: 0, thermostat: 0, waterSensor: 0 };
+      : { smartLock: 0, keypad: 0, thermostat: 0, waterSensor: 0, gateway: 0, passageSet: 0 };
     cleaned.push({ id: ut.id, label: label, bedrooms: bed, bathrooms: bath, iotCounts: iotCounts });
   }
 
@@ -11482,8 +11627,10 @@ function skipUnitTypes(){
 // saveIotDevices used; users who want 0 for a specific type edit the cell
 // directly afterward.
 function onIotDeviceToggle(key, checked){
-  if(key !== 'smartLock' && key !== 'thermostat' && key !== 'waterSensor') return;
-  if(!projectInfo.iotDevices) projectInfo.iotDevices = { smartLock:false, thermostat:false, waterSensor:false };
+  // BOM two-tier M2 (v19): six-key allowlist (was three pre-v19).
+  if(key !== 'smartLock' && key !== 'keypad' && key !== 'thermostat'
+     && key !== 'waterSensor' && key !== 'gateway' && key !== 'passageSet') return;
+  if(!projectInfo.iotDevices) projectInfo.iotDevices = { smartLock:false, keypad:false, thermostat:false, waterSensor:false, gateway:false, passageSet:false };
   var prior = !!projectInfo.iotDevices[key];
   var next  = !!checked;
   if(prior === next) return;
@@ -12794,7 +12941,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 18,             // generation tag — autosave produced by a v18-aware tool (Door Hardware M1 data engine + module state)
+      version: 19,             // generation tag — v19 adds gateway/keypad/passageSet to projectInfo.iotDevices + iotCounts (BOM two-tier pass M2)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -13009,7 +13156,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 18,            // Door Hardware M1: data engine + module state (doorHardware)
+    version: 19,            // BOM two-tier M2: iotDevices/iotCounts gain gateway, keypad, passageSet keys
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -13218,6 +13365,12 @@ function applyProjectState(data){
   if(typeof projectInfo.iotDevices.smartLock    !== 'boolean') projectInfo.iotDevices.smartLock    = false;
   if(typeof projectInfo.iotDevices.thermostat   !== 'boolean') projectInfo.iotDevices.thermostat   = false;
   if(typeof projectInfo.iotDevices.waterSensor  !== 'boolean') projectInfo.iotDevices.waterSensor  = false;
+  // BOM two-tier M2 (v18 → v19): three new flag keys. Old saves load with
+  // them defaulted to false so existing projects render identically until
+  // the user opts them in via the Unit Types modal.
+  if(typeof projectInfo.iotDevices.keypad       !== 'boolean') projectInfo.iotDevices.keypad       = false;
+  if(typeof projectInfo.iotDevices.gateway      !== 'boolean') projectInfo.iotDevices.gateway      = false;
+  if(typeof projectInfo.iotDevices.passageSet   !== 'boolean') projectInfo.iotDevices.passageSet   = false;
   // Suites Polish M1: backfill per-unit-type iotCounts. Pre-pass saves
   // (every save before this milestone) lack iotCounts entirely; we seed
   // each unit type with 1 for currently-true flags, 0 for false. This
@@ -13314,6 +13467,21 @@ function applyProjectState(data){
     }
     _migrateLegacySection('cabling', 'Cabling');
     _migrateLegacySection('labor',   'Labor');
+    // BOM two-tier M3: smartApartment custom lines render under §4.1 Smart
+    // Suites (the old SA section splits 3 ways across §2.2 / §3.1 / §4.1;
+    // §4.1 is the default home for free-form lines). Prefix each line's
+    // desc with "(was: Smart Apartment)" so the integrator can tell at a
+    // glance that the line came from the legacy unified bucket. Idempotent:
+    // skipped on lines already prefixed so reload-after-save doesn't stack.
+    // Mirrors the cabling/labor "(was: X)" precedent above.
+    if(Array.isArray(bomCustomLines.smartApartment)){
+      bomCustomLines.smartApartment.forEach(function(row){
+        var d = (row.desc || '');
+        if(d.indexOf('(was: Smart Apartment)') !== 0){
+          row.desc = '(was: Smart Apartment) ' + d;
+        }
+      });
+    }
     if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
     if(data.bom.config){
       // BOM Restructure follow-up: laborRate / laborHrs entries in pre-pass
@@ -13875,13 +14043,17 @@ function drawProposalCover(doc, W, H){
     summaryY = summaryY - ROW_GAP + GRAND_GAP;  // back off the last ROW_GAP, apply the GRAND_GAP
     doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(120, 120, 140);
     doc.text('GRAND TOTAL', 65, summaryY);
-    var auto = computeAutoRows();
     var subtotal = 0;
     // BOM Restructure pass: GRAND TOTAL is equipment-only. Cabling and
     // labor totals live on Take-Off / Quote pages, not on the cover.
-    ['cameras','recording','network','accessControl','smartApartment','other'].forEach(function(k){
-      auto[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
-      bomCustomLines[k].forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
+    // BOM two-tier M4: walk computeBomTree() so the cover total equals the
+    // drawer total + the BOM-page subtotal exactly — same source, same
+    // routing, no duplicate sum-over-flat-keys path that could drift.
+    var coverTree = computeBomTree();
+    Object.keys(coverTree).forEach(function(bucketId){
+      var b = coverTree[bucketId];
+      b.auto.forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
+      b.custom.forEach(function(c){ subtotal += (c.line.qty||0)*(c.line.unit||0); });
     });
     var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
     var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
@@ -13903,58 +14075,117 @@ function drawProposalCover(doc, W, H){
 function drawProposalBOM(doc, W, H){
   drawPageHeader(doc, W, 'Bill of Materials');
   var y = 80;
-  var auto = computeAutoRows();
-  var sections = [
-    { title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
-    { title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
-    { title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
-    { title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
-    { title:'Smart Apartment',       items: auto.smartApartment.concat(bomCustomLines.smartApartment) },
-    { title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
-  ];
 
+  // BOM two-tier M4: render the tree built by computeBomTree() under
+  // BOM_TEMPLATE's fixed 5-major + trailing-Other layout. Tier-1 navy
+  // 11pt; tier-2 keeps the existing 10pt bold-uppercase style. Empty
+  // buckets hidden at both tier-1 and tier-2 levels (mirrors the on-
+  // screen drawer). §5 stays hidden until M6 fills the doorHardware
+  // classifier; "Other" tier-1 hidden when nothing routed into it.
+  var buckets = computeBomTree();
   var subtotal = 0;
-  sections.forEach(function(sec){
-    if(sec.items.length === 0) return;
-    if(y > H - 90){
-      doc.addPage('letter','portrait');
-      drawPageHeader(doc, W, 'Bill of Materials (cont.)');
-      y = 80;
+
+  // Page-break / row-emit helpers. _newContPage centralizes the (cont.)
+  // header redraw so we don't drift between the multiple "y exceeded"
+  // checks below.
+  function _newContPage(){
+    doc.addPage('letter','portrait');
+    drawPageHeader(doc, W, 'Bill of Materials (cont.)');
+    y = 80;
+  }
+  function _drawRow(qty, unit, desc){
+    // M6: descriptions can wrap to 2 lines (DHW lines often run 80–100
+    // chars at 8pt courier; cameras / AC / SA are typically <70 and stay
+    // single-line). Truncate with ellipsis past 2. Row height grows from
+    // 13pt → 24pt for wrapped rows. The page-break check uses the actual
+    // measured height so a 2-line row doesn't crash through the footer.
+    var descLines = doc.splitTextToSize(desc || '', W-220);
+    var displayLines = descLines.slice(0, 2);
+    if(descLines.length > 2){
+      displayLines[1] = (displayLines[1] || '').replace(/.{0,3}$/, '…');
     }
-    doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
-    doc.text(sec.title.toUpperCase(), 40, y); y += 16;
+    var rowH = displayLines.length > 1 ? 24 : 13;
+    if(y + rowH > H - 50) _newContPage();
+    var line = (qty||0) * (unit||0);
+    subtotal += line;
+    // Right-column values stay on the first y baseline; line 2 of the desc
+    // is rendered 11pt below line 1.
+    doc.text(displayLines[0]||'', 45, y);
+    doc.text(String(qty||0), W-180, y, {align:'right'});
+    doc.text((unit||0).toFixed(2), W-110, y, {align:'right'});
+    doc.text(line.toFixed(2), W-45, y, {align:'right'});
+    if(displayLines[1]){
+      y += 11;
+      doc.text(displayLines[1], 45, y);
+    }
+    y += 13;
+  }
+  function _drawTier2ColHdr(){
     doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(120, 120, 140);
     doc.text('DESCRIPTION', 45, y);
     doc.text('QTY',  W-180, y, {align:'right'});
     doc.text('UNIT', W-110, y, {align:'right'});
     doc.text('TOTAL', W-45, y, {align:'right'});
     y += 12;
-    // Section divider line: sits in the gutter between the column-header
-    // row and the first data row. y is now 12pt below the column header
-    // baseline. Data row text top is at y-6 (8pt font ascent ≈ 6pt). The
-    // gutter is roughly (y-10) to (y-6) — column descender at y-10, data
-    // top at y-6. y-8 places the divider in the middle of that strip.
-    // (Pre-fix value was y-4, which landed inside the data row text band
-    // and cut through the first row's text.)
+    // Section divider — see existing comment retained from pre-M4 code:
+    // y is 12pt below the column-header baseline; y-8 places the rule in
+    // the gutter between the column-header descender and the first data
+    // row's text top.
     doc.setDrawColor(208,206,200); doc.line(40, y-8, W-40, y-8);
-
     doc.setFont('courier','normal'); doc.setTextColor(31, 41, 55);
-    sec.items.forEach(function(r){
-      if(y > H - 60){
-        doc.addPage('letter','portrait');
-        drawPageHeader(doc, W, 'Bill of Materials (cont.)');
-        y = 80;
-      }
-      var line = (r.qty||0) * (r.unit||0);
-      subtotal += line;
-      var descLines = doc.splitTextToSize(bomDisplayDesc(r), W-220);
-      doc.text(descLines[0]||'', 45, y);
-      doc.text(String(r.qty||0), W-180, y, {align:'right'});
-      doc.text((r.unit||0).toFixed(2), W-110, y, {align:'right'});
-      doc.text(line.toFixed(2), W-45, y, {align:'right'});
-      y += 13;
+  }
+
+  // Orphan-guard sizing: the minimum vertical space a tier-1 needs before
+  // it commits to a page = tier-1 header (~20pt) + tier-2 header (16pt) +
+  // col-hdr row (12pt + 8pt divider gutter) + one possibly-2-line data row
+  // (24pt) = ~80pt. If we don't have that much, push the tier-1 to the
+  // next page so it's never widowed atop only the page footer.
+  var MIN_TIER1_FIT = 80;
+
+  BOM_TEMPLATE.tiers.forEach(function(tier){
+    var visibleSubs = tier.subs.filter(function(sub){
+      var b = buckets[sub.id];
+      return b && (b.auto.length > 0 || b.custom.length > 0);
     });
-    y += 8;
+    if(visibleSubs.length === 0) return;
+
+    // Orphan guard: ensure tier-1 + first tier-2 + first row fits.
+    if(y + MIN_TIER1_FIT > H - 60) _newContPage();
+
+    // Tier-1 header — bold 11pt navy. The number-prefixed title
+    // ("1. CAMERAS & SURVEILLANCE") + the 1pt size delta versus tier-2
+    // is the primary differentiator; we don't add a bottom rule here
+    // (would compete visually with the per-tier-2 colHdr divider just
+    // below). +4pt of breathing space below so the tier-2 header doesn't
+    // crowd the major.
+    doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(31, 41, 55);
+    doc.text(tier.title.toUpperCase(), 40, y); y += 20;
+
+    visibleSubs.forEach(function(sub){
+      var b = buckets[sub.id];
+
+      // Within-tier-1 page-break for tier-2 headers (mirrors the legacy
+      // per-section guard). After the orphan check above, this only fires
+      // for subsequent tier-2s in a multi-sub tier-1 (e.g., §2's 2.1 + 2.2).
+      if(y > H - 90) _newContPage();
+
+      // Tier-2 header — existing bold-uppercase 10pt navy style.
+      doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
+      doc.text(sub.title.toUpperCase(), 40, y); y += 16;
+
+      _drawTier2ColHdr();
+
+      // Auto rows first, then custom rows — matches the on-screen drawer's
+      // ordering inside each tier-2.
+      b.auto.forEach(function(r){
+        _drawRow(r.qty, r.unit, bomDisplayDesc(r));
+      });
+      b.custom.forEach(function(cust){
+        var line = cust.line;
+        _drawRow(line.qty, line.unit, bomDisplayDesc(line));
+      });
+      y += 8;
+    });
   });
 
   // Totals
@@ -15876,9 +16107,31 @@ function computeAutoRows(){
   }
 
   // Auto-network: PoE switch sized to multiplied camera count.
+  // BOM two-tier M1: placed switches[] override the camera-count-derived
+  // sizing on a per-page basis. Pages with a switches[pageIdx] entry
+  // contribute one placed-switch row (aggregated, qty = placed count);
+  // placement is guarded to pageMultiplier=1 floors so typical-floor
+  // multiplication doesn't apply. The derived sizing row reflects only
+  // cameras on pages WITHOUT a placed switch; when every camera lives on
+  // a placed-switch page the derived row is omitted to avoid a meaningless
+  // 0-camera sizing line.
   var networkRows = [];
-  if(filteredCams.length > 0){
-    var ch2 = multCount;
+  var placedSwitchPages = Object.keys(switches).filter(function(p){
+    return switches[p] != null;
+  }).map(function(p){ return parseInt(p, 10); });
+  if(placedSwitchPages.length > 0){
+    var swN = placedSwitchPages.length;
+    networkRows.push({
+      auto:true, src:'network', key:'placed-switch',
+      desc: 'Network Switch — placed location (' + swN + ' switch' + (swN === 1 ? '' : 'es') + ')',
+      qty: swN, unit: 0, sectionAuto:true
+    });
+  }
+  var derivedCams = filteredCams.filter(function(c){
+    return placedSwitchPages.indexOf(c.page) === -1;
+  });
+  if(derivedCams.length > 0){
+    var ch2 = multipliedTotal(derivedCams);
     var ports = ch2 <= 4 ? 8 : ch2 <= 8 ? 8 : ch2 <= 16 ? 16 : ch2 <= 24 ? 24 : 48;
     var switchCount = Math.ceil(ch2 / ports);
     networkRows.push({
@@ -16049,10 +16302,16 @@ function computeAutoRows(){
       iotSuitesByType[s.unitType] += pageMultiplier(s.page);
     }
   });
+  // BOM two-tier M2 (v19): six IoT line types. keypad is its OWN row,
+  // distinct from smartLock — a unit may carry both, and they count
+  // separately. Declared order = display order in the BOM drawer.
   var iotMap = [
     { key:'smartLock',   label:'Smart Lock' },
+    { key:'keypad',      label:'Keypad' },
     { key:'thermostat',  label:'Thermostat' },
-    { key:'waterSensor', label:'Water Sensor' }
+    { key:'waterSensor', label:'Water Sensor' },
+    { key:'gateway',     label:'Gateway' },
+    { key:'passageSet',  label:'Passage Set' }
   ];
   iotMap.forEach(function(entry){
     if(!iot[entry.key]) return;
@@ -16202,7 +16461,10 @@ function computeNonBomRows(){
     }
   });
   var iotInstallQty = 0;
-  ['smartLock', 'thermostat', 'waterSensor'].forEach(function(key){
+  // BOM two-tier M2 (v19): six IoT install line types; labor sums all that
+  // the user has flagged. Same per-unit-type math as the BOM smart-apartment
+  // IoT block.
+  ['smartLock', 'keypad', 'thermostat', 'waterSensor', 'gateway', 'passageSet'].forEach(function(key){
     if(!iotFlags[key]) return;
     unitTypesArr.forEach(function(ut){
       var perType = suitesByType[ut.id] || 0;
@@ -16385,8 +16647,11 @@ function buildTakeOffData(){
   });
   var iotMap = [
     { key:'smartLock',   label:'Smart Lock' },
+    { key:'keypad',      label:'Keypad' },
     { key:'thermostat',  label:'Thermostat' },
-    { key:'waterSensor', label:'Water Sensor' }
+    { key:'waterSensor', label:'Water Sensor' },
+    { key:'gateway',     label:'Gateway' },
+    { key:'passageSet',  label:'Passage Set' }
   ];
   var smartAptIot = [];
   iotMap.forEach(function(entry){
@@ -16469,8 +16734,163 @@ function bomConfigChanged(){
   recalcBom();
 }
 
-function recalcBom(){
+// ─── BOM two-tier hierarchy (M3) ─────────────────────────────────────────────
+// Fixed five-major × named-minor template + the trailing "Other" catch-all.
+// Tier ordering is canonical; minor headings render only when they hold ≥1
+// row (zero-qty groups hidden, mirroring the existing convention).
+// §5 Door Hardware tier-1 + its three minors are stubbed empty here; M6
+// fills them via the doorHardware classifier. Until then §5 stays hidden
+// (no rows ⇒ tier-1-hides-when-all-subs-empty rule kicks in).
+var BOM_TEMPLATE = {
+  tiers: [
+    // M8: titles stored as PLAIN text (was HTML-entity encoded pre-M8). The
+    // recalcBom on-screen renderer wraps them with escapeHtml(); the PDF +
+    // CSV consume the plain form directly. This was a latent M3/M4 bug — the
+    // PDF was rendering literal "&amp;" via doc.text() before this fix.
+    { id:'1', title:'1. Cameras & Surveillance', subs: [
+      { id:'1.1', title:'1.1 Cameras and Networking' }
+    ]},
+    { id:'2', title:'2. Access Control & Intercom', subs: [
+      { id:'2.1', title:'2.1 Access Control' },
+      { id:'2.2', title:'2.2 Overhead Door and Intercom' }
+    ]},
+    { id:'3', title:'3. Parcel Lockers & Mailboxes', subs: [
+      { id:'3.1', title:'3.1 Parcel and Mailboxes' }
+    ]},
+    { id:'4', title:'4. Smart Suites', subs: [
+      { id:'4.1', title:'4.1 Smart Suites' }
+    ]},
+    { id:'5', title:'5. Door Hardware', subs: [
+      { id:'5.1',          title:'5.1 Security Hardware' },
+      { id:'5.2',          title:'5.2 Door Hardware' },
+      { id:'5.3',          title:'5.3 Key System' },
+      { id:'unclassified', title:'Unclassified — needs review' }
+    ]},
+    { id:'other', title:'Other', subs: [
+      { id:'other', title:'Other / Accessories' }
+    ]}
+  ]
+};
+
+// Build the rendered tree from computeAutoRows() + bomCustomLines. Returns
+// a flat bucket map keyed by tier-2 id ('1.1', '2.1', '2.2', '3.1', '4.1',
+// '5.1', '5.2', '5.3', 'other'); recalcBom walks BOM_TEMPLATE.tiers and
+// pulls each bucket. Routing rules:
+//   Auto rows:
+//     cameras / recording / network  → 1.1
+//     accessControl                  → 2.2 if key starts 'auto-ac-credentials',
+//                                      else 2.1
+//     smartApartment                 → 'auto-sa-intercom-*'  → 2.2
+//                                      'auto-sa-parcel-*'    → 3.1
+//                                      'auto-sa-mailbox-*'   → 3.1
+//                                      'auto-sa-iot-*'       → 4.1
+//                                      anything else         → 'other'
+//                                                              (defensive — never
+//                                                              silently drop)
+//     other                          → 'other'
+//   Custom rows (bomCustomLines, routed by legacy section key):
+//     cameras / recording / network  → 1.1
+//     accessControl                  → 2.1 (free-form lines can't be inspected
+//                                          for credential identity)
+//     smartApartment                 → 4.1 (the SA bucket's default home;
+//                                          desc carries a "(was: Smart Apartment)"
+//                                          prefix from applyProjectState's
+//                                          load-time migration)
+//     other                          → 'other'
+// Custom rows are wrapped with {section, idx, line} so the row-render code
+// can emit data-section/data-idx attributes that match the legacy section
+// key — updateCustomRow / removeBomLine continue to find bomCustomLines[sec]
+// without change.
+function computeBomTree(){
   var auto = computeAutoRows();
+  var buckets = {
+    '1.1':          { auto: [], custom: [] },
+    '2.1':          { auto: [], custom: [] },
+    '2.2':          { auto: [], custom: [] },
+    '3.1':          { auto: [], custom: [] },
+    '4.1':          { auto: [], custom: [] },
+    '5.1':          { auto: [], custom: [] },
+    '5.2':          { auto: [], custom: [] },
+    '5.3':          { auto: [], custom: [] },
+    'unclassified': { auto: [], custom: [] },
+    'other':        { auto: [], custom: [] }
+  };
+
+  // ── Auto-row routing ───────────────────────────────────────────────
+  auto.cameras.forEach(function(r){ buckets['1.1'].auto.push(r); });
+  auto.recording.forEach(function(r){ buckets['1.1'].auto.push(r); });
+  auto.network.forEach(function(r){ buckets['1.1'].auto.push(r); });
+
+  // M7 dedup guard: §2.2 is for credentials + intercom + (future) door
+  // operators ONLY. Security-hardware tokens (strike / REX / door contact /
+  // maglock / etc.) are §5.1's exclusive domain. Any row matching the
+  // shared SECURITY_HARDWARE_PATTERN routes to "Other" instead of 2.2 —
+  // visible (not silently dropped) so a mis-tagged row surfaces rather
+  // than polluting the Overhead Door & Intercom sub. Applied to BOTH
+  // 2.2-bound paths (AC credentials + SA intercom). Current AC + SA
+  // auto-rows emit none of these tokens (verified M0), so this is
+  // belt-and-suspenders pinning the invariant.
+  function _isSecurityHardwareRow(r){
+    return SECURITY_HARDWARE_PATTERN.test(r.desc || '') || SECURITY_HARDWARE_PATTERN.test(r.key || '');
+  }
+
+  auto.accessControl.forEach(function(r){
+    var k = r.key || '';
+    if(k.indexOf('auto-ac-credentials') === 0){
+      if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
+      else                          buckets['2.2'].auto.push(r);
+    } else {
+      buckets['2.1'].auto.push(r);
+    }
+  });
+
+  auto.smartApartment.forEach(function(r){
+    var k = r.key || '';
+    if(k.indexOf('auto-sa-intercom-') === 0){
+      if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
+      else                          buckets['2.2'].auto.push(r);
+    }
+    else if(k.indexOf('auto-sa-parcel-')   === 0) buckets['3.1'].auto.push(r);
+    else if(k.indexOf('auto-sa-mailbox-')  === 0) buckets['3.1'].auto.push(r);
+    else if(k.indexOf('auto-sa-iot-')      === 0) buckets['4.1'].auto.push(r);
+    else                                          buckets['other'].auto.push(r);
+  });
+
+  auto.other.forEach(function(r){ buckets['other'].auto.push(r); });
+
+  // ── Door Hardware §5 routing (M6) ─────────────────────────────────
+  // Pulls from doorHardware.importedTakeoff via dhwBomRows(), which
+  // applies the centralized dhwClassifyLine() and skips W7-excluded
+  // matchKeys. Unclassified lines never silently drop — they surface
+  // under §5 "Unclassified — needs review" so the integrator can extend
+  // DHW_CLASSIFIER_RULES rather than lose visibility. BOM §5 renders
+  // independent of projectInfo.proposalSections.hardware (which gates
+  // the customer-facing Hardware Schedule page only — different doc).
+  var dhRows = dhwBomRows();
+  dhRows['5.1'].forEach(function(r){ buckets['5.1'].auto.push(r); });
+  dhRows['5.2'].forEach(function(r){ buckets['5.2'].auto.push(r); });
+  dhRows['5.3'].forEach(function(r){ buckets['5.3'].auto.push(r); });
+  dhRows['unclassified'].forEach(function(r){ buckets['unclassified'].auto.push(r); });
+
+  // ── Custom-row routing ────────────────────────────────────────────
+  function _routeCustom(secKey, bucketId){
+    var arr = bomCustomLines[secKey];
+    if(!Array.isArray(arr)) return;
+    arr.forEach(function(line, idx){
+      buckets[bucketId].custom.push({ section: secKey, idx: idx, line: line });
+    });
+  }
+  _routeCustom('cameras',        '1.1');
+  _routeCustom('recording',      '1.1');
+  _routeCustom('network',        '1.1');
+  _routeCustom('accessControl',  '2.1');
+  _routeCustom('smartApartment', '4.1');
+  _routeCustom('other',          'other');
+
+  return buckets;
+}
+
+function recalcBom(){
   var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
   var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
   document.getElementById('bom-margin-pct-disp').textContent = marginPct;
@@ -16478,57 +16898,77 @@ function recalcBom(){
 
   recalcStorage();
 
-  var sections = [
-    { key:'cameras',        title:'Cameras &amp; Imaging',     auto: auto.cameras,        custom: bomCustomLines.cameras },
-    { key:'recording',      title:'Recording &amp; Storage',   auto: auto.recording,      custom: bomCustomLines.recording },
-    { key:'network',        title:'Network &amp; Power',       auto: auto.network,        custom: bomCustomLines.network },
-    { key:'accessControl',  title:'Access Control',            auto: auto.accessControl,  custom: bomCustomLines.accessControl },
-    { key:'smartApartment', title:'Smart Apartment',           auto: auto.smartApartment, custom: bomCustomLines.smartApartment },
-    { key:'other',          title:'Other / Accessories',       auto: auto.other,          custom: bomCustomLines.other }
-  ];
-
+  // BOM two-tier M3: route auto + custom rows through computeBomTree, then
+  // walk BOM_TEMPLATE.tiers to render. Subtotal accumulates across every
+  // bucket (visible or hidden) — empty buckets contribute 0 so the total
+  // is unaffected. Hide-when-empty applies at BOTH levels: a tier-2 with
+  // no rows hides; a tier-1 with every sub empty hides.
+  var buckets = computeBomTree();
   var subtotal = 0;
   var html = '';
+  var colHdrHtml = '<div class="bom-row col-hdr"><div>Description</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit $</div><div style="text-align:right">Line $</div><div></div><div></div></div>';
 
-  sections.forEach(function(sec){
-    // M4-fix3 #3: hide entire section (header + body) when both auto and
-    // custom arrays are empty. Subtotal accumulation is unaffected — empty
-    // arrays contribute 0 lines either way.
-    if(sec.auto.length === 0 && sec.custom.length === 0) return;
-    html += '<div class="bom-section">';
-    // M4-fix3 #4: + Add Line button removed from all section headers.
-    // addBomLine() function is preserved for console use / future re-entry.
-    html += '<div class="bom-sec-hdr">'+sec.title+'</div>';
-    // Header row
-    html += '<div class="bom-row col-hdr"><div>Description</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit $</div><div style="text-align:right">Line $</div><div></div><div></div></div>';
-
-    // Auto rows
-    sec.auto.forEach(function(row){
-      var lineTotal = (row.qty || 0) * (row.unit || 0);
-      subtotal += lineTotal;
-      html += '<div class="bom-row auto-row" data-section="'+sec.key+'" data-key="'+row.key+'">';
-      html += '<div class="bom-desc" title="Auto-generated from your camera placements">'+escapeHtml(row.desc)+'</div>';
-      html += '<input type="number" value="'+row.qty+'" step="0.25" min="0" data-field="qty" onchange="updateAutoRow(this)" '+(row.src==='cameras'?'readonly':'')+'>';
-      html += '<input type="number" value="'+(row.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" onchange="updateAutoRow(this)">';
-      html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
-      html += '<div></div><div></div>';
-      html += '</div>';
+  BOM_TEMPLATE.tiers.forEach(function(tier){
+    // Hide entire tier-1 when every sub is empty.
+    var anyRows = tier.subs.some(function(sub){
+      var b = buckets[sub.id];
+      return b && (b.auto.length > 0 || b.custom.length > 0);
     });
+    if(!anyRows) return;
 
-    // Custom rows
-    sec.custom.forEach(function(row, idx){
-      var lineTotal = (row.qty || 0) * (row.unit || 0);
-      subtotal += lineTotal;
-      html += '<div class="bom-row" data-section="'+sec.key+'" data-idx="'+idx+'">';
-      html += '<input type="text" class="bom-desc" value="'+escapeHtml(row.desc||'')+'" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">';
-      html += '<input type="number" value="'+(row.qty||0)+'" step="0.25" min="0" data-field="qty" oninput="updateCustomRow(this)">';
-      html += '<input type="number" value="'+(row.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" oninput="updateCustomRow(this)">';
-      html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
-      html += '<div></div>';
-      html += '<div class="bom-del" onclick="removeBomLine(\''+sec.key+'\','+idx+')" title="Remove">&times;</div>';
-      html += '</div>';
+    html += '<div class="bom-tier1">';
+    // M8: BOM_TEMPLATE titles are plain text now; escapeHtml protects against
+    // future titles that contain & < > " ' (or live edits via a future UI).
+    html += '<div class="bom-tier1-hdr">' + escapeHtml(tier.title) + '</div>';
+
+    tier.subs.forEach(function(sub){
+      var b = buckets[sub.id];
+      if(!b || (b.auto.length === 0 && b.custom.length === 0)) return;
+
+      html += '<div class="bom-section">';
+      // M7: amber-accent the "Unclassified — needs review" header so
+      // mis-classified DHW lines surface visibly. PDF stays plain (the
+      // sub-heading text already names the bucket clearly there).
+      var hdrCls = (sub.id === 'unclassified') ? 'bom-sec-hdr warn' : 'bom-sec-hdr';
+      html += '<div class="' + hdrCls + '">' + escapeHtml(sub.title) + '</div>';
+      html += colHdrHtml;
+
+      // Auto rows. data-key drives updateAutoRow + bomAutoOverrides lookup
+      // (section-agnostic); data-section carries the tier-2 id for inspectors
+      // / future grouping use — updateAutoRow itself does not read it.
+      b.auto.forEach(function(row){
+        var lineTotal = (row.qty || 0) * (row.unit || 0);
+        subtotal += lineTotal;
+        html += '<div class="bom-row auto-row" data-section="'+sub.id+'" data-key="'+row.key+'">';
+        html += '<div class="bom-desc" title="Auto-generated from your camera placements">'+escapeHtml(row.desc)+'</div>';
+        html += '<input type="number" value="'+row.qty+'" step="0.25" min="0" data-field="qty" onchange="updateAutoRow(this)" '+(row.src==='cameras'?'readonly':'')+'>';
+        html += '<input type="number" value="'+(row.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" onchange="updateAutoRow(this)">';
+        html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
+        html += '<div></div><div></div>';
+        html += '</div>';
+      });
+
+      // Custom rows. data-section + data-idx MUST match the row's legacy
+      // bomCustomLines key + index — updateCustomRow / removeBomLine address
+      // the source array directly via cust.section + cust.idx, NOT via the
+      // rendered tier-2 id (which can differ for routed sections like
+      // smartApartment → 4.1).
+      b.custom.forEach(function(cust){
+        var line = cust.line;
+        var lineTotal = (line.qty || 0) * (line.unit || 0);
+        subtotal += lineTotal;
+        html += '<div class="bom-row" data-section="'+cust.section+'" data-idx="'+cust.idx+'">';
+        html += '<input type="text" class="bom-desc" value="'+escapeHtml(line.desc||'')+'" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">';
+        html += '<input type="number" value="'+(line.qty||0)+'" step="0.25" min="0" data-field="qty" oninput="updateCustomRow(this)">';
+        html += '<input type="number" value="'+(line.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" oninput="updateCustomRow(this)">';
+        html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
+        html += '<div></div>';
+        html += '<div class="bom-del" onclick="removeBomLine(\''+cust.section+'\','+cust.idx+')" title="Remove">&times;</div>';
+        html += '</div>';
+      });
+      html += '</div>'; // .bom-section
     });
-    html += '</div>';
+    html += '</div>'; // .bom-tier1
   });
 
   document.getElementById('bom-body').innerHTML = html;
@@ -16785,25 +17225,59 @@ function escapeHtml(s){
 }
 
 function exportBomCSV(){
-  var auto = computeAutoRows();
-  var rows = ['Section,Description,Quantity,Unit Price,Line Total'];
+  // BOM two-tier M8: CSV walks BOM_TEMPLATE.tiers + computeBomTree() buckets
+  // in the same fixed order the on-screen drawer and PDF render. Two new
+  // leading columns — tier1, tier2 — followed by the legacy description /
+  // qty / unit / total triplet. Hidden/empty buckets emit no rows (matches
+  // render). Unclassified is included (real procurement lines that need a
+  // human review, not data to drop). Auto rows precede custom rows within
+  // each tier-2, matching the renderer's intra-bucket ordering.
+  function _csvField(v){
+    var s = (v == null) ? '' : String(v);
+    // Wrap in quotes if the field could otherwise break CSV. Inner quotes
+    // doubled per RFC 4180. Always-quote tier columns + desc (cheap; avoids
+    // a per-row conditional and handles em-dashes / "&" / future titles).
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
 
-  var sections = [
-    { key:'cameras',        title:'Cameras & Imaging',     items: auto.cameras.concat(bomCustomLines.cameras) },
-    { key:'recording',      title:'Recording & Storage',   items: auto.recording.concat(bomCustomLines.recording) },
-    { key:'network',        title:'Network & Power',       items: auto.network.concat(bomCustomLines.network) },
-    { key:'accessControl',  title:'Access Control',        items: auto.accessControl.concat(bomCustomLines.accessControl) },
-    { key:'smartApartment', title:'Smart Apartment',       items: auto.smartApartment.concat(bomCustomLines.smartApartment) },
-    { key:'other',          title:'Other / Accessories',   items: auto.other.concat(bomCustomLines.other) }
-  ];
-
+  var rows = ['tier1,tier2,Description,Quantity,Unit Price,Line Total'];
+  var buckets = computeBomTree();
   var subtotal = 0;
-  sections.forEach(function(sec){
-    sec.items.forEach(function(r){
-      var line = (r.qty||0) * (r.unit||0);
-      subtotal += line;
-      var desc = bomDisplayDesc(r).replace(/"/g,'""');
-      rows.push([sec.title, '"'+desc+'"', r.qty||0, (r.unit||0).toFixed(2), line.toFixed(2)].join(','));
+  var leafCount = 0;
+
+  BOM_TEMPLATE.tiers.forEach(function(tier){
+    tier.subs.forEach(function(sub){
+      var b = buckets[sub.id];
+      if(!b || (b.auto.length === 0 && b.custom.length === 0)) return;
+      // Auto rows first (matches drawer + PDF ordering).
+      b.auto.forEach(function(r){
+        var line = (r.qty||0) * (r.unit||0);
+        subtotal += line;
+        leafCount++;
+        rows.push([
+          _csvField(tier.title),
+          _csvField(sub.title),
+          _csvField(bomDisplayDesc(r)),
+          (r.qty || 0),
+          (r.unit || 0).toFixed(2),
+          line.toFixed(2)
+        ].join(','));
+      });
+      // Custom rows.
+      b.custom.forEach(function(cust){
+        var ln = cust.line;
+        var line = (ln.qty||0) * (ln.unit||0);
+        subtotal += line;
+        leafCount++;
+        rows.push([
+          _csvField(tier.title),
+          _csvField(sub.title),
+          _csvField(bomDisplayDesc(ln)),
+          (ln.qty || 0),
+          (ln.unit || 0).toFixed(2),
+          line.toFixed(2)
+        ].join(','));
+      });
     });
   });
 
@@ -16814,11 +17288,13 @@ function exportBomCSV(){
   var taxAmt = afterMargin * taxPct / 100;
   var grand = afterMargin + taxAmt;
 
+  // Trailing totals — 6-column row shape with empty tier1/tier2/qty/unit so
+  // the totals align under the Line Total column in spreadsheet view.
   rows.push('');
-  rows.push(',Subtotal,,,'+subtotal.toFixed(2));
-  rows.push(',Margin ('+marginPct+'%),,,'+marginAmt.toFixed(2));
-  rows.push(',Tax ('+taxPct+'%),,,'+taxAmt.toFixed(2));
-  rows.push(',Grand Total,,,'+grand.toFixed(2));
+  rows.push(',,Subtotal,,,'+subtotal.toFixed(2));
+  rows.push(',,Margin ('+marginPct+'%),,,'+marginAmt.toFixed(2));
+  rows.push(',,Tax ('+taxPct+'%),,,'+taxAmt.toFixed(2));
+  rows.push(',,Grand Total,,,'+grand.toFixed(2));
 
   var a=document.createElement('a');
   a.download='bom_quote.csv';
