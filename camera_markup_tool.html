@@ -2960,6 +2960,18 @@ var BRIVO_CATALOG = [
   { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Keypad',       sku:'B-ACS100-E-BSPK-B', name:'Brivo ACS100 Controller + Keypad Reader' }
 ];
 
+// Restructure-v2 M2: SKU allowlist that routes its AC auto-rows to BOM §2.2
+// Overhead Door Control instead of §2.1 Access Control. Empty for now:
+// transmitter and long-range receiver SKUs aren't catalogued yet (they
+// arrive via overhead-door credential types later), and ACS300 is general
+// AC hardware — placed-ACS300-serving-an-overhead-door will be flagged via
+// a per-device "For use with Overhead Door" checkbox in a later pass.
+// Until any of that ships, §2.2 stays empty (hidden by the zero-row rule).
+// INTERIM hardcode — replace with a data-driven catalog 'section' field in
+// the materials-model/pricing pass. Band-aid for the missing user-facing
+// section assignment.
+var OVERHEAD_DOOR_SKUS = [];
+
 // Pass N+1 M2 (D3): placeholder catalogs for the three smart-apartment
 // device families. Real curated SKU lists (Comelit / Aiphone / Parcel
 // Pending / Luxer / USPS-approved cluster boxes) are explicitly out of
@@ -16784,17 +16796,21 @@ var BOM_TEMPLATE = {
   tiers: [
     // M8: titles stored as PLAIN text (was HTML-entity encoded pre-M8). The
     // recalcBom on-screen renderer wraps them with escapeHtml(); the PDF +
-    // CSV consume the plain form directly. This was a latent M3/M4 bug — the
-    // PDF was rendering literal "&amp;" via doc.text() before this fix.
-    { id:'1', title:'1. Cameras & Surveillance', subs: [
-      { id:'1.1', title:'1.1 Cameras and Networking' }
+    // CSV consume the plain form directly.
+    // Restructure-v2 M2: rebuilt to 5-major / 7-sub structure. All titles
+    // use "&" (ampersand), never " and ".
+    { id:'1', title:'1. Cameras & Networking', subs: [
+      { id:'1.1', title:'1.1 Cameras & Surveillance' },
+      { id:'1.2', title:'1.2 Networking' }
     ]},
     { id:'2', title:'2. Access Control & Intercom', subs: [
       { id:'2.1', title:'2.1 Access Control' },
-      { id:'2.2', title:'2.2 Overhead Door and Intercom' }
+      { id:'2.2', title:'2.2 Overhead Door Control' },
+      { id:'2.3', title:'2.3 Intercoms' }
     ]},
     { id:'3', title:'3. Parcel Lockers & Mailboxes', subs: [
-      { id:'3.1', title:'3.1 Parcel and Mailboxes' }
+      { id:'3.1', title:'3.1 Smart Parcel & Delivery' },
+      { id:'3.2', title:'3.2 Mailboxes' }
     ]},
     { id:'4', title:'4. Smart Suites', subs: [
       { id:'4.1', title:'4.1 Smart Suites' }
@@ -16812,23 +16828,28 @@ var BOM_TEMPLATE = {
 };
 
 // Build the rendered tree from computeAutoRows() + bomCustomLines. Returns
-// a flat bucket map keyed by tier-2 id ('1.1', '2.1', '2.2', '3.1', '4.1',
-// '5.1', '5.2', '5.3', 'other'); recalcBom walks BOM_TEMPLATE.tiers and
-// pulls each bucket. Routing rules:
+// a flat bucket map keyed by tier-2 id ('1.1', '1.2', '2.1', '2.2', '2.3',
+// '3.1', '3.2', '4.1', '5.1', '5.2', '5.3', 'unclassified', 'other').
+// recalcBom walks BOM_TEMPLATE.tiers and pulls each bucket.
+// Restructure-v2 M2 routing rules:
 //   Auto rows:
-//     cameras / recording / network  → 1.1
-//     accessControl                  → 2.2 if key starts 'auto-ac-credentials',
-//                                      else 2.1
-//     smartApartment                 → 'auto-sa-intercom-*'  → 2.2
+//     cameras                        → 1.1  (Cameras & Surveillance)
+//     recording (auto-nvr/auto-hdd)  → 1.2  (Networking)
+//     network (auto-switch/placed-)  → 1.2  (Networking)
+//     accessControl                  → 2.2  if AC SKU ∈ OVERHEAD_DOOR_SKUS
+//                                      else credentials → 2.1 (with guard)
+//                                      else other AC    → 2.1 (with guard)
+//     smartApartment                 → 'auto-sa-intercom-*'  → 2.3 (with guard)
 //                                      'auto-sa-parcel-*'    → 3.1
-//                                      'auto-sa-mailbox-*'   → 3.1
+//                                      'auto-sa-mailbox-*'   → 3.2
 //                                      'auto-sa-iot-*'       → 4.1
 //                                      anything else         → 'other'
 //                                                              (defensive — never
 //                                                              silently drop)
 //     other                          → 'other'
 //   Custom rows (bomCustomLines, routed by legacy section key):
-//     cameras / recording / network  → 1.1
+//     cameras                        → 1.1
+//     recording / network            → 1.2
 //     accessControl                  → 2.1 (free-form lines can't be inspected
 //                                          for credential identity)
 //     smartApartment                 → 4.1 (the SA bucket's default home;
@@ -16836,6 +16857,11 @@ var BOM_TEMPLATE = {
 //                                          prefix from applyProjectState's
 //                                          load-time migration)
 //     other                          → 'other'
+// M7 dedup guard (post-relocation): SECURITY_HARDWARE_PATTERN-matching rows
+// can't land in §2.1 or §2.3 — those belong in §5.1 Security Hardware. The
+// guard fires at 2.1-bound and 2.3-bound entry points; matches route to
+// 'other' (visible, not silently dropped). §2.2 Overhead Door Control has
+// no guard (the SKU allowlist is the gate there).
 // Custom rows are wrapped with {section, idx, line} so the row-render code
 // can emit data-section/data-idx attributes that match the legacy section
 // key — updateCustomRow / removeBomLine continue to find bomCustomLines[sec]
@@ -16844,9 +16870,12 @@ function computeBomTree(){
   var auto = computeAutoRows();
   var buckets = {
     '1.1':          { auto: [], custom: [] },
+    '1.2':          { auto: [], custom: [] },
     '2.1':          { auto: [], custom: [] },
     '2.2':          { auto: [], custom: [] },
+    '2.3':          { auto: [], custom: [] },
     '3.1':          { auto: [], custom: [] },
+    '3.2':          { auto: [], custom: [] },
     '4.1':          { auto: [], custom: [] },
     '5.1':          { auto: [], custom: [] },
     '5.2':          { auto: [], custom: [] },
@@ -16855,42 +16884,55 @@ function computeBomTree(){
     'other':        { auto: [], custom: [] }
   };
 
-  // ── Auto-row routing ───────────────────────────────────────────────
-  auto.cameras.forEach(function(r){ buckets['1.1'].auto.push(r); });
-  auto.recording.forEach(function(r){ buckets['1.1'].auto.push(r); });
-  auto.network.forEach(function(r){ buckets['1.1'].auto.push(r); });
-
-  // M7 dedup guard: §2.2 is for credentials + intercom + (future) door
-  // operators ONLY. Security-hardware tokens (strike / REX / door contact /
-  // maglock / etc.) are §5.1's exclusive domain. Any row matching the
-  // shared SECURITY_HARDWARE_PATTERN routes to "Other" instead of 2.2 —
-  // visible (not silently dropped) so a mis-tagged row surfaces rather
-  // than polluting the Overhead Door & Intercom sub. Applied to BOTH
-  // 2.2-bound paths (AC credentials + SA intercom). Current AC + SA
-  // auto-rows emit none of these tokens (verified M0), so this is
-  // belt-and-suspenders pinning the invariant.
+  // M7 dedup guard (relocated by Restructure-v2 M2): SECURITY_HARDWARE_
+  // PATTERN-matching rows can't land in §2.1 (Access Control) or §2.3
+  // (Intercoms) — strikes / REX / door contacts / maglocks belong in §5.1
+  // Security Hardware. Matches route to 'other' instead of being silently
+  // dropped. §2.2 Overhead Door Control has no guard (the OVERHEAD_DOOR_
+  // SKUS allowlist is the gate there). Current AC + SA auto-rows emit none
+  // of these tokens, so this is belt-and-suspenders pinning the invariant.
   function _isSecurityHardwareRow(r){
     return SECURITY_HARDWARE_PATTERN.test(r.desc || '') || SECURITY_HARDWARE_PATTERN.test(r.key || '');
   }
 
+  // ── Auto-row routing ───────────────────────────────────────────────
+  // §1 split: cameras stay in 1.1; recording + network move to 1.2.
+  auto.cameras.forEach(function(r){ buckets['1.1'].auto.push(r); });
+  auto.recording.forEach(function(r){ buckets['1.2'].auto.push(r); });
+  auto.network.forEach(function(r){ buckets['1.2'].auto.push(r); });
+
+  // §2 split: AC SKU ∈ OVERHEAD_DOOR_SKUS → 2.2 (Overhead Door Control,
+  // no guard). All other AC (incl. credentials) → 2.1 (with guard).
   auto.accessControl.forEach(function(r){
     var k = r.key || '';
-    if(k.indexOf('auto-ac-credentials') === 0){
+    if(k === 'auto-ac-credentials'){
       if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
-      else                          buckets['2.2'].auto.push(r);
+      else                          buckets['2.1'].auto.push(r);
+    } else if(k.indexOf('auto-ac-') === 0){
+      var sku = k.slice('auto-ac-'.length);
+      if(OVERHEAD_DOOR_SKUS.indexOf(sku) !== -1){
+        buckets['2.2'].auto.push(r);  // OD destination — no guard
+      } else {
+        if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
+        else                          buckets['2.1'].auto.push(r);
+      }
     } else {
-      buckets['2.1'].auto.push(r);
+      // Unrecognized AC key shape — defensive, surface in Other rather
+      // than silently land in 2.1.
+      buckets['other'].auto.push(r);
     }
   });
 
+  // §SA split: intercom → 2.3 (with guard); parcel → 3.1; mailbox → 3.2;
+  // IoT → 4.1; anything else → 'other' (defensive).
   auto.smartApartment.forEach(function(r){
     var k = r.key || '';
     if(k.indexOf('auto-sa-intercom-') === 0){
       if(_isSecurityHardwareRow(r)) buckets['other'].auto.push(r);
-      else                          buckets['2.2'].auto.push(r);
+      else                          buckets['2.3'].auto.push(r);
     }
     else if(k.indexOf('auto-sa-parcel-')   === 0) buckets['3.1'].auto.push(r);
-    else if(k.indexOf('auto-sa-mailbox-')  === 0) buckets['3.1'].auto.push(r);
+    else if(k.indexOf('auto-sa-mailbox-')  === 0) buckets['3.2'].auto.push(r);
     else if(k.indexOf('auto-sa-iot-')      === 0) buckets['4.1'].auto.push(r);
     else                                          buckets['other'].auto.push(r);
   });
@@ -16920,8 +16962,8 @@ function computeBomTree(){
     });
   }
   _routeCustom('cameras',        '1.1');
-  _routeCustom('recording',      '1.1');
-  _routeCustom('network',        '1.1');
+  _routeCustom('recording',      '1.2');
+  _routeCustom('network',        '1.2');
   _routeCustom('accessControl',  '2.1');
   _routeCustom('smartApartment', '4.1');
   _routeCustom('other',          'other');
