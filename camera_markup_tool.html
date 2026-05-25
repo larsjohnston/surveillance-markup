@@ -4034,7 +4034,10 @@ function dhwBomRows(){
     var fullDesc = desc + finishTag;
     var groupKey = bucket + '|' + fullDesc;
     if(!groups[groupKey]){
-      groups[groupKey] = { bucket: bucket, desc: fullDesc, qty: 0 };
+      // Customer BOM PDF M2: capture the first-seen catalogNumber as the
+      // group SKU. Read by bomRowSku() for line-1 display on the customer
+      // PDF page. Additive — internal consumers (BOM drawer, CSV) ignore it.
+      groups[groupKey] = { bucket: bucket, desc: fullDesc, qty: 0, sku: (t.catalogNumber || '') };
     }
     var qn = (typeof t.qty === 'number' && isFinite(t.qty)) ? t.qty : 0;
     groups[groupKey].qty += qn;
@@ -4045,7 +4048,8 @@ function dhwBomRows(){
     out[g.bucket].push({
       auto: true, src: 'doorHardware',
       key:  'auto-dh-' + g.bucket + '-' + _dhwHash(g.desc),
-      desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
+      desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true,
+      sku:  g.sku
     });
   });
   return out;
@@ -14077,75 +14081,107 @@ function drawProposalCover(doc, W, H){
   doc.text('Page 1', W - 80, H - 30);
 }
 
+// Customer BOM PDF M2: extracts {sku, typeLabel} per row for the two-line
+// customer-facing layout. Either sku OR typeLabel is set, never both:
+//   sku populated       → rendered bold navy on line 1 (real part number)
+//   typeLabel populated → rendered bold lighter-gray + bracket-wrapped on
+//                         line 1 so derived / no-SKU rows don't read as
+//                         literal part numbers
+// Routing matches the keys actually emitted by computeAutoRows + dhwBomRows
+// + bomCustomLines walk in computeBomTree. Custom rows have no .key, so
+// the helper falls through to the final 'CUSTOM' label.
+var _IOT_LABELS = {
+  smartLock:   'Smart Lock',
+  keypad:      'Keypad',
+  thermostat:  'Thermostat',
+  waterSensor: 'Water Sensor',
+  gateway:     'Gateway',
+  passageSet:  'Passage Set'
+};
+function bomRowSku(row){
+  if(!row) return { sku: '', typeLabel: 'CUSTOM' };
+  var k = row.key || '';
+  if(row.src === 'cameras') return { sku: k, typeLabel: '' };
+  if(row.src === 'doorHardware') return { sku: row.sku || '', typeLabel: row.sku ? '' : 'HARDWARE' };
+  if(k === 'auto-ac-credentials') return { sku: '', typeLabel: 'CREDENTIALS' };
+  if(k.indexOf('auto-ac-') === 0) return { sku: k.slice('auto-ac-'.length), typeLabel: '' };
+  if(k.indexOf('auto-sa-intercom-') === 0) return { sku: k.slice('auto-sa-intercom-'.length), typeLabel: '' };
+  if(k.indexOf('auto-sa-parcel-')   === 0) return { sku: k.slice('auto-sa-parcel-'.length),   typeLabel: '' };
+  if(k.indexOf('auto-sa-mailbox-')  === 0) return { sku: '', typeLabel: 'MAILBOX BANK' };
+  if(k.indexOf('auto-sa-iot-')      === 0){
+    var flag = k.slice('auto-sa-iot-'.length);
+    return { sku: '', typeLabel: (_IOT_LABELS[flag] || flag).toUpperCase() };
+  }
+  if(k === 'auto-nvr')      return { sku: '', typeLabel: 'NVR (derived)' };
+  if(k === 'auto-hdd')      return { sku: '', typeLabel: 'HDD (derived)' };
+  if(k === 'auto-switch')   return { sku: '', typeLabel: 'NETWORK SWITCH (derived)' };
+  if(k === 'placed-switch') return { sku: '', typeLabel: 'NETWORK SWITCH (placed)' };
+  return { sku: '', typeLabel: 'CUSTOM' };
+}
+
 function drawProposalBOM(doc, W, H){
   drawPageHeader(doc, W, 'Bill of Materials');
   var y = 80;
 
-  // BOM two-tier M4: render the tree built by computeBomTree() under
-  // BOM_TEMPLATE's fixed 5-major + trailing-Other layout. Tier-1 navy
-  // 11pt; tier-2 keeps the existing 10pt bold-uppercase style. Empty
-  // buckets hidden at both tier-1 and tier-2 levels (mirrors the on-
-  // screen drawer). §5 stays hidden until M6 fills the doorHardware
-  // classifier; "Other" tier-1 hidden when nothing routed into it.
+  // Customer BOM PDF M2: two-line rows (SKU+Qty / desc) with NO pricing.
+  // This is a customer-facing spec sheet — Qty + SKU + Description only.
+  // No unit price, no line total, no margin/tax/grand-total block on this
+  // page. The on-screen drawer ("Security Quote") + exportBomCSV remain
+  // priced internal documents. Tier-1/tier-2 hierarchy, hide-empty rule,
+  // orphan guard, and the Unclassified group are preserved from M4/M6/M7.
   var buckets = computeBomTree();
-  var subtotal = 0;
 
-  // Page-break / row-emit helpers. _newContPage centralizes the (cont.)
-  // header redraw so we don't drift between the multiple "y exceeded"
-  // checks below.
   function _newContPage(){
     doc.addPage('letter','portrait');
     drawPageHeader(doc, W, 'Bill of Materials (cont.)');
     y = 80;
   }
-  function _drawRow(qty, unit, desc){
-    // M6: descriptions can wrap to 2 lines (DHW lines often run 80–100
-    // chars at 8pt courier; cameras / AC / SA are typically <70 and stay
-    // single-line). Truncate with ellipsis past 2. Row height grows from
-    // 13pt → 24pt for wrapped rows. The page-break check uses the actual
-    // measured height so a 2-line row doesn't crash through the footer.
-    var descLines = doc.splitTextToSize(desc || '', W-220);
+
+  // Two-line row emitter. Line 1: bold 12pt — SKU navy (real part number)
+  // or [TYPE LABEL] lighter gray (derived / no-SKU rows). Followed by a
+  // " · Qty N" suffix. Line 2: regular 11pt charcoal — full description,
+  // wraps up to 2 lines max (mirrors the M6 wrapping logic; we now have
+  // full page width since the price columns are gone). The line-2 indent
+  // (x=55 vs x=45 on line 1) visually nests the desc under the heading.
+  function _drawCustomerRow(row){
+    var meta = bomRowSku(row);
+    var qtyN = (typeof row.qty === 'number' && isFinite(row.qty)) ? row.qty : 0;
+    var desc = bomDisplayDesc(row);
+    var descLines = doc.splitTextToSize(desc || '', W - 80);
     var displayLines = descLines.slice(0, 2);
     if(descLines.length > 2){
       displayLines[1] = (displayLines[1] || '').replace(/.{0,3}$/, '…');
     }
-    var rowH = displayLines.length > 1 ? 24 : 13;
+    // line-1 ~16pt advance; each line-2 wrap line ~14pt; +4pt inter-row gap.
+    var rowH = 16 + (displayLines.length * 14) + 4;
     if(y + rowH > H - 50) _newContPage();
-    var line = (qty||0) * (unit||0);
-    subtotal += line;
-    // Right-column values stay on the first y baseline; line 2 of the desc
-    // is rendered 11pt below line 1.
-    doc.text(displayLines[0]||'', 45, y);
-    doc.text(String(qty||0), W-180, y, {align:'right'});
-    doc.text((unit||0).toFixed(2), W-110, y, {align:'right'});
-    doc.text(line.toFixed(2), W-45, y, {align:'right'});
-    if(displayLines[1]){
-      y += 11;
-      doc.text(displayLines[1], 45, y);
+
+    // Line 1
+    doc.setFont('courier','bold'); doc.setFontSize(12);
+    var headText;
+    if(meta.sku){
+      headText = meta.sku + '  ·  Qty ' + qtyN;
+      doc.setTextColor(31, 41, 55);  // navy — real part number
+    } else {
+      headText = '[' + meta.typeLabel + ']  ·  Qty ' + qtyN;
+      doc.setTextColor(110, 110, 130);  // lighter — clearly not a literal SKU
     }
-    y += 13;
-  }
-  function _drawTier2ColHdr(){
-    doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(120, 120, 140);
-    doc.text('DESCRIPTION', 45, y);
-    doc.text('QTY',  W-180, y, {align:'right'});
-    doc.text('UNIT', W-110, y, {align:'right'});
-    doc.text('TOTAL', W-45, y, {align:'right'});
-    y += 12;
-    // Section divider — see existing comment retained from pre-M4 code:
-    // y is 12pt below the column-header baseline; y-8 places the rule in
-    // the gutter between the column-header descender and the first data
-    // row's text top.
-    doc.setDrawColor(208,206,200); doc.line(40, y-8, W-40, y-8);
-    doc.setFont('courier','normal'); doc.setTextColor(31, 41, 55);
+    doc.text(headText, 45, y);
+    y += 16;
+
+    // Line 2+
+    doc.setFont('courier','normal'); doc.setFontSize(11); doc.setTextColor(60, 60, 70);
+    for(var i = 0; i < displayLines.length; i++){
+      doc.text(displayLines[i] || '', 55, y);
+      y += 14;
+    }
+    y += 4;
   }
 
-  // Orphan-guard sizing: the minimum vertical space a tier-1 needs before
-  // it commits to a page = tier-1 header (~20pt) + tier-2 header (16pt) +
-  // col-hdr row (12pt + 8pt divider gutter) + one possibly-2-line data row
-  // (24pt) = ~80pt. If we don't have that much, push the tier-1 to the
-  // next page so it's never widowed atop only the page footer.
-  var MIN_TIER1_FIT = 80;
+  // Orphan-guard sizing: tier-1 hdr (22pt) + tier-2 hdr (18pt) + a
+  // possibly-2-line first row (~48pt = 16 line-1 + 28 line-2 + 4 gap) =
+  // ~88pt. Pad to 95 for safety margin.
+  var MIN_TIER1_FIT = 95;
 
   BOM_TEMPLATE.tiers.forEach(function(tier){
     var visibleSubs = tier.subs.filter(function(sub){
@@ -14154,70 +14190,41 @@ function drawProposalBOM(doc, W, H){
     });
     if(visibleSubs.length === 0) return;
 
-    // Orphan guard: ensure tier-1 + first tier-2 + first row fits.
     if(y + MIN_TIER1_FIT > H - 60) _newContPage();
 
-    // Tier-1 header — bold 11pt navy. The number-prefixed title
-    // ("1. CAMERAS & SURVEILLANCE") + the 1pt size delta versus tier-2
-    // is the primary differentiator; we don't add a bottom rule here
-    // (would compete visually with the per-tier-2 colHdr divider just
-    // below). +4pt of breathing space below so the tier-2 header doesn't
-    // crowd the major.
-    doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(31, 41, 55);
-    doc.text(tier.title.toUpperCase(), 40, y); y += 20;
+    // Tier-1 header — bold 13pt navy uppercase. Bumped from M4's 11pt to
+    // stay above the new 12pt row-line-1; +2pt size + UPPERCASE keeps the
+    // visual hierarchy: tier-1 (13) > tier-2 (12) > row line-1 (12 mixed-
+    // case) > row line-2 (11 regular).
+    doc.setFont('courier','bold'); doc.setFontSize(13); doc.setTextColor(31, 41, 55);
+    doc.text(tier.title.toUpperCase(), 40, y); y += 22;
 
     visibleSubs.forEach(function(sub){
       var b = buckets[sub.id];
 
       // Within-tier-1 page-break for tier-2 headers (mirrors the legacy
-      // per-section guard). After the orphan check above, this only fires
-      // for subsequent tier-2s in a multi-sub tier-1 (e.g., §2's 2.1 + 2.2).
+      // per-section guard). After the orphan check above this only fires
+      // for subsequent tier-2s in a multi-sub tier-1 (e.g. §2's 2.1+2.2,
+      // §5's 5.1/5.2/5.3/unclassified).
       if(y > H - 90) _newContPage();
 
-      // Tier-2 header — existing bold-uppercase 10pt navy style.
-      doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
-      doc.text(sub.title.toUpperCase(), 40, y); y += 16;
+      // Tier-2 header — bold 12pt navy uppercase. Bumped from M4's 10pt
+      // in concert with the row-text bump.
+      doc.setFont('courier','bold'); doc.setFontSize(12); doc.setTextColor(31, 41, 55);
+      doc.text(sub.title.toUpperCase(), 40, y); y += 18;
 
-      _drawTier2ColHdr();
-
-      // Auto rows first, then custom rows — matches the on-screen drawer's
-      // ordering inside each tier-2.
-      b.auto.forEach(function(r){
-        _drawRow(r.qty, r.unit, bomDisplayDesc(r));
-      });
+      // Auto rows first, then custom rows (matches drawer ordering).
+      b.auto.forEach(_drawCustomerRow);
       b.custom.forEach(function(cust){
-        var line = cust.line;
-        _drawRow(line.qty, line.unit, bomDisplayDesc(line));
+        _drawCustomerRow(cust.line);
       });
       y += 8;
     });
   });
 
-  // Totals
-  var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
-  var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
-  var marginAmt = subtotal * marginPct / 100;
-  var afterMargin = subtotal + marginAmt;
-  var taxAmt = afterMargin * taxPct / 100;
-  var grand = afterMargin + taxAmt;
-
-  if(y > H - 130){ doc.addPage('letter','portrait'); drawPageHeader(doc, W, 'Bill of Materials (cont.)'); y = 80; }
-  y += 6;
-  doc.setDrawColor(120,120,140); doc.setLineWidth(0.5); doc.line(W-260, y, W-40, y); y += 12;
-  doc.setFont('courier','normal'); doc.setFontSize(9);
-  function totalLine(label, val, color){
-    doc.setTextColor.apply(doc, color || [60,60,70]);
-    doc.text(label, W-260, y);
-    doc.text('$'+formatMoney(val), W-45, y, {align:'right'});
-    y += 14;
-  }
-  totalLine('Subtotal', subtotal);
-  if(marginPct > 0) totalLine('Margin ('+marginPct+'%)', marginAmt);
-  if(taxPct > 0) totalLine('Tax ('+taxPct+'%)', taxAmt);
-  doc.setDrawColor(200,32,44); doc.setLineWidth(1.5); doc.line(W-260, y, W-40, y); y += 14;
-  doc.setFont('courier','bold'); doc.setFontSize(12);
-  totalLine('GRAND TOTAL', grand, [200,32,44]);
-
+  // Customer BOM PDF M2: NO totals block. Pricing belongs to the on-screen
+  // Security Quote drawer + the CSV export. The drawPageFooter call below
+  // matches the existing page-chrome pattern from M4.
   drawPageFooter(doc, W, H);
 }
 
