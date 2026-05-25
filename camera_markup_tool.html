@@ -2798,35 +2798,41 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 // fov = horizontal FOV in degrees (wide end for varifocal lenses)
 var CAMERA_DB = {
   // Eagle Eye Networks — Pro Series (5MP)
-  'een-PB01': {brand:'Eagle Eye',model:'PB01',type:'bullet',hPx:2592,fov:100,desc:'5MP Pro Bullet · Fixed 2.8mm · IP67 · IR · Indoor/Outdoor'},
-  'een-PB02': {brand:'Eagle Eye',model:'PB02',type:'bullet',hPx:2592,fov:100,desc:'5MP Pro Bullet · 2.7-13.5mm varifocal · IP67 · IR'},
-  'een-PD01': {brand:'Eagle Eye',model:'PD01',type:'dome',  hPx:2592,fov:100,desc:'5MP Pro Dome · Fixed 2.8mm · IP67 · IR'},
-  'een-PD02': {brand:'Eagle Eye',model:'PD02',type:'dome',  hPx:2592,fov:100,desc:'5MP Pro Dome · 2.7-13.5mm varifocal · IP67 · IR'},
-  'een-PT01': {brand:'Eagle Eye',model:'PT01',type:'turret',  hPx:2592,fov:100,desc:'5MP Pro Turret · Fixed 2.8mm · IP67 · IR'},
-  'een-PT02': {brand:'Eagle Eye',model:'PT02',type:'turret',  hPx:2592,fov:100,desc:'5MP Pro Turret · 2.7-13.5mm varifocal · IP67 · IR'},
+  // Pricing: per-entry `sku` field carries the EN-* vendor catalog number
+  // (Brivo Video Reseller NA1 L3 sheet) for price-book lookup. The 'een-*'
+  // object key stays the canvas-render / save identity; `sku` is the
+  // resolution target read by bomRowSku at render time. DZ04 has no
+  // standalone camera SKU in the Brivo sheet (sku:null is the intentional
+  // no-price marker — falls back to the een-* key → clean $0.00 miss).
+  'een-PB01': {brand:'Eagle Eye',model:'PB01',sku:'EN-CPUB-001a',type:'bullet',hPx:2592,fov:100,desc:'5MP Pro Bullet · Fixed 2.8mm · IP67 · IR · Indoor/Outdoor'},
+  'een-PB02': {brand:'Eagle Eye',model:'PB02',sku:'EN-CPUB-002a',type:'bullet',hPx:2592,fov:100,desc:'5MP Pro Bullet · 2.7-13.5mm varifocal · IP67 · IR'},
+  'een-PD01': {brand:'Eagle Eye',model:'PD01',sku:'EN-CPUD-001a',type:'dome',  hPx:2592,fov:100,desc:'5MP Pro Dome · Fixed 2.8mm · IP67 · IR'},
+  'een-PD02': {brand:'Eagle Eye',model:'PD02',sku:'EN-CPUD-002a',type:'dome',  hPx:2592,fov:100,desc:'5MP Pro Dome · 2.7-13.5mm varifocal · IP67 · IR'},
+  'een-PT01': {brand:'Eagle Eye',model:'PT01',sku:'EN-CPUT-001a',type:'turret',  hPx:2592,fov:100,desc:'5MP Pro Turret · Fixed 2.8mm · IP67 · IR'},
+  'een-PT02': {brand:'Eagle Eye',model:'PT02',sku:'EN-CPUT-002a',type:'turret',  hPx:2592,fov:100,desc:'5MP Pro Turret · 2.7-13.5mm varifocal · IP67 · IR'},
   // Eagle Eye — D Series 4MP
-  'een-DB10': {brand:'Eagle Eye',model:'DB10',type:'bullet',hPx:2560,fov:100,desc:'4MP Mini Bullet · Fixed 2.8mm · IP67 · IR 30m'},
-  'een-DB11': {brand:'Eagle Eye',model:'DB11',type:'bullet',hPx:2560,fov:100,desc:'4MP Mini Bullet · 2.7-13.5mm varifocal · IP67'},
-  'een-DD07': {brand:'Eagle Eye',model:'DD07',type:'dome',  hPx:2560,fov:100,desc:'4MP Dome · Fixed 2.8mm · IP67 · IR'},
-  'een-DD08': {brand:'Eagle Eye',model:'DD08',type:'dome',  hPx:2560,fov:100,desc:'4MP Dome · 2.7-13.5mm varifocal · IP67 · IR'},
-  'een-DD09': {brand:'Eagle Eye',model:'DD09',type:'dome',  hPx:2560,fov:100,desc:'4MP Dome · 2.7-13.5mm varifocal · IP67 · IR'},
-  'een-DT01': {brand:'Eagle Eye',model:'DT01',type:'turret',  hPx:2560,fov:100,desc:'4MP Turret · Fixed 2.8mm · IP67 · IR'},
-  'een-DT02': {brand:'Eagle Eye',model:'DT02',type:'turret',  hPx:2560,fov:100,desc:'4MP Turret · 2.7-13.4mm varifocal · IP67'},
-  'een-DT03': {brand:'Eagle Eye',model:'DT03',type:'turret',  hPx:2560,fov:100,desc:'4MP Turret · 2.8mm fixed · IP67'},
-  'een-DM08': {brand:'Eagle Eye',model:'DM08',type:'dome',  hPx:2560,fov:90, desc:'4MP Mini Dome · Fixed 3.6mm or 2.8mm · IP67'},
+  'een-DB10': {brand:'Eagle Eye',model:'DB10',sku:'EN-CDUB-010a',type:'bullet',hPx:2560,fov:100,desc:'4MP Mini Bullet · Fixed 2.8mm · IP67 · IR 30m'},
+  'een-DB11': {brand:'Eagle Eye',model:'DB11',sku:'EN-CDUB-011a',type:'bullet',hPx:2560,fov:100,desc:'4MP Mini Bullet · 2.7-13.5mm varifocal · IP67'},
+  'een-DD07': {brand:'Eagle Eye',model:'DD07',sku:'EN-CDUD-007a',type:'dome',  hPx:2560,fov:100,desc:'4MP Dome · Fixed 2.8mm · IP67 · IR'},
+  'een-DD08': {brand:'Eagle Eye',model:'DD08',sku:'EN-CDUD-008a',type:'dome',  hPx:2560,fov:100,desc:'4MP Dome · 2.7-13.5mm varifocal · IP67 · IR'},
+  'een-DD09': {brand:'Eagle Eye',model:'DD09',sku:'EN-CDUD-009a',type:'dome',  hPx:2560,fov:100,desc:'4MP Dome · 2.7-13.5mm varifocal · IP67 · IR'},
+  'een-DT01': {brand:'Eagle Eye',model:'DT01',sku:'EN-CDUT-001a',type:'turret',  hPx:2560,fov:100,desc:'4MP Turret · Fixed 2.8mm · IP67 · IR'},
+  'een-DT02': {brand:'Eagle Eye',model:'DT02',sku:'EN-CDUT-002a',type:'turret',  hPx:2560,fov:100,desc:'4MP Turret · 2.7-13.4mm varifocal · IP67'},
+  'een-DT03': {brand:'Eagle Eye',model:'DT03',sku:'EN-CDUT-003a',type:'turret',  hPx:2560,fov:100,desc:'4MP Turret · 2.8mm fixed · IP67'},
+  'een-DM08': {brand:'Eagle Eye',model:'DM08',sku:'EN-CDUM-008a',type:'dome',  hPx:2560,fov:90, desc:'4MP Mini Dome · Fixed 3.6mm or 2.8mm · IP67'},
   // Eagle Eye — D Series 8MP
-  'een-DB12': {brand:'Eagle Eye',model:'DB12',type:'bullet',hPx:3840,fov:102,desc:'8MP Mini Bullet · Fixed 2.8mm · IP67 · IR 30m'},
-  'een-DB13': {brand:'Eagle Eye',model:'DB13',type:'bullet',hPx:3840,fov:90, desc:'8MP Bullet · 3.3-13.5mm varifocal · IP67'},
-  'een-DD10': {brand:'Eagle Eye',model:'DD10',type:'dome',  hPx:3840,fov:102,desc:'8MP Dome · Fixed 2.8mm · IP67'},
-  'een-DD11': {brand:'Eagle Eye',model:'DD11',type:'dome',  hPx:3840,fov:90, desc:'8MP Dome · 3.3-12mm varifocal · IP67'},
+  'een-DB12': {brand:'Eagle Eye',model:'DB12',sku:'EN-CDUB-012a',type:'bullet',hPx:3840,fov:102,desc:'8MP Mini Bullet · Fixed 2.8mm · IP67 · IR 30m'},
+  'een-DB13': {brand:'Eagle Eye',model:'DB13',sku:'EN-CDUB-013a',type:'bullet',hPx:3840,fov:90, desc:'8MP Bullet · 3.3-13.5mm varifocal · IP67'},
+  'een-DD10': {brand:'Eagle Eye',model:'DD10',sku:'EN-CDUD-010a',type:'dome',  hPx:3840,fov:102,desc:'8MP Dome · Fixed 2.8mm · IP67'},
+  'een-DD11': {brand:'Eagle Eye',model:'DD11',sku:'EN-CDUD-011a',type:'dome',  hPx:3840,fov:90, desc:'8MP Dome · 3.3-12mm varifocal · IP67'},
   // Eagle Eye — Specialty
-  'een-DB14': {brand:'Eagle Eye',model:'DB14',type:'lpr',   hPx:2560,fov:35, desc:'4MP LPR Bullet · 8-32mm telephoto · License plate capture'},
-  'een-DF04': {brand:'Eagle Eye',model:'DF04',type:'fisheye',  hPx:4000,fov:180,desc:'12MP Fisheye · Fixed 1.83mm · 360° coverage · IP67'},
-  'een-DX01': {brand:'Eagle Eye',model:'DX01',type:'fisheye',  hPx:3840,fov:180,desc:'8MP Dual-Sensor Stitched · Dual 2.8mm · 180° panoramic'},
+  'een-DB14': {brand:'Eagle Eye',model:'DB14',sku:'EN-CDUB-014a',type:'lpr',   hPx:2560,fov:35, desc:'4MP LPR Bullet · 8-32mm telephoto · License plate capture'},
+  'een-DF04': {brand:'Eagle Eye',model:'DF04',sku:'EN-CDUF-004a',type:'fisheye',  hPx:4000,fov:180,desc:'12MP Fisheye · Fixed 1.83mm · 360° coverage · IP67'},
+  'een-DX01': {brand:'Eagle Eye',model:'DX01',sku:'EN-CDUX-001a',type:'fisheye',  hPx:3840,fov:180,desc:'8MP Dual-Sensor Stitched · Dual 2.8mm · 180° panoramic'},
   // Eagle Eye — PTZ
-  'een-DZ04': {brand:'Eagle Eye',model:'DZ04',type:'ptz',   hPx:2592,fov:60, desc:'5MP PTZ · 5.3-159mm 30x zoom · Outdoor'},
-  'een-DZ05': {brand:'Eagle Eye',model:'DZ05',type:'ptz',   hPx:2592,fov:100,desc:'5MP Mini PTZ · 2.7-13.5mm · Indoor/Outdoor'},
-  'een-DZ06': {brand:'Eagle Eye',model:'DZ06',type:'ptz',   hPx:2592,fov:60, desc:'5MP Starlight PTZ · 5.3-159mm 30x · Low-light'},
+  'een-DZ04': {brand:'Eagle Eye',model:'DZ04',sku:null,           type:'ptz',   hPx:2592,fov:60, desc:'5MP PTZ · 5.3-159mm 30x zoom · Outdoor'},
+  'een-DZ05': {brand:'Eagle Eye',model:'DZ05',sku:'EN-CDUZ-005a',type:'ptz',   hPx:2592,fov:100,desc:'5MP Mini PTZ · 2.7-13.5mm · Indoor/Outdoor'},
+  'een-DZ06': {brand:'Eagle Eye',model:'DZ06',sku:'EN-CDUZ-006a',type:'ptz',   hPx:2592,fov:60, desc:'5MP Starlight PTZ · 5.3-159mm 30x · Low-light'},
 
   // Hanwha Wisenet — A Series (entry-level)
   'hwa-ANV-L7012R':{brand:'Hanwha',model:'ANV-L7012R',type:'dome',  hPx:2560,fov:90, desc:'4MP A-Series Vandal Dome · 2.8mm fixed · IR 20m · IP66/IK10'},
@@ -14331,7 +14337,18 @@ function _normalizeBomKey(key){
 function bomRowSku(row){
   if(!row) return { sku: '', typeLabel: 'CUSTOM' };
   var k = row.key || '';
-  if(row.src === 'cameras') return { sku: k, typeLabel: '' };
+  if(row.src === 'cameras'){
+    // Pricing camera-SKU backfill: resolve the vendor EN-* SKU via the
+    // per-entry CAMERA_DB[k].sku field. Falls back to the row key (the
+    // 'een-*' model identifier) when the entry is absent (custom-*
+    // synthetic rows for non-CAMERA_DB placements) or when sku is null
+    // (e.g. DZ04 — no standalone camera SKU in the Brivo Video sheet).
+    // Fall-through rows miss the price book by design → r.unit stays 0
+    // (intentional price-pending marker, no crash).
+    var camEntry = CAMERA_DB[k];
+    var camSku = (camEntry && typeof camEntry.sku === 'string' && camEntry.sku) ? camEntry.sku : k;
+    return { sku: camSku, typeLabel: '' };
+  }
   if(row.src === 'doorHardware') return { sku: row.sku || '', typeLabel: row.sku ? '' : 'HARDWARE' };
   if(k === 'auto-ac-credentials') return { sku: '', typeLabel: 'CREDENTIALS' };
   if(k.indexOf('auto-ac-') === 0) return { sku: _stripOhPrefix(k.slice('auto-ac-'.length)), typeLabel: '' };
