@@ -3420,6 +3420,20 @@ function getUnitPrice(sku, field){
   return (typeof val === 'number' && isFinite(val)) ? val : null;
 }
 
+// Returns the LIST price (msrp) for the given SKU, or null when the
+// pricing isn't loaded or the SKU isn't in the catalog. Independent
+// from getUnitPrice — mirrors its guard chain exactly so both helpers
+// behave identically at the call-graph level (same null shape, same
+// exact-key lookup, no normalization).
+function getListPrice(sku){
+  var book = getPricingBook();
+  if(!book || !book.items || typeof book.items !== 'object') return null;
+  var item = book.items[sku];
+  if(!item || typeof item !== 'object') return null;
+  var val = item.msrp;
+  return (typeof val === 'number' && isFinite(val)) ? val : null;
+}
+
 // Schema validation. Returns { valid: bool, errors: [string] }.
 // Collects all errors (doesn't short-circuit) so the user fixing a
 // pricing JSON file sees every issue at once.
