@@ -253,6 +253,48 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #btn-cables.active { background:#06b6d4; color:#000; }
 #btn-headend.active { background:#fbbf24; color:#000; }
 
+/* ── Global form-controls baseline (M3-fixup) ───────────────────
+   Every editable input/select/textarea picks up a visible outline +
+   shaded fill so the user can tell at a glance the field is editable.
+   :where() carries ZERO specificity so existing per-context rules
+   (.bom-row input, .sq-rule-pill-editor input, .sq-summary-row ...
+   input, .sq-default-rule-strip input[type=number], .ctrl input,
+   .modal-row input, .ut-row input, .sp-field input, .rp-slot input,
+   etc.) win without an !important war.
+
+   Excludes: readonly + disabled attrs (defensive — zero exist today
+   but a future contributor adding a readonly input gets the right
+   look without revisiting this rule). Checkbox/radio/range/file/
+   button/hidden are excluded by the type-narrowing selector list. */
+:where(input[type="text"]:not([readonly]):not([disabled]),
+       input[type="number"]:not([readonly]):not([disabled]),
+       select:not([disabled]),
+       textarea:not([readonly]):not([disabled])) {
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  border-radius: 4px;
+  transition: border-color .12s, background .12s;
+}
+:where(input[type="text"]:not([readonly]):not([disabled]),
+       input[type="number"]:not([readonly]):not([disabled]),
+       select:not([disabled]),
+       textarea:not([readonly]):not([disabled])):focus {
+  border-color: var(--primary);
+  background: var(--surface);
+  outline: none;
+}
+/* Native spinner-arrow removal for number inputs — applies everywhere.
+   The arrows interfere with the visual editable-field cue, and the
+   tool's numeric fields are typed-in (price/qty/etc.), not spun. */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* ── BOM Drawer ── centered modal variant (CSS-only) ───────── */
 #bom-drawer {
   position: fixed; top:50%; left:50%;
