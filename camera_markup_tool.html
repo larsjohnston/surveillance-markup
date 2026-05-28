@@ -337,8 +337,13 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   text-transform: uppercase;
 }
 
+/* SQ-wizard M2b: 11-col grid (SKU · Description · List · Cost · Sell · Qty
+   · Qty×Cost · Qty×Sell · Margin $ · GM % · del). minmax(0,1fr) lets the
+   Description shrink without overflow on narrow drawers. .bom-body has
+   overflow-x:auto as a fallback for very narrow viewports. */
 .bom-row {
-  display:grid; grid-template-columns: 1fr 50px 70px 70px 80px 22px;
+  display:grid;
+  grid-template-columns: 75px minmax(140px, 1fr) 60px 65px 65px 45px 70px 70px 70px 55px 24px;
   gap:5px; align-items:center;
   padding: 4px 16px; font-size:10px; border-bottom:1px solid #f3f4f6;
 }
@@ -359,6 +364,83 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .bom-row .bom-del { color:#d1d5db; cursor:pointer; font-size:14px; text-align:center; }
 .bom-row .bom-del:hover { color:var(--primary); }
 .bom-row.auto-row .bom-desc { color:#6b7280; font-style:italic; }
+/* SQ-wizard M2b: shared cell styles for the new columns. Numeric cells
+   right-align; the Sell column gets a soft surface tint to read as
+   computed/derived. SKU cell renders in the mono font for grep-ability. */
+.bom-row .bom-cell { font:700 11px var(--font-mono); text-align:right; padding-right:4px; color:#111; }
+.bom-row .bom-cell.zero { color:#d1d5db; }
+.bom-row .bom-cell.muted { color:#9ca3af; font-weight:500; }
+.bom-row .bom-cell-sku { font:600 10px var(--font-mono); color:#374151; text-align:left; padding-left:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bom-row .bom-cell-sell { background:var(--surface-soft); border-radius:2px; }
+/* SQ-wizard M2b: section subtotal + grand subtotal rows. Heavy top border,
+   bold text. Grand has an extra accent. */
+.bom-row.section-subtotal { background:#f3f4f6; border-top:1px solid #d1d5db; font-weight:700; }
+.bom-row.section-subtotal .bom-cell { font-weight:800; }
+.bom-row.grand-subtotal {
+  background:#111827; color:#fff; border-top:2px solid var(--primary);
+  margin-top:8px; padding-top:8px; padding-bottom:8px;
+  border-radius:4px;
+}
+.bom-row.grand-subtotal .bom-cell { color:#fff; font-weight:800; font-size:12px; }
+.bom-row.grand-subtotal .bom-cell-sku, .bom-row.grand-subtotal .bom-desc { color:#fff; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+/* SQ-wizard M2b: project default rule strip + per-section pill. The
+   strip sits between the storage calculator and the first section block.
+   Pills are clickable badges in the section header (right side). The
+   "default-fallback" variant (no per-section override) renders muted +
+   italic so the user can tell at a glance which sections inherit. */
+.sq-default-rule-strip {
+  padding:10px 16px; margin:8px 0 6px;
+  background:#f9fafb; border:1px solid var(--border); border-radius:4px;
+  display:flex; align-items:center; gap:10px; font:600 11px var(--font-ui);
+}
+.sq-default-rule-strip label { color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:10px; }
+.sq-default-rule-strip select, .sq-default-rule-strip input {
+  padding:3px 6px; border:1px solid var(--border); border-radius:3px;
+  font:600 11px var(--font-mono); background:#fff;
+}
+.sq-default-rule-strip input[type=number] { width:60px; text-align:right; }
+.sq-default-rule-strip .sq-apply-defaults {
+  background:#fff; color:var(--text); border:1px solid var(--border); border-radius:3px;
+  padding:4px 10px; cursor:pointer; font:600 10px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
+}
+.sq-default-rule-strip .sq-apply-defaults:hover { background:var(--surface-soft); }
+.sq-rule-pill {
+  margin-left:auto; padding:3px 9px; border-radius:11px;
+  background:var(--surface-soft); border:1px solid var(--border);
+  font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
+  color:var(--text); cursor:pointer; display:inline-flex; align-items:center; gap:5px;
+}
+.sq-rule-pill:hover { background:#fff; }
+.sq-rule-pill.fallback { color:var(--text-muted); font-style:italic; }
+.sq-rule-pill.fallback::before { content:'•'; color:var(--text-muted); font-style:normal; margin-right:1px; }
+.sq-rule-pill.override { background:var(--primary); color:#fff; border-color:var(--primary); }
+.sq-rule-pill.override:hover { background:var(--primary-dark, #b91c1c); }
+.sq-rule-pill .sq-rule-reset { color:#fff; margin-left:4px; opacity:.8; font-weight:900; font-size:11px; line-height:1; }
+.sq-rule-pill .sq-rule-reset:hover { opacity:1; }
+.sq-rule-pill-editor {
+  margin-left:auto; display:inline-flex; align-items:center; gap:5px;
+  padding:2px 5px; background:#fff; border:1px solid var(--border); border-radius:4px;
+}
+.sq-rule-pill-editor select, .sq-rule-pill-editor input {
+  padding:2px 5px; border:1px solid var(--border); border-radius:2px;
+  font:600 10px var(--font-mono); background:#fff;
+}
+.sq-rule-pill-editor input[type=number] { width:50px; text-align:right; }
+.sq-rule-pill-editor button {
+  background:none; border:0; cursor:pointer; padding:0 4px;
+  font:700 13px var(--font-ui); line-height:1;
+}
+.sq-rule-pill-editor button.ok { color:#059669; }
+.sq-rule-pill-editor button.cancel { color:#dc2626; }
+/* SQ-wizard M2b: hide the legacy global margin UI in the wizard. Tax
+   stays visible. Save/load/PDF/CSV still read marginPct (M4/M5 fully
+   removes); recalcBom forces marginAmt to 0 so on-screen totals = Sell. */
+#bom-margin-amt, #bom-margin-pct-disp { display:none; }
+#bom-summary .bom-stat:has(#bom-margin-amt) { display:none; }
+#bom-config .bom-cfg:has(#bom-margin-pct)   { display:none; }
+/* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
+   shows the full 11-col grid via horizontal scroll instead of clipping. */
+#bom-body { overflow-x:auto; }
 /* Phase 2a F3: inline BOM warning row (e.g. "No CMVR Present"). Amber
    text + bold, no inputs, no line-total — purely informational. Matches
    the palette of .dhw-warn / .bom-sec-hdr.warn so the severity reads
@@ -18186,13 +18268,32 @@ function bomConfigChanged(){
   recalcBom();
 }
 
-// ─── BOM two-tier hierarchy (M3) ─────────────────────────────────────────────
-// Fixed five-major × named-minor template + the trailing "Other" catch-all.
-// Tier ordering is canonical; minor headings render only when they hold ≥1
-// row (zero-qty groups hidden, mirroring the existing convention).
-// §5 Door Hardware tier-1 + its three minors are stubbed empty here; M6
-// fills them via the doorHardware classifier. Until then §5 stays hidden
-// (no rows ⇒ tier-1-hides-when-all-subs-empty rule kicks in).
+// ─── BOM two-tier hierarchy (M3 + SQ-wizard M2a/b) ───────────────────────────
+// Fixed five-major × named-minor template; minor headings render only when
+// they hold ≥1 row (zero-qty groups hidden, mirroring the existing
+// convention).
+//
+// SQ-wizard M2a/b layout:
+//   1.  Cameras & Networking
+//     1.1  Cameras & Surveillance
+//     1.2  Networking
+//   2.  Access Control & Intercom
+//     2.1  Access Control
+//     2.2  Overhead Door Control
+//     2.3  Intercom
+//   3.  Parcel & Mailboxes
+//     3.1  Parcel Lockers
+//     3.2  Mailboxes
+//   4.  Smart Suites
+//     4.1  Suites
+//     4.2  IoT
+//   5.  Other / Accessories  (single catch-all sub id='other')
+//
+// Door Hardware (formerly §5 with 5.1/5.2/5.3/unclassified) no longer
+// appears in the Security Quote — DH lives in its own wizard. The legacy
+// top-level "other" tier-1 was folded into the new 5. Custom-row routing
+// preserves `_routeCustom('other','other')` because the bucket id 'other'
+// survives.
 var BOM_TEMPLATE = {
   tiers: [
     // M8: titles stored as PLAIN text (was HTML-entity encoded pre-M8). The
@@ -18401,7 +18502,30 @@ function recalcBom(){
   var buckets = computeBomTree();
   var subtotal = 0;
   var html = '';
-  var colHdrHtml = '<div class="bom-row col-hdr"><div>Description</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit $</div><div style="text-align:right">Line $</div><div></div><div></div></div>';
+  // SQ-wizard M2b: 11-col header (SKU · Description · List · Cost · Sell
+  // · Qty · Qty×Cost · Qty×Sell · Margin $ · GM % · del). Pill states +
+  // the new derived columns come from per-section helpers above.
+  var colHdrHtml = '<div class="bom-row col-hdr">'
+                 +   '<div>SKU</div>'
+                 +   '<div>Description</div>'
+                 +   '<div style="text-align:right">List</div>'
+                 +   '<div style="text-align:right">Cost</div>'
+                 +   '<div style="text-align:right">Sell</div>'
+                 +   '<div style="text-align:right">Qty</div>'
+                 +   '<div style="text-align:right">Qty &times; Cost</div>'
+                 +   '<div style="text-align:right">Qty &times; Sell</div>'
+                 +   '<div style="text-align:right">Margin $</div>'
+                 +   '<div style="text-align:right">GM %</div>'
+                 +   '<div></div>'
+                 + '</div>';
+
+  // SQ-wizard M2b: project default rule strip lives at the top of bom-body.
+  html += _sqRenderDefaultRuleStrip();
+
+  // SQ-wizard M2b: grand totals accumulated across every visible row.
+  var grandQCost = 0, grandQSell = 0, grandMargin = 0;
+  var subtotalCost = 0;   // legacy "subtotal" semantics = sum of Qty×Cost,
+                          // used for #bom-subtotal tile (unchanged label).
 
   BOM_TEMPLATE.tiers.forEach(function(tier){
     // Hide entire tier-1 when every sub is empty.
@@ -18412,75 +18536,95 @@ function recalcBom(){
     if(!anyRows) return;
 
     html += '<div class="bom-tier1">';
-    // M8: BOM_TEMPLATE titles are plain text now; escapeHtml protects against
-    // future titles that contain & < > " ' (or live edits via a future UI).
     html += '<div class="bom-tier1-hdr">' + escapeHtml(tier.title) + '</div>';
 
     tier.subs.forEach(function(sub){
       var b = buckets[sub.id];
       if(!b || (b.auto.length === 0 && b.custom.length === 0)) return;
 
+      var sectionRule = getSectionRule(sub.id);
       html += '<div class="bom-section">';
-      // M7: amber-accent the "Unclassified — needs review" header so
-      // mis-classified DHW lines surface visibly. PDF stays plain (the
-      // sub-heading text already names the bucket clearly there).
-      var hdrCls = (sub.id === 'unclassified') ? 'bom-sec-hdr warn' : 'bom-sec-hdr';
-      html += '<div class="' + hdrCls + '">' + escapeHtml(sub.title) + '</div>';
+      // SQ-wizard M2b: section header gains a clickable rule pill on the
+      // right edge. Title + pill share a flex row via .bom-sec-hdr's
+      // existing display:flex.
+      html += '<div class="bom-sec-hdr">'
+            +   '<span>' + escapeHtml(sub.title) + '</span>'
+            +   _sqRenderRulePill(sub.id)
+            + '</div>';
       html += colHdrHtml;
 
-      // Auto rows. data-key drives updateAutoRow + bomAutoOverrides lookup
-      // (section-agnostic); data-section carries the tier-2 id for inspectors
-      // / future grouping use — updateAutoRow itself does not read it.
+      var secQCost = 0, secQSell = 0, secMargin = 0;
+
       b.auto.forEach(function(row){
-        // Phase 2a F3: warning rows (row.warn === true) render as a
-        // single amber line with no qty/unit inputs and no line-total.
-        // They don't contribute to subtotal. On-screen only.
+        // Phase 2a F3 / SQ-wizard M2b: warn rows render as a single
+        // amber line spanning the description column; do NOT contribute
+        // to section or grand subtotals.
         if(row.warn){
-          html += '<div class="bom-row warn-row" data-section="'+sub.id+'" data-key="'+row.key+'">';
-          html += '<div class="bom-desc">'+escapeHtml(row.desc)+'</div>';
-          html += '<div></div><div></div><div></div><div></div><div></div>';
-          html += '</div>';
+          html += _sqRenderWarnRow(row, sub.id);
           return;
         }
-        var lineTotal = (row.qty || 0) * (row.unit || 0);
-        subtotal += lineTotal;
-        html += '<div class="bom-row auto-row" data-section="'+sub.id+'" data-key="'+row.key+'">';
-        html += '<div class="bom-desc" title="Auto-generated from your camera placements">'+escapeHtml(row.desc)+'</div>';
-        html += '<input type="number" value="'+row.qty+'" step="0.25" min="0" data-field="qty" onchange="updateAutoRow(this)" '+(row.src==='cameras'?'readonly':'')+'>';
-        html += '<input type="number" value="'+(row.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" onchange="updateAutoRow(this)">';
-        html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
-        html += '<div></div><div></div>';
-        html += '</div>';
+        var cost = (typeof row.cost === 'number') ? row.cost : 0;
+        var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
+        var qty  = (typeof row.qty  === 'number') ? row.qty  : 0;
+        var sell = deriveSell(cost, list, sectionRule);
+        var qc   = qty * cost;
+        var qs   = qty * sell;
+        secQCost  += qc;
+        secQSell  += qs;
+        secMargin += (qs - qc);
+        // Preserve legacy #bom-subtotal tile semantics (Qty×Cost sum).
+        subtotalCost += qc;
+        html += _sqRenderAutoRow(row, sub.id, sectionRule);
       });
 
-      // Custom rows. data-section + data-idx MUST match the row's legacy
-      // bomCustomLines key + index — updateCustomRow / removeBomLine address
-      // the source array directly via cust.section + cust.idx, NOT via the
-      // rendered tier-2 id (which can differ for routed sections like
-      // smartApartment → 4.1).
       b.custom.forEach(function(cust){
-        var line = cust.line;
-        var lineTotal = (line.qty || 0) * (line.unit || 0);
-        subtotal += lineTotal;
-        html += '<div class="bom-row" data-section="'+cust.section+'" data-idx="'+cust.idx+'">';
-        html += '<input type="text" class="bom-desc" value="'+escapeHtml(line.desc||'')+'" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">';
-        html += '<input type="number" value="'+(line.qty||0)+'" step="0.25" min="0" data-field="qty" oninput="updateCustomRow(this)">';
-        html += '<input type="number" value="'+(line.unit||0).toFixed(2)+'" step="0.01" min="0" data-field="unit" oninput="updateCustomRow(this)">';
-        html += '<div class="bom-line-total'+(lineTotal===0?' zero':'')+'">$'+formatMoney(lineTotal)+'</div>';
-        html += '<div></div>';
-        html += '<div class="bom-del" onclick="removeBomLine(\''+cust.section+'\','+cust.idx+')" title="Remove">&times;</div>';
-        html += '</div>';
+        var line = cust.line || {};
+        var cost = (typeof line.unit === 'number') ? line.unit : 0;
+        var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
+        var sell = deriveSell(cost, null, sectionRule);
+        var qc   = qty * cost;
+        var qs   = qty * sell;
+        secQCost  += qc;
+        secQSell  += qs;
+        secMargin += (qs - qc);
+        subtotalCost += qc;
+        html += _sqRenderCustomRow(cust, sectionRule);
       });
+
+      // Section subtotal row.
+      html += _sqRenderSectionSubtotal(sub.id, {
+        sumQCost:  secQCost,
+        sumQSell:  secQSell,
+        sumMargin: secMargin
+      });
+
+      grandQCost  += secQCost;
+      grandQSell  += secQSell;
+      grandMargin += secMargin;
+
       html += '</div>'; // .bom-section
     });
     html += '</div>'; // .bom-tier1
   });
 
+  // SQ-wizard M2b: grand subtotal row below all sections.
+  html += _sqRenderGrandSubtotal({
+    sumQCost:  grandQCost,
+    sumQSell:  grandQSell,
+    sumMargin: grandMargin
+  });
+
   document.getElementById('bom-body').innerHTML = html;
 
-  // Summary
-  var marginAmt = subtotal * marginPct / 100;
-  var afterMargin = subtotal + marginAmt;
+  // Summary tiles. SQ-wizard M2b: global Margin is hidden in the
+  // wizard UI but its computation lives on for PDF/CSV/cover until M4/M5
+  // wholesale removal. recalcBom's #bom-margin-amt write is forced to 0
+  // so the (now-hidden) tile reflects the wizard's "Sell already
+  // includes margin" semantics; the input value at #bom-margin-pct is
+  // preserved untouched for save/load round-trip.
+  var subtotal = grandQSell;   // on-screen subtotal = Sell total (was Cost total).
+  var marginAmt = 0;           // see comment above.
+  var afterMargin = subtotal;  // == grandQSell.
   var taxAmt = afterMargin * taxPct / 100;
   var grand = afterMargin + taxAmt;
 
@@ -18588,6 +18732,238 @@ function deriveSell(cost, list, rule){
   return c * (1 + v / 100);
 }
 
+// SQ-wizard M2b — display formatters. Money returns "$X.XX"; null/NaN
+// returns the em-dash "—" so cells that don't price for a row (no
+// catalog list, custom row sell when cost=0, etc.) read consistently.
+function _sqFmtMoney(n){
+  if(n == null || !isFinite(n)) return '—';
+  return '$' + formatMoney(n);
+}
+function _sqFmtPct(n){
+  if(n == null || !isFinite(n)) return '—';
+  return n.toFixed(1) + '%';
+}
+
+// SQ-wizard M2b — project-default rule strip. Sits above the section
+// blocks. Two controls (mode select, value input) write bomPricingRule
+// on change + trigger recalcBom. The "Apply to unset sections" button
+// is an explicit re-render trigger; getSectionRule already inherits the
+// updated default for any section without an override, so the recalc
+// just re-paints those sections' Sell/derived cells.
+function _sqRenderDefaultRuleStrip(){
+  var mode = (bomPricingRule && bomPricingRule.mode) || 'markup';
+  var val  = (bomPricingRule && typeof bomPricingRule.value === 'number') ? bomPricingRule.value : 0;
+  return '<div class="sq-default-rule-strip">'
+       +   '<label>Default sell rule</label>'
+       +   '<select onchange="_sqSetDefaultMode(this.value)">'
+       +     '<option value="markup"'   + (mode === 'markup'   ? ' selected' : '') + '>Mark-Up</option>'
+       +     '<option value="discount"' + (mode === 'discount' ? ' selected' : '') + '>Discount</option>'
+       +   '</select>'
+       +   '<input type="number" min="0" max="200" step="1" value="' + val + '" onchange="_sqSetDefaultValue(this.value)">'
+       +   '<span>%</span>'
+       +   '<button class="sq-apply-defaults" type="button" onclick="_sqApplyDefaultsToUnsetSections()">Apply to unset sections</button>'
+       + '</div>';
+}
+
+// SQ-wizard M2b — per-section rule pill. Two visual states:
+//   override : section has its own bomSectionRules[sectionId] entry. Solid
+//              primary fill + "×" reset affordance to clear the override.
+//   fallback : section inherits bomPricingRule. Muted + italic + leading
+//              dot so the user can tell at a glance.
+// Click → editor swap via _sqStartEditPill.
+function _sqRenderRulePill(sectionId){
+  var override = bomSectionRules[sectionId];
+  var rule = override || bomPricingRule;
+  var mode = (rule && rule.mode === 'discount') ? 'Discount' : 'Markup';
+  var val  = (rule && typeof rule.value === 'number') ? rule.value : 0;
+  var cls  = 'sq-rule-pill ' + (override ? 'override' : 'fallback');
+  var lbl  = mode + ' ' + val + '%';
+  var reset = override
+    ? '<span class="sq-rule-reset" title="Reset to project default" onclick="event.stopPropagation();_sqResetPill(\'' + sectionId + '\')">&times;</span>'
+    : '';
+  return '<span class="' + cls + '" data-section="' + sectionId + '" onclick="_sqStartEditPill(\'' + sectionId + '\')" title="Click to edit section pricing rule">' + lbl + reset + '</span>';
+}
+
+// SQ-wizard M2b — Default-strip + per-section pill state writers. Each
+// writes the in-memory rule state, calls markDirty (state IS persisted
+// via M5 — this pass leaves them flagged dirty so the user's intent
+// survives a save once M5 wires the shape), then triggers a full
+// recalcBom so every derived cell re-derives.
+function _sqSetDefaultMode(mode){
+  if(mode !== 'markup' && mode !== 'discount') return;
+  bomPricingRule.mode = mode;
+  markDirty();
+  recalcBom();
+}
+function _sqSetDefaultValue(raw){
+  var v = parseFloat(raw);
+  if(!isFinite(v) || v < 0) v = 0;
+  if(v > 200) v = 200;
+  bomPricingRule.value = v;
+  markDirty();
+  recalcBom();
+}
+function _sqApplyDefaultsToUnsetSections(){
+  // No state change — every unset section already inherits bomPricingRule
+  // via getSectionRule. The button is a UX affordance for a force re-paint.
+  recalcBom();
+}
+
+// SQ-wizard M2b — Per-section pill editor. Click pill → swap to inline
+// editor with mode select + value input + ✓/✗ buttons. ✓ or Enter commits;
+// ✗ or Esc cancels. Commit writes bomSectionRules[sectionId] + recalcBom.
+function _sqStartEditPill(sectionId){
+  var headerPill = document.querySelector('.sq-rule-pill[data-section="' + sectionId + '"]');
+  if(!headerPill) return;
+  var current = bomSectionRules[sectionId] || bomPricingRule;
+  var mode = (current && current.mode === 'discount') ? 'discount' : 'markup';
+  var val  = (current && typeof current.value === 'number') ? current.value : 0;
+  var editorHtml = '<span class="sq-rule-pill-editor" data-section="' + sectionId + '">'
+                +    '<select id="sq-edit-mode-' + sectionId + '">'
+                +      '<option value="markup"'   + (mode === 'markup'   ? ' selected' : '') + '>Markup</option>'
+                +      '<option value="discount"' + (mode === 'discount' ? ' selected' : '') + '>Discount</option>'
+                +    '</select>'
+                +    '<input type="number" id="sq-edit-val-' + sectionId + '" min="0" max="200" step="1" value="' + val + '" onkeydown="_sqPillEditorKey(event,\'' + sectionId + '\')">'
+                +    '<span>%</span>'
+                +    '<button class="ok"     type="button" onclick="_sqCommitPill(\'' + sectionId + '\')" title="Save">&check;</button>'
+                +    '<button class="cancel" type="button" onclick="_sqCancelPill(\'' + sectionId + '\')" title="Cancel">&times;</button>'
+                +  '</span>';
+  headerPill.outerHTML = editorHtml;
+  var inp = document.getElementById('sq-edit-val-' + sectionId);
+  if(inp){ inp.focus(); inp.select(); }
+}
+function _sqPillEditorKey(e, sectionId){
+  if(e.key === 'Enter')   { e.preventDefault(); _sqCommitPill(sectionId); }
+  if(e.key === 'Escape')  { e.preventDefault(); _sqCancelPill(sectionId); }
+}
+function _sqCommitPill(sectionId){
+  var modeEl = document.getElementById('sq-edit-mode-' + sectionId);
+  var valEl  = document.getElementById('sq-edit-val-'  + sectionId);
+  if(!modeEl || !valEl) return;
+  var mode = (modeEl.value === 'discount') ? 'discount' : 'markup';
+  var v    = parseFloat(valEl.value);
+  if(!isFinite(v) || v < 0) v = 0;
+  if(v > 200) v = 200;
+  bomSectionRules[sectionId] = { mode: mode, value: v };
+  markDirty();
+  recalcBom();
+}
+function _sqCancelPill(){ recalcBom(); }
+function _sqResetPill(sectionId){
+  if(bomSectionRules[sectionId]){
+    delete bomSectionRules[sectionId];
+    markDirty();
+  }
+  recalcBom();
+}
+
+// SQ-wizard M2b — Auto-row renderer. Outputs the 11-col grid for one
+// catalog-priced row (cameras, CMVR, switches, AC, smart-apt families).
+// Sell derives from r.cost + r.list + section rule; Cost is editable
+// via the existing updateAutoRow (writes to bomAutoOverrides[key].unit
+// which the wrapper at computeAutoRows applies to BOTH r.unit and r.cost).
+function _sqRenderAutoRow(row, sectionId, rule){
+  var sku  = (row.sku || '');
+  var cost = (typeof row.cost === 'number') ? row.cost : 0;
+  var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
+  var qty  = (typeof row.qty  === 'number') ? row.qty  : 0;
+  var sell = deriveSell(cost, list, rule);
+  var qc   = qty * cost;
+  var qs   = qty * sell;
+  var mar  = qs - qc;
+  var gm   = qs > 0 ? (mar / qs) * 100 : null;
+  var qtyReadonly = (row.src === 'cameras') ? ' readonly' : '';
+  var listCell = (list == null)
+    ? '<div class="bom-cell muted bom-cell-list">—</div>'
+    : '<div class="bom-cell bom-cell-list">' + _sqFmtMoney(list) + '</div>';
+  return '<div class="bom-row auto-row" data-section="' + sectionId + '" data-key="' + escapeHtml(row.key || '') + '" data-list="' + (list == null ? '' : list) + '">'
+       +   '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
+       +   '<div class="bom-desc" title="Auto-generated from your placements">' + escapeHtml(row.desc || '') + '</div>'
+       +   listCell
+       +   '<input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)">'
+       +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
+       +   '<input type="number" data-field="qty" value="' + qty + '" step="0.25" min="0" onchange="updateAutoRow(this)"' + qtyReadonly + '>'
+       +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
+       +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(qs) + '</div>'
+       +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(mar) + '</div>'
+       +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(gm) + '</div>'
+       +   '<div></div>'
+       + '</div>';
+}
+
+// SQ-wizard M2b — Custom-row renderer. User-typed line: Cost is the
+// only price the user enters; List always "—"; Sell derives from Cost +
+// section rule (list-null fallback in deriveSell handles discount mode).
+function _sqRenderCustomRow(cust, rule){
+  var line = cust.line || {};
+  var cost = (typeof line.unit === 'number') ? line.unit : 0;
+  var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
+  var sell = deriveSell(cost, null, rule);
+  var qc   = qty * cost;
+  var qs   = qty * sell;
+  var mar  = qs - qc;
+  var gm   = qs > 0 ? (mar / qs) * 100 : null;
+  return '<div class="bom-row" data-section="' + cust.section + '" data-idx="' + cust.idx + '">'
+       +   '<div class="bom-cell-sku"></div>'
+       +   '<input type="text" class="bom-desc" value="' + escapeHtml(line.desc || '') + '" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">'
+       +   '<div class="bom-cell muted bom-cell-list">—</div>'
+       +   '<input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" oninput="updateCustomRow(this)">'
+       +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
+       +   '<input type="number" data-field="qty" value="' + qty + '" step="0.25" min="0" oninput="updateCustomRow(this)">'
+       +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
+       +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(qs) + '</div>'
+       +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(mar) + '</div>'
+       +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(gm) + '</div>'
+       +   '<div class="bom-del" onclick="removeBomLine(\'' + cust.section + '\',' + cust.idx + ')" title="Remove">&times;</div>'
+       + '</div>';
+}
+
+// SQ-wizard M2b — Warn-row renderer (e.g. "No CMVR Present"). Single
+// amber line spanning the description column; remaining cells empty;
+// doesn't contribute to subtotals.
+function _sqRenderWarnRow(row, sectionId){
+  return '<div class="bom-row warn-row" data-section="' + sectionId + '" data-key="' + escapeHtml(row.key || '') + '">'
+       +   '<div></div>'                                  // SKU
+       +   '<div class="bom-desc">' + escapeHtml(row.desc || '') + '</div>'
+       +   '<div></div><div></div><div></div><div></div>' // List · Cost · Sell · Qty
+       +   '<div></div><div></div><div></div><div></div>' // QC · QS · Margin · GM
+       +   '<div></div>'                                  // del
+       + '</div>';
+}
+
+// SQ-wizard M2b — Section subtotal row. Emitted per tier-2 after its
+// data rows. Columns: SKU · Description (label) · — List — · — Cost — ·
+// — Sell — · — Qty — · ΣQty×Cost · ΣQty×Sell · ΣMargin$ · blended GM%.
+function _sqRenderSectionSubtotal(sectionId, sums){
+  var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
+  return '<div class="bom-row section-subtotal" data-subtotal="section" data-section="' + sectionId + '">'
+       +   '<div></div>'
+       +   '<div class="bom-desc">Subtotal</div>'
+       +   '<div></div><div></div><div></div><div></div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   '<div></div>'
+       + '</div>';
+}
+
+// SQ-wizard M2b — Grand subtotal row. Emitted after all sections.
+// Same column set as section subtotal but accent-styled.
+function _sqRenderGrandSubtotal(sums){
+  var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
+  return '<div class="bom-row grand-subtotal" data-subtotal="grand">'
+       +   '<div></div>'
+       +   '<div class="bom-desc">Grand Subtotal</div>'
+       +   '<div></div><div></div><div></div><div></div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   '<div></div>'
+       + '</div>';
+}
+
 function updateAutoRow(input){
   var row = input.closest('.bom-row');
   // Pricing M4 (Fix 2): normalize the override key so a user-set price on
@@ -18599,7 +18975,13 @@ function updateAutoRow(input){
   if(!bomAutoOverrides[key]) bomAutoOverrides[key] = {};
   bomAutoOverrides[key][field] = val;
   markDirty();
-  recalcBom();
+  // SQ-wizard M2b: in-row DOM recalc (Sell + Qty×Cost + Qty×Sell + Margin
+  // + GM%) followed by recalcSummaryOnly. Avoids a full recalcBom call
+  // per keystroke for the perf reason the original recalcSummaryOnly
+  // comment cites; for structural changes (deleting a row, changing
+  // section rules) recalcBom is still the right call.
+  _sqRecalcRowCells(row);
+  recalcSummaryOnly();
 }
 
 // Re-apply overrides when computing auto rows.
@@ -18642,9 +19024,17 @@ computeAutoRows = function(){
       // key so a flagged AC row and its unflagged sibling pick up the
       // same user-set price. Mirrors the WRITE-side normalization in
       // updateAutoRow.
+      //
+      // SQ-wizard M2b: when a Cost override exists, it also writes
+      // through to r.cost (so deriveSell uses the user-set cost, not
+      // the catalogue value). The override key 'unit' is preserved for
+      // save-shape compatibility — it semantically means Cost.
       var ovKey = _normalizeBomKey(r.key);
       if(bomAutoOverrides[ovKey]){
-        if(bomAutoOverrides[ovKey].unit !== undefined) r.unit = bomAutoOverrides[ovKey].unit;
+        if(bomAutoOverrides[ovKey].unit !== undefined){
+          r.unit = bomAutoOverrides[ovKey].unit;
+          r.cost = bomAutoOverrides[ovKey].unit;
+        }
         if(bomAutoOverrides[ovKey].qty  !== undefined && r.src !== 'cameras') r.qty = bomAutoOverrides[ovKey].qty;
       }
     });
@@ -18674,14 +19064,49 @@ function updateCustomRow(input){
   if(field === 'desc') line.desc = input.value;
   else line[field] = parseFloat(input.value) || 0;
   markDirty();
-  // Update line total only (avoid full re-render on every keystroke for desc)
+  // Skip cell math + summary for plain-text desc edits — those only
+  // mutate label, not money. Numeric edits drive the in-row recalc +
+  // summary refresh below.
   if(field === 'desc') return;
-  var total = (line.qty||0) * (line.unit||0);
-  var totalEl = row.querySelector('.bom-line-total');
-  totalEl.textContent = '$' + formatMoney(total);
-  totalEl.classList.toggle('zero', total === 0);
-  // Update summary
+  _sqRecalcRowCells(row);
   recalcSummaryOnly();
+}
+
+// SQ-wizard M2b — in-row cell recalc. Reads qty/cost from the row's
+// inputs + list from row.dataset.list + sectionId from row.dataset.section.
+// Derives Sell via deriveSell(cost, list, getSectionRule(sectionId)) and
+// writes Sell · Qty×Cost · Qty×Sell · Margin $ · GM % cells in place.
+// Works for both auto and custom rows since both use the same column
+// scheme. Custom rows have list-cell muted "—" (data-list empty); the
+// list parse below treats empty string as null and falls through to
+// deriveSell's missing-list path.
+function _sqRecalcRowCells(row){
+  if(!row) return;
+  var sectionId = row.dataset.section || '';
+  var rule = getSectionRule(sectionId);
+  // Cost: read whichever input carries data-field='unit' on this row.
+  var costInp = row.querySelector('input[data-field="unit"]');
+  var qtyInp  = row.querySelector('input[data-field="qty"]');
+  var cost = costInp ? (parseFloat(costInp.value) || 0) : 0;
+  var qty  = qtyInp  ? (parseFloat(qtyInp.value)  || 0) : 0;
+  var listStr = row.dataset.list;
+  var list = (listStr === '' || listStr == null) ? null : parseFloat(listStr);
+  if(list != null && !isFinite(list)) list = null;
+  var sell = deriveSell(cost, list, rule);
+  var qc = qty * cost;
+  var qs = qty * sell;
+  var margin = qs - qc;
+  var gm = qs > 0 ? (margin / qs) * 100 : null;
+  var sellEl   = row.querySelector('.bom-cell-sell');
+  var qcEl     = row.querySelector('.bom-line-qcost');
+  var qsEl     = row.querySelector('.bom-line-qsell');
+  var marginEl = row.querySelector('.bom-line-margin');
+  var gmEl     = row.querySelector('.bom-line-gm');
+  if(sellEl)   sellEl.textContent   = _sqFmtMoney(sell);
+  if(qcEl)     qcEl.textContent     = _sqFmtMoney(qc);
+  if(qsEl)     qsEl.textContent     = _sqFmtMoney(qs);
+  if(marginEl) marginEl.textContent = _sqFmtMoney(margin);
+  if(gmEl)     gmEl.textContent     = _sqFmtPct(gm);
 }
 
 // ─── Storage Calculator ───────────────────────────────────────────────────────
@@ -18757,20 +19182,36 @@ function recalcStorage(){
 }
 
 function recalcSummaryOnly(){
-  // Lightweight: walk all .bom-line-total and sum
+  // SQ-wizard M2b: subtotal is the sum of per-line Qty×Sell (was
+  // Qty×Cost, since the old global Margin% layered on top). Margin
+  // total is the sum of per-line Margin$ for display only — the global
+  // Margin tile is hidden in the wizard. Tax + Grand still derive at
+  // the totals layer. Skips per-row subtotal + grand-subtotal sentinel
+  // rows (they're cell-only, not source-of-truth).
   var subtotal = 0;
-  document.querySelectorAll('#bom-body .bom-line-total').forEach(function(el){
-    var v = parseFloat(el.textContent.replace(/[^0-9.\-]/g, '')) || 0;
-    subtotal += v;
+  var marginSum = 0;
+  document.querySelectorAll('#bom-body .bom-row').forEach(function(rowEl){
+    // Skip the section-subtotal + grand-subtotal sentinel rows so we
+    // don't double-count their summed cells.
+    if(rowEl.dataset.subtotal) return;
+    var qsEl = rowEl.querySelector('.bom-line-qsell');
+    if(qsEl){
+      var qsVal = parseFloat(qsEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+      subtotal += qsVal;
+    }
+    var mEl = rowEl.querySelector('.bom-line-margin');
+    if(mEl){
+      var mVal = parseFloat(mEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+      marginSum += mVal;
+    }
   });
-  var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
   var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
-  var marginAmt = subtotal * marginPct / 100;
-  var afterMargin = subtotal + marginAmt;
-  var taxAmt = afterMargin * taxPct / 100;
-  var grand = afterMargin + taxAmt;
+  var taxAmt = subtotal * taxPct / 100;
+  var grand = subtotal + taxAmt;
   document.getElementById('bom-subtotal').textContent = '$' + formatMoney(subtotal);
-  document.getElementById('bom-margin-amt').textContent = '$' + formatMoney(marginAmt);
+  // SQ-wizard M2b: bom-margin-amt is hidden in the wizard UI, but we
+  // still write 0 to avoid drift if a future view un-hides it.
+  document.getElementById('bom-margin-amt').textContent = '$0.00';
   document.getElementById('bom-tax-amt').textContent = '$' + formatMoney(taxAmt);
   document.getElementById('bom-grand-total').textContent = '$' + formatMoney(grand);
 }
