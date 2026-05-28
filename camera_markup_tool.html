@@ -2839,11 +2839,24 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   <div id="bom-scroll-wrap">
   <!-- Pricing Data Foundation M1+M2: banner shown when no pricing book is
        loaded (isPricingLoaded() === false). "Load Now" opens the same file
-       picker as File → Load Pricing and the menubar status indicator. -->
+       picker as File → Load Pricing and the menubar status indicator.
+       SQ-wizard M1: banner sits ABOVE the stepper so its pricing-state
+       message is visible regardless of active step. -->
   <div id="pricing-banner" class="pricing-banner">
     <span>Pricing data not loaded. Load a pricing file (File → Load Pricing) to enable quote totals on BOM and Take-Off pages.</span>
     <button id="pricing-banner-load-btn" class="pricing-banner-btn" onclick="openPricingFilePicker()">Load Now</button>
   </div>
+  <!-- SQ-wizard M1: 3-step stepper host. Populated imperatively by
+       _sqRenderStepper(); reuses the HW wizard's .dhw-stepper /
+       .dhw-step / .dhw-step-dot / .dhw-step-label / .dhw-step-connector
+       classes verbatim — no new stepper CSS. -->
+  <div id="sq-stepper-host" style="padding:14px 16px 0;"></div>
+  <!-- SQ-wizard M1: step-content wrapper. Mirrors the HW wizard's
+       .dhw-step-content single-host pattern. Three sibling step panes
+       toggled by inline display in _sqGoToStep(n); inputs preserve
+       state across step nav (no innerHTML rebuild). -->
+  <div class="dhw-step-content">
+  <div id="sq-step-materials" data-step="1" style="display:block">
   <div id="bom-summary">
     <div class="bom-stat"><span class="lbl">Camera Count</span><span class="val" id="bom-cam-count">0</span></div>
     <div class="bom-stat"><span class="lbl">Subtotal</span><span class="val" id="bom-subtotal">$0.00</span></div>
@@ -2927,6 +2940,19 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   <div id="bom-body">
     <!-- populated dynamically -->
   </div>
+  </div><!-- /#sq-step-materials -->
+  <div id="sq-step-labour" data-step="2" style="display:none">
+    <div class="dhw-step-placeholder">Labour breakdown — coming in M2.</div>
+  </div>
+  <div id="sq-step-summary" data-step="3" style="display:none">
+    <div class="dhw-step-placeholder">Quote summary — coming in M2.</div>
+  </div>
+  </div><!-- /.dhw-step-content -->
+  <!-- SQ-wizard M1: wizard nav row. Populated imperatively by
+       _sqRenderWizardNav(); reuses .dhw-wizard-nav layout
+       (justify-between with .dhw-nav-spacer). Back hidden on step 1;
+       Continue hidden on step 3 (final). -->
+  <div id="sq-wizard-nav" class="dhw-wizard-nav" style="padding:10px 16px 16px; display:flex; justify-content:space-between; align-items:center; gap:12px;"></div>
   </div><!-- /#bom-scroll-wrap -->
 </aside>
 
@@ -3391,6 +3417,20 @@ function getUnitPrice(sku, field){
   var item = book.items[sku];
   if(!item || typeof item !== 'object') return null;
   var val = item[field];
+  return (typeof val === 'number' && isFinite(val)) ? val : null;
+}
+
+// Returns the LIST price (msrp) for the given SKU, or null when the
+// pricing isn't loaded or the SKU isn't in the catalog. Independent
+// from getUnitPrice — mirrors its guard chain exactly so both helpers
+// behave identically at the call-graph level (same null shape, same
+// exact-key lookup, no normalization).
+function getListPrice(sku){
+  var book = getPricingBook();
+  if(!book || !book.items || typeof book.items !== 'object') return null;
+  var item = book.items[sku];
+  if(!item || typeof item !== 'object') return null;
+  var val = item.msrp;
   return (typeof val === 'number' && isFinite(val)) ? val : null;
 }
 
@@ -17251,12 +17291,81 @@ function exportCSV(){
 }
 
 // ─── BOM (Bill of Materials) ──────────────────────────────────────────────────
+// SQ-wizard M1: stepped modal (Materials / Labour / Summary). State lives
+// in _sqCurrentStep; per-step content lives in static DOM siblings
+// (#sq-step-materials, #sq-step-labour, #sq-step-summary) toggled by
+// inline display so input values + recalcBom-driven DOM survive nav.
+// Mirrors the HW wizard's _dhwCurrentStep / _DHW_STEP_LABELS pattern
+// but uses sq-scoped names so the two wizards don't collide.
+var _sqCurrentStep = 1;
+var _SQ_STEP_LABELS = ['Materials', 'Labour', 'Summary'];
+
+// Render the 3-step stepper into #sq-stepper-host. Reuses every dhw-*
+// class verbatim — no new stepper CSS authored this pass. Free
+// bidirectional nav: each step is a clickable button that jumps via
+// _sqGoToStep.
+function _sqRenderStepper(){
+  var host = document.getElementById('sq-stepper-host');
+  if(!host) return;
+  var parts = [];
+  for(var i = 1; i <= 3; i++){
+    var cls = 'dhw-step' + (i === _sqCurrentStep ? ' active' : '');
+    var labelHtml = escapeHtml(_SQ_STEP_LABELS[i-1]);
+    parts.push(
+      '<button class="' + cls + '" type="button" onclick="_sqGoToStep(' + i + ')" aria-label="Step ' + i + ': ' + labelHtml + '">' +
+        '<div class="dhw-step-dot">' + i + '</div>' +
+        '<div class="dhw-step-label">' + labelHtml + '</div>' +
+      '</button>'
+    );
+    if(i < 3) parts.push('<div class="dhw-step-connector" aria-hidden="true"></div>');
+  }
+  host.innerHTML = '<div class="dhw-stepper" role="navigation" aria-label="Security Quote wizard steps">' + parts.join('') + '</div>';
+}
+
+// Render the Back / Continue nav row into #sq-wizard-nav. Back is hidden
+// on step 1; Continue is hidden on step 3 (no Save — closing the modal
+// is the existing dismiss path, unchanged).
+function _sqRenderWizardNav(){
+  var nav = document.getElementById('sq-wizard-nav');
+  if(!nav) return;
+  var back = (_sqCurrentStep > 1)
+    ? '<button class="btn btn-dark" onclick="_sqStepBack()" style="background:#fff; color:var(--text); border:1px solid var(--border);">&larr; Back</button>'
+    : '';
+  var forward = (_sqCurrentStep < 3)
+    ? '<button class="btn btn-dark" onclick="_sqStepNext()">Continue &rarr;</button>'
+    : '';
+  nav.innerHTML = back + '<div class="dhw-nav-spacer" style="flex:1 1 auto;"></div>' + forward;
+}
+
+// Direct-jump step nav (stepper buttons). Toggles pane visibility,
+// re-renders stepper + nav. No markDirty — step nav is read-only.
+function _sqGoToStep(n){
+  if(typeof n !== 'number' || n < 1 || n > 3) return;
+  _sqCurrentStep = n;
+  var mat = document.getElementById('sq-step-materials');
+  var lab = document.getElementById('sq-step-labour');
+  var sum = document.getElementById('sq-step-summary');
+  if(mat) mat.style.display = (n === 1) ? 'block' : 'none';
+  if(lab) lab.style.display = (n === 2) ? 'block' : 'none';
+  if(sum) sum.style.display = (n === 3) ? 'block' : 'none';
+  _sqRenderStepper();
+  _sqRenderWizardNav();
+}
+function _sqStepBack(){ if(_sqCurrentStep > 1) _sqGoToStep(_sqCurrentStep - 1); }
+function _sqStepNext(){ if(_sqCurrentStep < 3) _sqGoToStep(_sqCurrentStep + 1); }
+
 function toggleBom(){
   bomOpen = !bomOpen;
   document.getElementById('bom-drawer').classList.toggle('open', bomOpen);
   document.getElementById('bom-backdrop').classList.toggle('show', bomOpen);
   document.getElementById('btn-bom').classList.toggle('active', bomOpen);
-  if(bomOpen) recalcBom();
+  if(bomOpen){
+    // SQ-wizard M1: paint the stepper + nav chrome on open. Materials
+    // step starts active by default (matches inline HTML defaults).
+    _sqRenderStepper();
+    _sqRenderWizardNav();
+    recalcBom();
+  }
 }
 
 function setTierFilter(t){
