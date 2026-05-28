@@ -441,6 +441,18 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 /* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
    shows the full 11-col grid via horizontal scroll instead of clipping. */
 #bom-body { overflow-x:auto; }
+/* SQ-wizard M2d: locked Qty cell on auto rows. Visually distinct from
+   the editable Cost input above (dotted underline + help cursor) and
+   distinct from the muted derived cells. Click pops the notice modal. */
+.bom-row .bom-cell-qty.locked {
+  cursor:help;
+  text-decoration:underline dotted #9ca3af;
+  text-underline-offset:3px;
+  user-select:none;
+}
+.bom-row .bom-cell-qty.locked:hover {
+  background:#f3f4f6;
+}
 /* SQ-wizard M2c: Tier Filter standalone block — sits at top of Materials
    step (extracted from the old #bom-summary container). Light surface +
    bottom rule so it reads as a control band above the rule strip. */
@@ -2864,6 +2876,20 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 <!-- Pricing Data Foundation M2: error modal for parse + validation failures.
      Reuses .big-modal styling. Body is populated dynamically by
      showPricingError(); localStorage is NOT mutated on failure. -->
+<!-- SQ-wizard M2d: qty-lock notice. Fires when the user clicks a locked
+     Qty cell on an auto-priced row. Single OK button; backdrop click
+     also dismisses. Mirrors the pricing-error-modal chrome (.big-modal
+     + .modal-box). No persistence — pops every click. -->
+<div id="sq-qty-lock-modal" class="big-modal" onclick="if(event.target===this) _sqCloseQtyLockNotice()">
+  <div class="modal-box" style="min-width:420px; max-width:520px;">
+    <h3>Quantity is set by the floor plan</h3>
+    <p style="margin:0 0 14px 0;">To change equipment quantity, add or remove devices from floorplans so drawings always match takeoffs.</p>
+    <div class="modal-actions">
+      <button class="btn btn-dark" onclick="_sqCloseQtyLockNotice()">OK</button>
+    </div>
+  </div>
+</div>
+
 <div id="pricing-error-modal" class="big-modal" onclick="if(event.target===this) closePricingErrorModal()">
   <div class="modal-box" style="min-width:480px;">
     <h3>Couldn't load pricing</h3>
@@ -18939,6 +18965,16 @@ function _sqResetPill(sectionId){
 // Sell derives from r.cost + r.list + section rule; Cost is editable
 // via the existing updateAutoRow (writes to bomAutoOverrides[key].unit
 // which the wrapper at computeAutoRows applies to BOTH r.unit and r.cost).
+//
+// SQ-wizard M2d — Qty cell on auto rows is LOCKED (read-only). Qty for
+// auto rows is derived from canvas placements (cameras, CMVR head-ends,
+// switches, AC devices, suites, etc.) — the source of truth lives on
+// the floor plan, not in the BOM. Clicking the locked cell shows the
+// _sqShowQtyLockNotice modal explaining how to change qty. The cell
+// carries the qty in textContent + a data-qty attribute so
+// _sqRecalcRowCells + recalcSummaryOnly continue to read it without
+// caring whether qty is an input or a span. Custom rows keep editable
+// Qty inputs (see _sqRenderCustomRow).
 function _sqRenderAutoRow(row, sectionId, rule){
   var sku  = (row.sku || '');
   var cost = (typeof row.cost === 'number') ? row.cost : 0;
@@ -18949,7 +18985,6 @@ function _sqRenderAutoRow(row, sectionId, rule){
   var qs   = qty * sell;
   var mar  = qs - qc;
   var gm   = qs > 0 ? (mar / qs) * 100 : null;
-  var qtyReadonly = (row.src === 'cameras') ? ' readonly' : '';
   var listCell = (list == null)
     ? '<div class="bom-cell muted bom-cell-list">—</div>'
     : '<div class="bom-cell bom-cell-list">' + _sqFmtMoney(list) + '</div>';
@@ -18959,13 +18994,27 @@ function _sqRenderAutoRow(row, sectionId, rule){
        +   listCell
        +   '<input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)">'
        +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
-       +   '<input type="number" data-field="qty" value="' + qty + '" step="0.25" min="0" onchange="updateAutoRow(this)"' + qtyReadonly + '>'
+       +   '<span class="bom-cell bom-cell-qty locked" data-field="qty" data-qty="' + qty + '" title="Quantity is set by the floor plan — click for details" onclick="_sqShowQtyLockNotice()">' + qty + '</span>'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
        +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(qs) + '</div>'
        +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(mar) + '</div>'
        +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(gm) + '</div>'
        +   '<div></div>'
        + '</div>';
+}
+
+// SQ-wizard M2d — Qty-lock notice. Shown when the user clicks a locked
+// Qty cell on an auto-priced row. Reuses the .big-modal / .modal-box
+// chrome from pricing-error-modal; markup at #sq-qty-lock-modal. No
+// persistence — fires every click. Backdrop click also dismisses (see
+// markup onclick). NO markDirty — read-only UI gesture.
+function _sqShowQtyLockNotice(){
+  var modal = document.getElementById('sq-qty-lock-modal');
+  if(modal) modal.classList.add('show');
+}
+function _sqCloseQtyLockNotice(){
+  var modal = document.getElementById('sq-qty-lock-modal');
+  if(modal) modal.classList.remove('show');
 }
 
 // SQ-wizard M2b — Custom-row renderer. User-typed line: Cost is the
@@ -19110,13 +19159,21 @@ computeAutoRows = function(){
       // through to r.cost (so deriveSell uses the user-set cost, not
       // the catalogue value). The override key 'unit' is preserved for
       // save-shape compatibility — it semantically means Cost.
+      //
+      // SQ-wizard M2d: qty override BYPASSED on auto rows. The UI no
+      // longer exposes a Qty input on auto rows (the locked Qty cell
+      // pops the _sqShowQtyLockNotice modal instead), so qty is
+      // exclusively driven by canvas placements. The override field
+      // .qty itself is preserved in the saved map for save-shape
+      // back-compat (full removal in M5); a leftover .qty on a
+      // pre-M2d project is now inert at read time.
       var ovKey = _normalizeBomKey(r.key);
       if(bomAutoOverrides[ovKey]){
         if(bomAutoOverrides[ovKey].unit !== undefined){
           r.unit = bomAutoOverrides[ovKey].unit;
           r.cost = bomAutoOverrides[ovKey].unit;
         }
-        if(bomAutoOverrides[ovKey].qty  !== undefined && r.src !== 'cameras') r.qty = bomAutoOverrides[ovKey].qty;
+        // .qty branch intentionally skipped — see SQ-wizard M2d comment above.
       }
     });
   });
@@ -19167,9 +19224,18 @@ function _sqRecalcRowCells(row){
   var rule = getSectionRule(sectionId);
   // Cost: read whichever input carries data-field='unit' on this row.
   var costInp = row.querySelector('input[data-field="unit"]');
-  var qtyInp  = row.querySelector('input[data-field="qty"]');
   var cost = costInp ? (parseFloat(costInp.value) || 0) : 0;
-  var qty  = qtyInp  ? (parseFloat(qtyInp.value)  || 0) : 0;
+  // SQ-wizard M2d: Qty source differs by row variant. Auto rows render
+  // qty as a read-only <span class="bom-cell-qty locked" data-qty="N">;
+  // custom rows still emit an <input data-field="qty">. The selector
+  // [data-field="qty"] matches both shapes; .value works for inputs,
+  // and dataset.qty / textContent works for spans.
+  var qtyEl = row.querySelector('[data-field="qty"]');
+  var qty = 0;
+  if(qtyEl){
+    if(qtyEl.tagName === 'INPUT') qty = parseFloat(qtyEl.value) || 0;
+    else                          qty = parseFloat(qtyEl.dataset.qty || qtyEl.textContent) || 0;
+  }
   var listStr = row.dataset.list;
   var list = (listStr === '' || listStr == null) ? null : parseFloat(listStr);
   if(list != null && !isFinite(list)) list = null;
