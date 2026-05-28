@@ -1,6 +1,6 @@
 # Surveillance / Door Hardware Markup Tool — Work Queue
 
-_Canonical manually-maintained queue. Last regenerated after the CMVR head-end + accessories-reskin + single-open-accordion arc merged to main (`918a843`, squashes branch commit `afe6b40`)._
+_Canonical manually-maintained queue. Last regenerated after Switch Topology Phase 1 merged to main (`ec61a69`, PR #2). Previous merge: CMVR/accessories/accordion arc (`918a843`, PR #1)._
 
 ---
 
@@ -13,51 +13,46 @@ _Canonical manually-maintained queue. Last regenerated after the CMVR head-end +
 
 ---
 
-## 🟡 IMMEDIATE GIT — sync local main
+## JUST SHIPPED (on main)
 
-- **Merged to main via PR #1** (`918a843`). Pull it down locally before any new work:
-  ```
-  git checkout main && git pull
-  ```
-  Branch `cmvr-headend-models` deleted on origin. Switch-Phase-1 branches off this updated main (sees v22).
-
----
-
-## JUST SHIPPED (on main via PR #1, merge `918a843`)
-
-- **CMVR head-end models** — two-tier picker, per-sku BOM roll-up, `headends[*].sku`, save v21→v22, generic auto-nvr/auto-hdd fallback for legacy `sku:null`.
-- **Accessories reskin to the 3-tier system** — Camera Accessories Tier-2 (CMVR · Network · Accessories) as `.tier2-tile` icon tiles matching Camera Styles; Tier-3 CMVR models as text-only `.tier3-tile` code tiles in the shared 5-col grid (no per-module column override). Generic-placement DROPPED (head-end requires a model; legacy `sku:null` read-paths kept). Network/Accessories are "coming soon" stubs.
-- **Head-end right panel (M5a)** — `data-mode="headend"` shows name · capacity · PoE · AI · price on arm. Capacity/price moved OFF the tile.
-- **Single-open accordion** — Tier-3 hidden until its Tier-2 clicked; only one Tier-2 open/armed across the camera pane; mutual exclusivity camera-style XOR CMVR; re-click collapses. Visibility centralized in sole writer `_syncDrilldownVisibility` (cameras + CMVR grids + the `#lp-bc2` "Camera Models" breadcrumb-header in lockstep). Cold-start arms nothing (no invisible default).
-- **Tier-2 active styling** — new `.active-accessory` variant (blue outline + light-blue fill), parallel to per-style variants; AC's solid-blue `.active` left untouched. Accessories rows inset 13px to align with camera styles.
-
-## JUST SHIPPED (earlier, on main)
-
-- Camera SKU backfill (`dac382a`), Pricing M2 SKU→price lookup (`aa1b5619`), Pricing Data Foundation, CLAUDE.md scope regen (`d2c23ec`).
+- **Switch Topology Phase 1** — `ec61a69` (PR #2). 6 EN-SW* switches as `SWITCH_CATALOG`, Network Tier-2 → Tier-3 text tiles, `switches[]` placement array (replaces legacy P8 map system; legacy placements drop silently with `console.warn`), canvas glyph reuses Tier-2 silhouette, BOM Network section rolls up by SKU at book prices, generic auto-switch fallback when zero placed. Save v22→v23. `switches=[]` reset added to `loadImage` + `loadPDF` (QUEUE-flagged gotcha fix). Page-delete cascade extended.
+- **CMVR head-end + accessories 3-tier reskin + accordion** — `918a843` (PR #1).
+- **Earlier:** Camera SKU backfill (`dac382a`), Pricing M2 SKU→price lookup (`aa1b5619`), Pricing Data Foundation, CLAUDE.md scope regen (`d2c23ec`).
 
 ---
 
 ## 🔴 IMMEDIATE (feature) — do before client-facing work
 
-- **Restore Load/Clear Pricing File-menu buttons.** `btn-pricing-load` / `btn-pricing-clear` absent from File-menu markup (handlers `openPricingFilePicker` / `confirmClearPricing` orphaned). Pricing works end-to-end but is UI-unreachable on fresh localStorage. Markup-only restore. Branch `fix-pricing-menu-restore`. **This is the next-session top item.**
+- **Restore Load/Clear Pricing File-menu buttons.** `btn-pricing-load` / `btn-pricing-clear` absent from File-menu markup (handlers `openPricingFilePicker` / `confirmClearPricing` orphaned). Pricing works end-to-end but is UI-unreachable on fresh localStorage. Markup-only restore. Branch `fix-pricing-menu-restore`.
+- **`gh auth login`** — run once locally so future PRs open from CC via `gh pr create` instead of the browser flow. One-time setup.
 
 ---
 
 ## 🔴 $0-COVER DEPENDENCY — partially resolved
 
-- Cover GRAND TOTAL renders real totals for priced SKUs (Brivo AC + EE cameras + CMVRs once loaded). Still $0 for Doorbird `DB-*`, parcel placeholder. Resolved when those price out or the cover-redesign hides $0.
+- Cover GRAND TOTAL renders real totals for priced SKUs (Brivo AC + EE cameras + CMVRs + switches once loaded). Still $0 for Doorbird `DB-*`, parcel placeholder. Resolved when those price out or the cover-redesign hides $0.
 
 ---
 
 ## NEXT UP
 
-### Direct follow-ups to the CMVR arc
-- **M5b — click-to-select a placed head-end.** Canvas-click a placed head-end → opens the headend right panel for its sku + Delete. Net-new selection plumbing (~5 sites: state var, selectHeadend, canvas-click branch, delete-key hook, closeRightPanel clear). Deferred out of the reskin pass; own browser gate.
-- **Switch Topology — Phase 1 (placement + price).** Branch off main AFTER the merge (sees v22, bumps v22→v23). Placeable network switches (`SWITCH_CATALOG`, 6 SW SKUs) mirroring the CMVR/acDevices lifecycle: Tier-2 NETWORK tile → Tier-3 switch codes → place → `switches[]` array → BOM roll-up at book price. Build Tier-3 as text-tiles from the start (no reskin). NON-GOALS: cabling, riser wiring, PoE-budget — all Phase 2.
-- **Switch Topology — Phase 2 (cabling).** Camera→switch→CMVR cabling, riser wiring of placed switches, PoE-budget validation. Merges with Manual Cable Routing. The deferred-half the Phase-1 non-goals point to.
+### Switch Topology Phase 2
+- **Unified-select pass** for placed switches: hit-test (`switchAt`), click-to-select, drag-to-move, delete-key removal. The `acDevices` lifecycle is the mirror target. Likely combines with click-to-select for placed head-ends (the M5b deferred from the CMVR pass) into one "selectable infrastructure" pass.
+- **Cabling:** camera → switch → CMVR cable runs. Couples to Manual Cable Routing.
+- **Riser:** placed switches surface on the riser diagram (currently camera-count-derived only).
+- **PoE budget** validation: warn when placed cameras' PoE draw on a switch exceeds its `poeW`.
+
+### Security Quote modal restructure (parking-lot — needs scoping)
+- User wants the Security Quote modal "more like the hardware wizard." Open dimensions to pick (one or more): multi-step staged layout / same chrome+frame+footer / section-collapse / override-edit flow / export CTA placement. **Pending: which dimensions?** Don't start on the same file as any other in-flight pass — overlaps `networkRows` and BOM-adjacent code.
+
+### Sticky-arm placement mode (project-wide UX decision)
+- Today placement is one-shot per arm (camera, reader, head-end, switch). User flagged this as friction for switches. Decision: should arming persist across placements until explicit cancel (Esc / clicking same tile to disarm)? Project-wide, not switch-specific — affects every placeable. **Pending decision.**
+
+### Direct follow-ups still deferred
+- **M5b — click-to-select a placed head-end.** ~5 sites: state var, `selectHeadend`, canvas branch, delete hook, `closeRightPanel` clear. Merge with Switch Phase 2 unified-select pass.
 
 ### Pricing / data
-- **Converter `-0` reconcile.** The loaded `pricingBook.json` (1083-item everything-dump) has all CMVRs, but CC's canonical `build_pricing_json.py` likely still carries the `-0` SKU drop that nukes all 18 CMVRs + ~31 hardware rows. Fix the suffix regex to `-(1|12|36|60)$` (let the description filter catch Setup/Complete) BEFORE the next book refresh, or a regen silently re-breaks CMVR pricing.
+- **Converter `-0` reconcile.** CC's `build_pricing_json.py` likely still carries the `-0` SKU drop that nukes 18 CMVRs + ~31 hardware rows. Fix suffix regex to `-(1|12|36|60)$` BEFORE the next book refresh, or a regen silently re-breaks CMVR/switch pricing.
 - **SKU coverage gaps:** `cred-fob` credentials (false-miss), Doorbird `DB-*` + `LUX-PCL-PLACEHOLDER` (no source), 8 Brivo SKUs absent from reseller book.
 
 ### SKU coverage — known markers (not bugs)
@@ -78,40 +73,58 @@ _Canonical manually-maintained queue. Last regenerated after the CMVR head-end +
 - **Camera Details Panel Redesign** — sliders w/ two-way canvas sync.
 - **PDF scale-marker auto-recognition** — select scale bar → calibration. OCR lib TBD.
 - **Catalog / rules** — Rules Page editor; LuxerOne / Doorbird / Hanwha SKU imports.
-- **Accessories auto-match** — the ACCESSORIES Tier-2 stub: auto-match junction box / SD card to placed camera model (Brivo descriptions already list compatible models, e.g. BX005 → DM08/DD07/DD08/DD10/DD11 — derivable).
+- **Accessories Tier-2 stub fill** — auto-match junction box / SD card to placed camera model (Brivo descriptions list compatible models, e.g. BX005 → DM08/DD07/DD08/DD10/DD11). Mirror pattern from Switch Phase 1 but accessory-quantity model (no canvas placement for SFP/modem/junction box).
+- **Network Tier-3 — modem + SFP + encoder** (parked from this session). User scoped out of Phase 1; revisit as accessory-quantity catalog vs additional placeables.
 
 ---
 
 ## HOUSEKEEPING
 
-- **Over-capacity HDD TODO** — when ≥1 CMVR placed AND required retention > Σ usable TB across the fleet, emit expansion-drive rows. TODO left at the recordingRows suppression site; drive-math deliberately not faked.
-- **Dead-code sweep** — `.type-btn-cmvr.active` (line ~1432, binds a pre-reskin class), `.lp-breadcrumb`, `computeAutoCableRows()`, `toggleCmvrModelList` comment ref, orphaned PNG assets.
-- **CMVR glyph `currentColor` inconsistency** — CMVR tile SVG has hardcoded navy rect + white NVR text (doesn't tint via `currentColor` like Network/Accessories glyphs). Cosmetic; fold into an icon pass if the active-state family looks off.
-- **Breadcrumb-as-tier3-header** — `#lp-bc2` doubles as the "Camera Models" header. When the camera pane adopts the static `<Mode> <Tier-role>` headers the design rule calls for, revisit this coupling.
-- **`switches`/`headends` don't reset on raw PDF re-import** — reset in loadPDF (Phase-1 switch pass must add `switches=[]` here).
-- **`source-data/pricing-template.json` recurring deletion** — Windows editor/sync churn re-deletes it (happened twice). `git checkout` to restore; find the deleter if it recurs. Same family as the `.gitignore` UTF-16 re-encode.
+- **Headends-on-raw-reimport reset leak** — same bug family as the switches gotcha just fixed; not in Switch Phase 1 scope. Add `headends = {}` to `loadImage` + `loadPDF` resets. Trivial; own micro-pass.
+- **Over-capacity HDD TODO** — when ≥1 CMVR placed AND required retention > Σ usable TB across the fleet, emit expansion-drive rows. TODO left at the recordingRows suppression site.
+- **Dead-code sweep** — `.type-btn-cmvr.active` (pre-reskin class), `.lp-breadcrumb`, `computeAutoCableRows()`, `toggleCmvrModelList` comment ref, orphaned PNG assets, and post-Switch-Phase-1: any remaining `tb-switch` markup / `switchMode` doc comments referencing the old map.
+- **CMVR glyph `currentColor` inconsistency** — CMVR tile SVG has hardcoded navy rect + white NVR text; doesn't tint via `currentColor` like Network/Accessories glyphs. Cosmetic.
+- **Switch canvas-draw silhouette parity** — Phase 1 reused the Tier-2 tile SVG path; verify at next visual review that placed switches read as the same silhouette family as the Tier-2 tile icon.
+- **Breadcrumb-as-tier3-header** — `#lp-bc2` doubles as the "Camera Models" header. Revisit when the camera pane adopts static `<Mode> <Tier-role>` headers per the design rule.
+- **OneDrive-as-repo-home** — likely cause of recurring `source-data/pricing-template.json` deletion + `.gitignore` UTF-16 re-encode. Move repo outside the synced folder when convenient.
+- **`source-data/pricing-template.json` recurring deletion** — `git checkout` to restore if it happens again.
 - **Confirm `source-data/` ignore status** — fresh clone needs the price book; Load Pricing button (once restored) is the only way in.
 - **Hard-reload after every CC save** before browser testing (localhost caches the HTML).
 - **Centralize `IOT_DEFAULT_FLAGS`** — dup'd in `onIotDeviceToggle` + `applyProjectState`.
 - **DHW BOM override re-apply hook** — `dhwBomRows()` not re-decorated by `bomAutoOverrides` on reload (verify vs M2).
 - **Defer `bom*` code-symbol rename.**
 - **Install LibreOffice** on Windows — kills the docs-PDF regen caveat.
-- **User guide** — wizard, W7/W8, Hardware Module, BOM two-tier, customer BOM page, pricing load/use, CMVR/accessories 3-tier + accordion all undocumented.
+- **User guide** — wizard, W7/W8, Hardware Module, BOM two-tier, customer BOM page, pricing load/use, CMVR + Switch Phase 1 3-tier + accordion all undocumented.
 
 ---
 
-## PROJECT-INSTRUCTION / DESIGN-RULE UPDATES (this session — apply to project settings)
+## PROJECT-INSTRUCTION / DESIGN-RULE STATE
 
-- Universal 3-tier left-pane taxonomy (Tier 1 icon / Tier 2 icon `.tier2-tile` / Tier 3 text-only `.tier3-tile` in shared 5-col grid, no per-module column override).
-- Tier-certainty rule: <80% sure of the tier mapping → STOP and ask.
-- Specifics live in the right panel, not on tiles. `code:` field per catalog entry (no regex-derived labels).
-- Single-open accordion interaction rule (one Tier-2 open/armed at a time; progressive Tier-3 disclosure; nav-only, no markDirty).
-- _Paste the latest `PROJECT_INSTRUCTIONS.md` from this session into project settings — it supersedes all intermediate versions._
+Current authoritative `PROJECT_INSTRUCTIONS.md` carries:
+- Universal 3-tier left-pane taxonomy (Tier 1 icon / Tier 2 icon `.tier2-tile` / Tier 3 text-only `.tier3-tile` in shared 5-col grid, no per-module override).
+- Tier-certainty rule (<80% sure → STOP and ask).
+- Specifics in right panel, not on tiles. `code:` field per catalog entry.
+- Active-tile treatment (light fill + colored outline + colored glyph/label; per-group `.active-*` variant; solid-fill `.active` reserved for AC).
+- Alignment/inset rule (all tier rows share container inset).
+- Single-open accordion (progressive Tier-3 disclosure, one Tier-2 open across pane, header hides with grid, single-owner visibility writer, cold-start arms nothing).
+- _Paste latest `PROJECT_INSTRUCTIONS.md` into project settings — supersedes intermediates._
+
+---
+
+## GIT WORKFLOW
+
+- Direct push to main is **blocked by harness**. All merges via PR.
+- Until `gh auth login` is run locally: PR via browser at `https://github.com/larsjohnston/surveillance-markup/pull/new/<branch>`.
+- After `gh auth login`: CC opens PRs via `gh pr create`.
 
 ---
 
 ## RESOLVED (removed from deferred)
-- ~~CMVR head-end models + accessories reskin + head-end panel + accordion~~ — merged to main `918a843` (PR #1).
+- ~~Switch Topology Phase 1~~ — merged to main `ec61a69` (PR #2).
+- ~~CMVR head-end + accessories reskin + head-end panel + accordion~~ — merged to main `918a843` (PR #1).
 - ~~Camera SKU mapping (een-* → EN-*)~~ — `dac382a`.
 - ~~Pricing M2 SKU→price lookup~~ — `aa1b5619`.
+- ~~Switch placement scoping decision~~ — decided + shipped as Phase 1 (placement) over Scope-A (BOM-pricing only).
+- ~~`switches`-on-raw-reimport reset leak~~ — fixed in Switch Phase 1.
+- ~~Legacy map-based switches system~~ — demolished in Switch Phase 1 (M3.5).
 - ~~BOM two-tier template~~ · ~~Centered BOM modal~~ · ~~Customer BOM export page~~.
