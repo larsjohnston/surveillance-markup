@@ -18198,8 +18198,19 @@ var BOM_TEMPLATE = {
     // M8: titles stored as PLAIN text (was HTML-entity encoded pre-M8). The
     // recalcBom on-screen renderer wraps them with escapeHtml(); the PDF +
     // CSV consume the plain form directly.
-    // Restructure-v2 M2: rebuilt to 5-major / 7-sub structure. All titles
-    // use "&" (ampersand), never " and ".
+    // SQ-wizard M2a: tier layout adjusted per pricing wizard structure.
+    //   - 2.3 label: "Intercom" (was "Intercoms").
+    //   - 3.1 label: "Parcel Lockers" (was "Smart Parcel & Delivery").
+    //   - 3 group label: "Parcel & Mailboxes" (was "Parcel Lockers & Mailboxes").
+    //   - 4.1 label: "Suites" (was "Smart Suites"). New 4.2 "IoT" subsection
+    //     under group 4 — IoT auto-sa-iot-* rows split off from 4.1.
+    //   - Group 5 collapsed: was "5. Door Hardware" with 5.1/5.2/5.3/unclassified
+    //     subs. DH now lives in its own wizard only — SQ injection removed
+    //     in computeBomTree below. Group 5 relabeled to "Other / Accessories"
+    //     with a single catch-all sub for un-sectioned custom rows. The
+    //     prior "other" tier-1 + the legacy "unclassified" id are folded
+    //     into this catch-all so existing `other`-keyed custom-row routing
+    //     in _routeCustom still resolves.
     { id:'1', title:'1. Cameras & Networking', subs: [
       { id:'1.1', title:'1.1 Cameras & Surveillance' },
       { id:'1.2', title:'1.2 Networking' }
@@ -18207,23 +18218,18 @@ var BOM_TEMPLATE = {
     { id:'2', title:'2. Access Control & Intercom', subs: [
       { id:'2.1', title:'2.1 Access Control' },
       { id:'2.2', title:'2.2 Overhead Door Control' },
-      { id:'2.3', title:'2.3 Intercoms' }
+      { id:'2.3', title:'2.3 Intercom' }
     ]},
-    { id:'3', title:'3. Parcel Lockers & Mailboxes', subs: [
-      { id:'3.1', title:'3.1 Smart Parcel & Delivery' },
+    { id:'3', title:'3. Parcel & Mailboxes', subs: [
+      { id:'3.1', title:'3.1 Parcel Lockers' },
       { id:'3.2', title:'3.2 Mailboxes' }
     ]},
     { id:'4', title:'4. Smart Suites', subs: [
-      { id:'4.1', title:'4.1 Smart Suites' }
+      { id:'4.1', title:'4.1 Suites' },
+      { id:'4.2', title:'4.2 IoT' }
     ]},
-    { id:'5', title:'5. Door Hardware', subs: [
-      { id:'5.1',          title:'5.1 Security Hardware' },
-      { id:'5.2',          title:'5.2 Door Hardware' },
-      { id:'5.3',          title:'5.3 Key System' },
-      { id:'unclassified', title:'Unclassified — needs review' }
-    ]},
-    { id:'other', title:'Other', subs: [
-      { id:'other', title:'Other / Accessories' }
+    { id:'5', title:'5. Other / Accessories', subs: [
+      { id:'other', title:'5.1 Other / Accessories' }
     ]}
   ]
 };
@@ -18282,10 +18288,7 @@ function computeBomTree(){
     '3.1':          { auto: [], custom: [] },
     '3.2':          { auto: [], custom: [] },
     '4.1':          { auto: [], custom: [] },
-    '5.1':          { auto: [], custom: [] },
-    '5.2':          { auto: [], custom: [] },
-    '5.3':          { auto: [], custom: [] },
-    'unclassified': { auto: [], custom: [] },
+    '4.2':          { auto: [], custom: [] },  // SQ-wizard M2a: IoT split
     'other':        { auto: [], custom: [] }
   };
 
@@ -18344,7 +18347,8 @@ function computeBomTree(){
   });
 
   // §SA split: intercom → 2.3 (with guard); parcel → 3.1; mailbox → 3.2;
-  // IoT → 4.1; anything else → 'other' (defensive).
+  // IoT → 4.2 (SQ-wizard M2a — split off from 4.1 Suites);
+  // anything else → 'other' (defensive).
   auto.smartApartment.forEach(function(r){
     var k = r.key || '';
     if(k.indexOf('auto-sa-intercom-') === 0){
@@ -18353,25 +18357,15 @@ function computeBomTree(){
     }
     else if(k.indexOf('auto-sa-parcel-')   === 0) buckets['3.1'].auto.push(r);
     else if(k.indexOf('auto-sa-mailbox-')  === 0) buckets['3.2'].auto.push(r);
-    else if(k.indexOf('auto-sa-iot-')      === 0) buckets['4.1'].auto.push(r);
+    else if(k.indexOf('auto-sa-iot-')      === 0) buckets['4.2'].auto.push(r);
     else                                          buckets['other'].auto.push(r);
   });
 
   auto.other.forEach(function(r){ buckets['other'].auto.push(r); });
 
-  // ── Door Hardware §5 routing (M6) ─────────────────────────────────
-  // Pulls from doorHardware.importedTakeoff via dhwBomRows(), which
-  // applies the centralized dhwClassifyLine() and skips W7-excluded
-  // matchKeys. Unclassified lines never silently drop — they surface
-  // under §5 "Unclassified — needs review" so the integrator can extend
-  // DHW_CLASSIFIER_RULES rather than lose visibility. BOM §5 renders
-  // independent of projectInfo.proposalSections.hardware (which gates
-  // the customer-facing Hardware Schedule page only — different doc).
-  var dhRows = dhwBomRows();
-  dhRows['5.1'].forEach(function(r){ buckets['5.1'].auto.push(r); });
-  dhRows['5.2'].forEach(function(r){ buckets['5.2'].auto.push(r); });
-  dhRows['5.3'].forEach(function(r){ buckets['5.3'].auto.push(r); });
-  dhRows['unclassified'].forEach(function(r){ buckets['unclassified'].auto.push(r); });
+  // SQ-wizard M2a: Door Hardware §5 injection REMOVED — DH lives in its
+  // own wizard (renderDoorHardwareModal). dhwBomRows() itself is untouched
+  // and remains callable from any future SQ-independent consumer.
 
   // ── Custom-row routing ────────────────────────────────────────────
   function _routeCustom(secKey, bucketId){
@@ -18557,6 +18551,43 @@ function recalcBom(){
 // Holds user-overridden unit prices for auto-rows (qty for some)
 var bomAutoOverrides = {}; // key -> { unit, qty }
 
+// SQ-wizard M2a — pricing-rule state (NOT persisted this pass; M5 wires
+// save/load). Project default plus a sparse per-section override map.
+// `mode` is one of: 'markup' (Sell = Cost × (1+v/100)) or 'discount'
+// (Sell = List × (1−v/100)). value is the percentage as a plain number
+// (e.g. 40 means 40%). getSectionRule + deriveSell are pure helpers —
+// no DOM, no state mutation — safe to call any time.
+var bomPricingRule  = { mode: 'markup', value: 40 };
+var bomSectionRules = {};
+
+// Resolve the rule for a section: per-section override wins, else the
+// project default. Returns the SAME object reference as the underlying
+// state (caller must not mutate in place).
+function getSectionRule(sectionId){
+  return bomSectionRules[sectionId] || bomPricingRule;
+}
+
+// Pure derivation: Sell from cost/list + rule. Handles a missing list
+// (e.g. custom rows, catalog rows whose pricing book lacks msrp) by
+// falling back to cost-markup math under both modes, so the function
+// never returns NaN. Inputs coerced via Number(); any non-finite input
+// is treated as 0.
+function deriveSell(cost, list, rule){
+  var c = Number(cost);
+  if(!isFinite(c)) c = 0;
+  var l = (list == null) ? null : Number(list);
+  if(l != null && !isFinite(l)) l = null;
+  var v = Number(rule && rule.value);
+  if(!isFinite(v)) v = 0;
+  if(rule && rule.mode === 'discount'){
+    if(l != null) return l * (1 - v / 100);
+    // List missing: fall back to cost-markup so the row still prices.
+    return c * (1 + v / 100);
+  }
+  // Default + 'markup'.
+  return c * (1 + v / 100);
+}
+
 function updateAutoRow(input){
   var row = input.closest('.bom-row');
   // Pricing M4 (Fix 2): normalize the override key so a user-set price on
@@ -18579,6 +18610,12 @@ function updateAutoRow(input){
 // localStorage JSON on every call (108 KB book × N rows = visible lag).
 // Truthy-hit only: r.unit stays 0 on miss (price-pending). SKU derived
 // via bomRowSku(r).sku so the M2 OH-strip applies to flagged AC rows.
+//
+// SQ-wizard M2a: attach r.cost (number || 0) and r.list (number || null)
+// per auto row, alongside the existing r.unit assignment. Direct _items
+// access kept for perf (see comment above). r.cost mirrors r.unit (the
+// catalogue unit_cost); r.list is msrp (null when missing). Sell column
+// (2b) will derive from these + the section pricing rule.
 var origCompute = computeAutoRows;
 computeAutoRows = function(){
   var rows = origCompute();
@@ -18590,8 +18627,16 @@ computeAutoRows = function(){
       if(_items){
         var _sku = bomRowSku(r).sku;
         var _it  = _sku ? _items[_sku] : null;
-        var _p   = (_it && typeof _it.unit_cost === 'number' && isFinite(_it.unit_cost)) ? _it.unit_cost : null;
-        if(_p) r.unit = _p;
+        var _cost = (_it && typeof _it.unit_cost === 'number' && isFinite(_it.unit_cost)) ? _it.unit_cost : 0;
+        var _list = (_it && typeof _it.msrp      === 'number' && isFinite(_it.msrp))      ? _it.msrp      : null;
+        if(_cost) r.unit = _cost;
+        r.cost = _cost;
+        r.list = _list;
+      } else {
+        // No pricing book loaded: cost/list still attached so downstream
+        // consumers (2b Sell derivation) don't have to feature-detect.
+        r.cost = 0;
+        r.list = null;
       }
       // Pricing M4 (Fix 2): look up the override under the normalized
       // key so a flagged AC row and its unflagged sibling pick up the
