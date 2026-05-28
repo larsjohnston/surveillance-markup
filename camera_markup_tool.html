@@ -3093,9 +3093,19 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
   </div><!-- /#sq-step-materials -->
   <div id="sq-step-labour" data-step="2" style="display:none">
-    <div class="dhw-step-placeholder">Labour breakdown — coming in M2.</div>
+    <!-- SQ-wizard M3: labour body. Populated imperatively by recalcLabour()
+         on every recalcBom + on labour rule/qty edits. Renders the
+         default rule strip (with Supply-only toggle) at top, per-section
+         blocks with rule pills + 10-col rows + section subtotals, and a
+         static LABOUR SUBTOTAL footer at the end. Empty when no rows. -->
+    <div id="sq-labour-body"></div>
   </div>
   <div id="sq-step-summary" data-step="3" style="display:none">
+    <!-- SQ-wizard M3: Supply-only badge host. Populated by
+         _sqRenderSupplyOnlyBadge() — empty when bomLabourSupplyOnly is
+         false; renders an amber notice when true. Sits above the counts
+         grid so it reads as a top-level state flag. -->
+    <div id="sq-summary-supply-only-badge"></div>
     <!-- SQ-wizard M2c: Counts grid relocated from Materials. Same .bom-stat
          tiles + same ids — recalcBom writes to them unchanged. Subtotal /
          Margin / Tax / Grand-Total tiles + Tier Filter were extracted (the
@@ -14844,6 +14854,19 @@ function applyProjectState(data){
   }
   if(data.bom){
     if(data.bom.customLines) bomCustomLines = data.bom.customLines;
+    // SQ-wizard M3: backfill stable id on any legacy custom line missing
+    // it. Pre-M3 saves stored lines as {desc,qty,unit} only. New writes
+    // include {id,desc,qty,unit}. Backfilling at load is additive +
+    // idempotent — once minted the id round-trips through future saves.
+    Object.keys(bomCustomLines).forEach(function(sec){
+      if(Array.isArray(bomCustomLines[sec])){
+        bomCustomLines[sec].forEach(function(row){
+          if(typeof row.id !== 'string' || !row.id){
+            row.id = 'cust-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+          }
+        });
+      }
+    });
     // Pass N M3: backfill the ACCESS CONTROL key when loading a save
     // predating Pass N (the wholesale assignment above drops keys the
     // saved object didn't have). Other sections were present in earlier
@@ -18751,15 +18774,51 @@ function recalcBom(){
 
   document.getElementById('bom-body').innerHTML = html;
 
+  // SQ-wizard M3: materials rendering done — repaint labour so a
+  // materials Qty/rule edit propagates through to the labour seed +
+  // section + footer. Supply-only badge in Summary also re-syncs.
+  if(typeof recalcLabour === 'function') recalcLabour();
+  if(typeof _sqRenderSupplyOnlyBadge === 'function') _sqRenderSupplyOnlyBadge();
+
   // Summary tiles. SQ-wizard M2b: global Margin is hidden in the
   // wizard UI but its computation lives on for PDF/CSV/cover until M4/M5
   // wholesale removal. recalcBom's #bom-margin-amt write is forced to 0
   // so the (now-hidden) tile reflects the wizard's "Sell already
   // includes margin" semantics; the input value at #bom-margin-pct is
   // preserved untouched for save/load round-trip.
-  var subtotal = grandQSell;   // on-screen subtotal = Sell total (was Cost total).
-  var marginAmt = 0;           // see comment above.
-  var afterMargin = subtotal;  // == grandQSell.
+  //
+  // SQ-wizard M3: the materials grandQSell is the materials portion;
+  // recalcSummaryOnly (called below indirectly by users editing rows)
+  // sums materials + labour. For the initial paint we compute the
+  // labour Sell off the same buckets so the tiles render correctly
+  // without waiting for a DOM walk.
+  var labourSell = 0;
+  if(!bomLabourSupplyOnly){
+    BOM_TEMPLATE.tiers.forEach(function(tier){
+      tier.subs.forEach(function(sub){
+        var b = buckets[sub.id];
+        if(!b) return;
+        b.auto.forEach(function(r){
+          if(r.warn) return;
+          var lineKey = r.key || '';
+          var u = _sqLabourUnit(getLabourRule(sub.id, lineKey));
+          var matQty = (typeof r.qty === 'number') ? r.qty : 0;
+          var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
+          labourSell += qty * u.sell;
+        });
+        b.custom.forEach(function(cust){
+          var lineKey = (cust.line && cust.line.id) || '';
+          var u = _sqLabourUnit(getLabourRule(sub.id, lineKey));
+          var matQty = (cust.line && typeof cust.line.qty === 'number') ? cust.line.qty : 0;
+          var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
+          labourSell += qty * u.sell;
+        });
+      });
+    });
+  }
+  var subtotal = grandQSell + labourSell;   // SQ-wizard M3: materials Sell + labour Sell.
+  var marginAmt = 0;                        // see comment above.
+  var afterMargin = subtotal;
   var taxAmt = afterMargin * taxPct / 100;
   var grand = afterMargin + taxAmt;
 
@@ -18839,11 +18898,54 @@ var bomAutoOverrides = {}; // key -> { unit, qty }
 var bomPricingRule  = { mode: 'markup', value: 40 };
 var bomSectionRules = {};
 
+// SQ-wizard M3 — Labour state. Project default + sparse per-section +
+// sparse per-line override maps. Supply-only flag zeroes labour totals
+// while leaving the rows + rule UI readable. NOT persisted this pass —
+// M5 wires save/load via bom.config.labour*.
+//
+//   Resolution priority (per row): line > section > project default.
+//   Rule shape varies by mode:
+//     Hourly : { mode:'hourly', costRate, sellRate }  (rate per hour)
+//     Flat   : { mode:'flat',   cost,     sell     }  (per unit)
+//   Line keys: r.key for auto rows; cust.line.id for custom rows.
+var bomLabourRule         = { mode: 'hourly', costRate: 0, sellRate: 0 };
+var bomLabourSectionRules = {};
+var bomLabourLineRules    = {};
+var bomLabourSupplyOnly   = false;
+
 // Resolve the rule for a section: per-section override wins, else the
 // project default. Returns the SAME object reference as the underlying
 // state (caller must not mutate in place).
 function getSectionRule(sectionId){
   return bomSectionRules[sectionId] || bomPricingRule;
+}
+
+// SQ-wizard M3 — Labour rule resolver. Resolution priority:
+//   line > section > project default.
+// lineKey is the auto row's r.key (for catalog/auto rows) OR the custom
+// row's cust.line.id (for custom rows). Returns the SAME object
+// reference as the underlying state — caller must not mutate.
+function getLabourRule(sectionId, lineKey){
+  if(lineKey && bomLabourLineRules[lineKey]) return bomLabourLineRules[lineKey];
+  if(sectionId && bomLabourSectionRules[sectionId]) return bomLabourSectionRules[sectionId];
+  return bomLabourRule;
+}
+
+// SQ-wizard M3 — Labour unit-price extractor. Returns {cost, sell} per
+// unit, where "unit" semantics depend on mode:
+//   hourly : per HOUR (qty = hours)
+//   flat   : per UNIT (qty = units of the material row)
+// Pure function — no DOM, no state. Defensive Number() coercion so a
+// half-typed input field doesn't propagate NaN through the row math.
+function _sqLabourUnit(rule){
+  if(rule && rule.mode === 'flat'){
+    var fc = Number(rule.cost); if(!isFinite(fc)) fc = 0;
+    var fs = Number(rule.sell); if(!isFinite(fs)) fs = 0;
+    return { cost: fc, sell: fs };
+  }
+  var hc = Number(rule && rule.costRate); if(!isFinite(hc)) hc = 0;
+  var hs = Number(rule && rule.sellRate); if(!isFinite(hs)) hs = 0;
+  return { cost: hc, sell: hs };
 }
 
 // Pure derivation: Sell from cost/list + rule. Handles a missing list
@@ -19133,6 +19235,426 @@ function _sqRenderGrandSubtotal(sums){
        + '</div>';
 }
 
+// ─── SQ-wizard M3 — Labour render + handlers ─────────────────────────────────
+// Labour step mirrors MATERIALS' state pattern (project default rule +
+// per-section override + per-line override). Layout differs slightly:
+// 10-col row (no List column — labour has no MSRP equivalent) + a
+// trailing pill cell for the per-line rule. Sticky LABOUR SUBTOTAL
+// footer is deferred to M4 polish; M3 emits a static .bom-row.grand-
+// subtotal at the end of #sq-labour-body.
+
+// Render the project default labour rule strip. Supply-only toggle on
+// the LEFT (a checkbox + label badge) so it's the first thing the user
+// sees and reads independent of the rule editor on the right.
+function _sqRenderLabourDefaultStrip(){
+  var mode = (bomLabourRule && bomLabourRule.mode === 'flat') ? 'flat' : 'hourly';
+  var v1   = (mode === 'flat')
+    ? ((bomLabourRule && typeof bomLabourRule.cost === 'number') ? bomLabourRule.cost : 0)
+    : ((bomLabourRule && typeof bomLabourRule.costRate === 'number') ? bomLabourRule.costRate : 0);
+  var v2   = (mode === 'flat')
+    ? ((bomLabourRule && typeof bomLabourRule.sell === 'number') ? bomLabourRule.sell : 0)
+    : ((bomLabourRule && typeof bomLabourRule.sellRate === 'number') ? bomLabourRule.sellRate : 0);
+  var label1 = (mode === 'flat') ? 'Cost' : 'Cost/hr';
+  var label2 = (mode === 'flat') ? 'Sell' : 'Sell/hr';
+  var supplyChk = bomLabourSupplyOnly ? ' checked' : '';
+  return '<div class="sq-default-rule-strip">'
+       +   '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;">'
+       +     '<input type="checkbox"' + supplyChk + ' onchange="_sqSetLabourSupplyOnly(this.checked)">'
+       +     '<span>Supply only</span>'
+       +   '</label>'
+       +   '<span style="flex:0 0 auto; color:var(--text-muted); padding:0 6px;">|</span>'
+       +   '<label>Default labour rule</label>'
+       +   '<select onchange="_sqSetLabourDefaultMode(this.value)">'
+       +     '<option value="hourly"' + (mode === 'hourly' ? ' selected' : '') + '>Hourly</option>'
+       +     '<option value="flat"'   + (mode === 'flat'   ? ' selected' : '') + '>Flat</option>'
+       +   '</select>'
+       +   '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">' + label1 + '</span>'
+       +   '<input type="number" min="0" step="0.01" value="' + v1 + '" onchange="_sqSetLabourDefaultV1(this.value)">'
+       +   '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">' + label2 + '</span>'
+       +   '<input type="number" min="0" step="0.01" value="' + v2 + '" onchange="_sqSetLabourDefaultV2(this.value)">'
+       + '</div>';
+}
+
+// Section / line labour pill. scope='section' uses sectionId; scope='line'
+// uses lineKey. Override variant carries a × reset that clears the
+// matching map entry. Click → swap to inline editor via _sqStartEditLabourPill.
+function _sqRenderLabourRulePill(scope, scopeId, lineKey){
+  var override, rule;
+  if(scope === 'line'){
+    override = bomLabourLineRules[lineKey];
+    // Display the EFFECTIVE rule (line > section > default) so the user
+    // can see the resolved math; the fallback styling tells them whether
+    // a line override is active.
+    rule = override || getLabourRule(scopeId, lineKey);
+  } else {
+    override = bomLabourSectionRules[scopeId];
+    rule = override || bomLabourRule;
+  }
+  var mode = (rule && rule.mode === 'flat') ? 'Flat' : 'Hourly';
+  var v1 = (rule && rule.mode === 'flat')
+    ? ((typeof rule.cost === 'number') ? rule.cost : 0)
+    : ((typeof rule.costRate === 'number') ? rule.costRate : 0);
+  var v2 = (rule && rule.mode === 'flat')
+    ? ((typeof rule.sell === 'number') ? rule.sell : 0)
+    : ((typeof rule.sellRate === 'number') ? rule.sellRate : 0);
+  var lbl = mode + ' ' + v1 + '/' + v2;
+  var cls = 'sq-rule-pill ' + (override ? 'override' : 'fallback');
+  // Use a separate data-scope so _sqStartEditLabourPill can look up the
+  // right pill (line pills inside rows + section pills in section
+  // headers share the .sq-rule-pill class; we disambiguate by data
+  // attrs). lineKey is passed even on section scope (empty); the editor
+  // ignores it unless scope='line'.
+  var reset = override
+    ? '<span class="sq-rule-reset" title="Reset to ' + (scope === 'line' ? 'section/default' : 'project default') + '" onclick="event.stopPropagation();_sqResetLabourPill(\'' + scope + '\',\'' + (lineKey || scopeId) + '\')">&times;</span>'
+    : '';
+  return '<span class="' + cls + '" data-labour-scope="' + scope + '" data-labour-id="' + escapeHtml(scope === 'line' ? lineKey : scopeId) + '" data-labour-section="' + escapeHtml(scopeId) + '" onclick="_sqStartEditLabourPill(\'' + scope + '\',\'' + (scope === 'line' ? lineKey : scopeId) + '\',\'' + scopeId + '\')" title="Click to edit ' + scope + ' labour rule">' + lbl + reset + '</span>';
+}
+
+// Labour row — one per visited material row (auto + custom). 10-col
+// grid in the SAME .bom-row chrome as materials so the user reads a
+// consistent table shape; column meaning differs:
+//   SKU · Description · Cost · Sell · Qty(editable) · Q×C · Q×S · M$ · GM% · [pill]
+// Qty input lives in the 'qty' column (data-field="qty"). Cost/Sell are
+// display-only cells (rule edits route through the pill, not direct
+// inline edits). Supply-only mode forces displayed totals to 0.
+function _sqRenderLabourRow(matRow, sectionId, lineKey, isCustom){
+  var sku  = isCustom ? '' : (matRow.sku || matRow.key || '');
+  var desc = matRow.desc || (isCustom && matRow.line && matRow.line.desc) || '';
+  if(isCustom && (!matRow.desc) && matRow.line) desc = matRow.line.desc || '(unnamed)';
+  var matQty = isCustom
+    ? ((matRow.line && typeof matRow.line.qty === 'number') ? matRow.line.qty : 0)
+    : ((typeof matRow.qty === 'number') ? matRow.qty : 0);
+  var rule = getLabourRule(sectionId, lineKey);
+  var u    = _sqLabourUnit(rule);
+  // Labour Qty seeds from material qty; editable. Bookkept on a span's
+  // dataset so subsequent renders preserve the user's value across
+  // recalcBom passes (without persisting yet — M5).
+  var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
+  var qc  = qty * u.cost;
+  var qs  = qty * u.sell;
+  var mar = qs - qc;
+  var gm  = qs > 0 ? (mar / qs) * 100 : null;
+  // Supply-only zeroes the four computed money cells; rule + qty stay
+  // readable so the user knows the underlying numbers.
+  if(bomLabourSupplyOnly){
+    qc = 0; qs = 0; mar = 0; gm = null;
+  }
+  return '<div class="bom-row labour-row' + (isCustom ? '' : ' auto-row') + '" data-section="' + sectionId + '" data-line-key="' + escapeHtml(lineKey) + '">'
+       +   '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
+       +   '<div class="bom-desc">' + escapeHtml(desc) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(u.cost) + '</div>'
+       +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(u.sell) + '</div>'
+       +   '<input type="number" data-field="qty" value="' + qty + '" step="0.25" min="0" onchange="_sqUpdateLabourQty(this)">'
+       +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
+       +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(qs) + '</div>'
+       +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(mar) + '</div>'
+       +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(gm) + '</div>'
+       +   '<div>' + _sqRenderLabourRulePill('line', sectionId, lineKey) + '</div>'
+       + '</div>';
+}
+
+// Labour section subtotal — same accent + sentinel as materials.
+function _sqRenderLabourSectionSubtotal(sectionId, sums){
+  var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
+  return '<div class="bom-row section-subtotal" data-subtotal="section" data-section="' + sectionId + '">'
+       +   '<div></div>'
+       +   '<div class="bom-desc">Subtotal</div>'
+       +   '<div></div><div></div><div></div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   '<div></div>'
+       + '</div>';
+}
+
+// Static LABOUR SUBTOTAL footer at the end of #sq-labour-body. Sticky
+// upgrade is deferred to M4 polish.
+function _sqRenderLabourFooter(sums){
+  var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
+  return '<div class="bom-row grand-subtotal" data-subtotal="grand">'
+       +   '<div></div>'
+       +   '<div class="bom-desc">Labour Subtotal</div>'
+       +   '<div></div><div></div><div></div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   '<div></div>'
+       + '</div>';
+}
+
+// Per-line user-edited Qty (in-memory only this pass). Keyed by lineKey
+// so a row's Qty survives recalcLabour passes (and material edits).
+var bomLabourLineQty = {};
+
+// Default-strip setters. Each writes the matching field on bomLabourRule
+// + markDirty + recalcLabour + recalcSummaryOnly (so Tax + Grand Total
+// reflect the change immediately).
+function _sqSetLabourDefaultMode(mode){
+  if(mode !== 'hourly' && mode !== 'flat') return;
+  bomLabourRule = (mode === 'flat')
+    ? { mode: 'flat',   cost:     (typeof bomLabourRule.cost     === 'number' ? bomLabourRule.cost     : 0),
+                        sell:     (typeof bomLabourRule.sell     === 'number' ? bomLabourRule.sell     : 0) }
+    : { mode: 'hourly', costRate: (typeof bomLabourRule.costRate === 'number' ? bomLabourRule.costRate : 0),
+                        sellRate: (typeof bomLabourRule.sellRate === 'number' ? bomLabourRule.sellRate : 0) };
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+}
+function _sqSetLabourDefaultV1(raw){
+  var v = parseFloat(raw); if(!isFinite(v) || v < 0) v = 0;
+  if(bomLabourRule.mode === 'flat') bomLabourRule.cost     = v;
+  else                              bomLabourRule.costRate = v;
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+}
+function _sqSetLabourDefaultV2(raw){
+  var v = parseFloat(raw); if(!isFinite(v) || v < 0) v = 0;
+  if(bomLabourRule.mode === 'flat') bomLabourRule.sell     = v;
+  else                              bomLabourRule.sellRate = v;
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+}
+function _sqSetLabourSupplyOnly(b){
+  bomLabourSupplyOnly = !!b;
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+  // Repaint the Summary badge.
+  _sqRenderSupplyOnlyBadge();
+}
+
+// Pill editor — swap pill → in-place editor with mode + 2 inputs + ✓/✗.
+// Enter commits; Esc cancels (re-render restores the pill).
+function _sqStartEditLabourPill(scope, scopeId, sectionId){
+  var sel = '.sq-rule-pill[data-labour-scope="' + scope + '"][data-labour-id="' + scopeId + '"]';
+  var pill = document.querySelector(sel);
+  if(!pill) return;
+  var current = (scope === 'line')
+    ? (bomLabourLineRules[scopeId]    || getLabourRule(sectionId, scopeId))
+    : (bomLabourSectionRules[scopeId] || bomLabourRule);
+  var mode = (current && current.mode === 'flat') ? 'flat' : 'hourly';
+  var v1 = (mode === 'flat')
+    ? ((current && typeof current.cost === 'number') ? current.cost : 0)
+    : ((current && typeof current.costRate === 'number') ? current.costRate : 0);
+  var v2 = (mode === 'flat')
+    ? ((current && typeof current.sell === 'number') ? current.sell : 0)
+    : ((current && typeof current.sellRate === 'number') ? current.sellRate : 0);
+  var idEsc  = escapeHtml(scopeId);
+  var secEsc = escapeHtml(sectionId);
+  var editorHtml = '<span class="sq-rule-pill-editor" data-labour-scope="' + scope + '" data-labour-id="' + idEsc + '">'
+                +    '<select id="sq-edit-lab-mode-' + idEsc + '">'
+                +      '<option value="hourly"' + (mode === 'hourly' ? ' selected' : '') + '>Hourly</option>'
+                +      '<option value="flat"'   + (mode === 'flat'   ? ' selected' : '') + '>Flat</option>'
+                +    '</select>'
+                +    '<input type="number" id="sq-edit-lab-v1-' + idEsc + '" min="0" step="0.01" value="' + v1 + '" onkeydown="_sqLabourPillEditorKey(event,\'' + scope + '\',\'' + idEsc + '\',\'' + secEsc + '\')">'
+                +    '<input type="number" id="sq-edit-lab-v2-' + idEsc + '" min="0" step="0.01" value="' + v2 + '" onkeydown="_sqLabourPillEditorKey(event,\'' + scope + '\',\'' + idEsc + '\',\'' + secEsc + '\')">'
+                +    '<button class="ok"     type="button" onclick="_sqCommitLabourPill(\'' + scope + '\',\'' + idEsc + '\',\'' + secEsc + '\')" title="Save">&check;</button>'
+                +    '<button class="cancel" type="button" onclick="_sqCancelLabourPill()" title="Cancel">&times;</button>'
+                +  '</span>';
+  pill.outerHTML = editorHtml;
+  var inp = document.getElementById('sq-edit-lab-v1-' + scopeId);
+  if(inp){ inp.focus(); inp.select(); }
+}
+function _sqLabourPillEditorKey(e, scope, scopeId, sectionId){
+  if(e.key === 'Enter')  { e.preventDefault(); _sqCommitLabourPill(scope, scopeId, sectionId); }
+  if(e.key === 'Escape') { e.preventDefault(); _sqCancelLabourPill(); }
+}
+function _sqCommitLabourPill(scope, scopeId, sectionId){
+  var modeEl = document.getElementById('sq-edit-lab-mode-' + scopeId);
+  var v1El   = document.getElementById('sq-edit-lab-v1-'   + scopeId);
+  var v2El   = document.getElementById('sq-edit-lab-v2-'   + scopeId);
+  if(!modeEl || !v1El || !v2El) return;
+  var mode = (modeEl.value === 'flat') ? 'flat' : 'hourly';
+  var v1   = parseFloat(v1El.value); if(!isFinite(v1) || v1 < 0) v1 = 0;
+  var v2   = parseFloat(v2El.value); if(!isFinite(v2) || v2 < 0) v2 = 0;
+  var rule = (mode === 'flat')
+    ? { mode: 'flat',   cost:     v1, sell:     v2 }
+    : { mode: 'hourly', costRate: v1, sellRate: v2 };
+  if(scope === 'line') bomLabourLineRules[scopeId]    = rule;
+  else                 bomLabourSectionRules[scopeId] = rule;
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+}
+function _sqCancelLabourPill(){ recalcLabour(); }
+function _sqResetLabourPill(scope, scopeId){
+  if(scope === 'line'){
+    if(bomLabourLineRules[scopeId]){ delete bomLabourLineRules[scopeId]; markDirty(); }
+  } else {
+    if(bomLabourSectionRules[scopeId]){ delete bomLabourSectionRules[scopeId]; markDirty(); }
+  }
+  recalcLabour();
+  recalcSummaryOnly();
+}
+
+// Per-row Qty edit handler — writes to the in-memory bomLabourLineQty
+// map (NOT persisted this pass) so subsequent renders preserve the
+// user's value. Triggers a localized in-row recompute + summary refresh
+// (recalcSummaryOnly walks the entire labour body).
+function _sqUpdateLabourQty(input){
+  var row = input.closest('.bom-row');
+  if(!row) return;
+  var lineKey = row.dataset.lineKey || '';
+  var sectionId = row.dataset.section || '';
+  var qty = parseFloat(input.value);
+  if(!isFinite(qty) || qty < 0) qty = 0;
+  bomLabourLineQty[lineKey] = qty;
+  markDirty();
+  _sqRecalcLabourRowCells(row, sectionId, lineKey);
+  // Re-render the section subtotal + footer in place. Simplest: rerun
+  // recalcLabour to repaint everything; mirror MATERIALS' per-row edit
+  // path (which calls recalcSummaryOnly only; sectionsubtotals don't
+  // update in MATERIALS either, by design). We replicate that here:
+  // section subtotal stale until next recalcLabour. The footer is
+  // rebuilt via recalcSummaryOnly's qsell walk for the combined Sub-Total.
+  recalcSummaryOnly();
+}
+
+// In-row recompute — reads rule from line/section/default, recomputes
+// the 4 money cells. Used by _sqUpdateLabourQty so the user sees the
+// row's totals update without a full DOM rebuild.
+function _sqRecalcLabourRowCells(row, sectionId, lineKey){
+  if(!row) return;
+  var rule = getLabourRule(sectionId, lineKey);
+  var u = _sqLabourUnit(rule);
+  var qtyInp = row.querySelector('input[data-field="qty"]');
+  var qty = qtyInp ? (parseFloat(qtyInp.value) || 0) : 0;
+  var qc = qty * u.cost;
+  var qs = qty * u.sell;
+  var mar = qs - qc;
+  var gm = qs > 0 ? (mar / qs) * 100 : null;
+  if(bomLabourSupplyOnly){
+    qc = 0; qs = 0; mar = 0; gm = null;
+  }
+  var qcEl = row.querySelector('.bom-line-qcost');
+  var qsEl = row.querySelector('.bom-line-qsell');
+  var mEl  = row.querySelector('.bom-line-margin');
+  var gmEl = row.querySelector('.bom-line-gm');
+  if(qcEl) qcEl.textContent = _sqFmtMoney(qc);
+  if(qsEl) qsEl.textContent = _sqFmtMoney(qs);
+  if(mEl)  mEl.textContent  = _sqFmtMoney(mar);
+  if(gmEl) gmEl.textContent = _sqFmtPct(gm);
+}
+
+// Render the supply-only badge inside #sq-step-summary. Shown only
+// when bomLabourSupplyOnly === true. Placed inline above the counts
+// grid; reuses the existing dhw warn palette via inline style (no new
+// CSS class for M3 — M4 polish can extract).
+function _sqRenderSupplyOnlyBadge(){
+  var host = document.getElementById('sq-summary-supply-only-badge');
+  if(!host) return;
+  host.innerHTML = bomLabourSupplyOnly
+    ? '<span style="display:inline-block; margin:10px 16px; padding:5px 12px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:4px; font:700 11px var(--font-ui); color:#92400e; letter-spacing:.04em; text-transform:uppercase;">Supply Only &mdash; labour excluded from totals</span>'
+    : '';
+}
+
+// Top-level labour recompute. Walks computeBomTree() the same way
+// recalcBom does (BOM_TEMPLATE.tiers → subs → b.auto + b.custom). One
+// labour row per visited material row. Skips warn rows. Emits the
+// default rule strip at top + section blocks (header with rule pill,
+// rows, section subtotal) + footer subtotal. Empty sections hide
+// (mirrors MATERIALS).
+function recalcLabour(){
+  var body = document.getElementById('sq-labour-body');
+  if(!body) return;
+  var buckets = computeBomTree();
+  var html = '';
+  html += _sqRenderLabourDefaultStrip();
+  html += '<div class="dhw-step-content">';
+  var grandQCost = 0, grandQSell = 0, grandMargin = 0;
+  BOM_TEMPLATE.tiers.forEach(function(tier){
+    var anyRows = tier.subs.some(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return false;
+      // Skip warn rows when checking "anyRows" — a section with only a
+      // warn row (e.g. CMVR No-CMVR-Present) shouldn't render a labour
+      // section.
+      var realAuto = b.auto.filter(function(r){return !r.warn;}).length;
+      return (realAuto > 0 || b.custom.length > 0);
+    });
+    if(!anyRows) return;
+    html += '<div class="bom-tier1">';
+    html += '<div class="bom-tier1-hdr">' + escapeHtml(tier.title) + '</div>';
+    tier.subs.forEach(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return;
+      var realAuto = b.auto.filter(function(r){return !r.warn;});
+      if(realAuto.length === 0 && b.custom.length === 0) return;
+      html += '<div class="bom-section">';
+      html += '<div class="bom-sec-hdr">'
+            +   '<span>' + escapeHtml(sub.title) + '</span>'
+            +   _sqRenderLabourRulePill('section', sub.id, '')
+            + '</div>';
+      // 10-col header (one less than MATERIALS — no List column; pill
+      // sits in the trailing cell).
+      html += '<div class="bom-row col-hdr labour-col-hdr">'
+            +   '<div>SKU</div>'
+            +   '<div>Description</div>'
+            +   '<div style="text-align:right">Cost</div>'
+            +   '<div style="text-align:right">Sell</div>'
+            +   '<div style="text-align:right">Qty</div>'
+            +   '<div style="text-align:right">Qty &times; Cost</div>'
+            +   '<div style="text-align:right">Qty &times; Sell</div>'
+            +   '<div style="text-align:right">Margin $</div>'
+            +   '<div style="text-align:right">GM %</div>'
+            +   '<div></div>'
+            + '</div>';
+      var secQCost = 0, secQSell = 0, secMargin = 0;
+      realAuto.forEach(function(r){
+        var lineKey = r.key || '';
+        var rule    = getLabourRule(sub.id, lineKey);
+        var u       = _sqLabourUnit(rule);
+        var matQty  = (typeof r.qty === 'number') ? r.qty : 0;
+        var qty     = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
+        var qc = qty * u.cost;
+        var qs = qty * u.sell;
+        if(!bomLabourSupplyOnly){
+          secQCost  += qc;
+          secQSell  += qs;
+          secMargin += (qs - qc);
+        }
+        html += _sqRenderLabourRow(r, sub.id, lineKey, false);
+      });
+      b.custom.forEach(function(cust){
+        var lineKey = (cust.line && cust.line.id) || '';
+        var rule    = getLabourRule(sub.id, lineKey);
+        var u       = _sqLabourUnit(rule);
+        var matQty  = (cust.line && typeof cust.line.qty === 'number') ? cust.line.qty : 0;
+        var qty     = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
+        var qc = qty * u.cost;
+        var qs = qty * u.sell;
+        if(!bomLabourSupplyOnly){
+          secQCost  += qc;
+          secQSell  += qs;
+          secMargin += (qs - qc);
+        }
+        html += _sqRenderLabourRow(cust, sub.id, lineKey, true);
+      });
+      html += _sqRenderLabourSectionSubtotal(sub.id, {
+        sumQCost:  secQCost,
+        sumQSell:  secQSell,
+        sumMargin: secMargin
+      });
+      grandQCost  += secQCost;
+      grandQSell  += secQSell;
+      grandMargin += secMargin;
+      html += '</div>'; // .bom-section
+    });
+    html += '</div>'; // .bom-tier1
+  });
+  html += '</div>'; // .dhw-step-content
+  html += _sqRenderLabourFooter({
+    sumQCost:  grandQCost,
+    sumQSell:  grandQSell,
+    sumMargin: grandMargin
+  });
+  body.innerHTML = html;
+}
+
 function updateAutoRow(input){
   var row = input.closest('.bom-row');
   // Pricing M4 (Fix 2): normalize the override key so a user-set price on
@@ -19220,7 +19742,12 @@ computeAutoRows = function(){
 };
 
 function addBomLine(section){
-  bomCustomLines[section].push({ desc:'', qty:1, unit:0 });
+  // SQ-wizard M3: mint stable id at creation. Used as the line key for
+  // per-line labour overrides (bomLabourLineRules) and any future
+  // labour line-rule overrides. autos key by r.key; customs key by id.
+  // Survives reorder/delete since id is the field of truth (not idx).
+  var id = 'cust-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+  bomCustomLines[section].push({ id: id, desc:'', qty:1, unit:0 });
   markDirty();
   recalcBom();
 }
@@ -19374,23 +19901,31 @@ function recalcSummaryOnly(){
   // Margin tile is hidden in the wizard. Tax + Grand still derive at
   // the totals layer. Skips per-row subtotal + grand-subtotal sentinel
   // rows (they're cell-only, not source-of-truth).
-  var subtotal = 0;
-  var marginSum = 0;
-  document.querySelectorAll('#bom-body .bom-row').forEach(function(rowEl){
-    // Skip the section-subtotal + grand-subtotal sentinel rows so we
-    // don't double-count their summed cells.
-    if(rowEl.dataset.subtotal) return;
-    var qsEl = rowEl.querySelector('.bom-line-qsell');
-    if(qsEl){
-      var qsVal = parseFloat(qsEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
-      subtotal += qsVal;
-    }
-    var mEl = rowEl.querySelector('.bom-line-margin');
-    if(mEl){
-      var mVal = parseFloat(mEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
-      marginSum += mVal;
-    }
-  });
+  //
+  // SQ-wizard M3: Sub-Total now combines materials Sell + labour Sell.
+  // Labour walks #sq-labour-body the same way materials walks #bom-body.
+  // Supply-only short-circuits the labour walk (already zeroed at row
+  // level in recalcLabour, but a guard here makes the intent explicit).
+  function _sumQsellAndMargin(scopeSel){
+    var subRes = { qsell: 0, margin: 0 };
+    document.querySelectorAll(scopeSel + ' .bom-row').forEach(function(rowEl){
+      if(rowEl.dataset.subtotal) return;
+      var qsEl = rowEl.querySelector('.bom-line-qsell');
+      if(qsEl){
+        var qsVal = parseFloat(qsEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+        subRes.qsell += qsVal;
+      }
+      var mEl = rowEl.querySelector('.bom-line-margin');
+      if(mEl){
+        var mVal = parseFloat(mEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+        subRes.margin += mVal;
+      }
+    });
+    return subRes;
+  }
+  var mat = _sumQsellAndMargin('#bom-body');
+  var lab = bomLabourSupplyOnly ? { qsell: 0, margin: 0 } : _sumQsellAndMargin('#sq-labour-body');
+  var subtotal = mat.qsell + lab.qsell;
   var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
   var taxAmt = subtotal * taxPct / 100;
   var grand = subtotal + taxAmt;
