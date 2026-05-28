@@ -1187,7 +1187,8 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #right-panel .rp-parcel-fields,
 #right-panel .rp-mailbox-fields,
 #right-panel .rp-suite-fields,
-#right-panel .rp-headend-fields { display:none; }
+#right-panel .rp-headend-fields,
+#right-panel .rp-switch-fields { display:none; }
 #right-panel[data-mode="camera"]   .rp-camera-fields   { display:block; }
 #right-panel[data-mode="reader"]   .rp-reader-fields   { display:block; }
 #right-panel[data-mode="intercom"] .rp-intercom-fields { display:block; }
@@ -1195,6 +1196,7 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #right-panel[data-mode="mailbox"]  .rp-mailbox-fields  { display:block; }
 #right-panel[data-mode="suite"]    .rp-suite-fields    { display:block; }
 #right-panel[data-mode="headend"]  .rp-headend-fields  { display:block; }
+#right-panel[data-mode="switch"]   .rp-switch-fields   { display:block; }
 .phdr { font:700 10px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; padding:12px 16px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); }
 
 #controls { padding:10px 13px; border-bottom:1px solid var(--border); }
@@ -2232,6 +2234,44 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
         </div>
       </div>
 
+      <!-- Network switch right-panel block (Switch Topology Phase 1).
+           Visible when data-mode is "switch" — opened on tier-3 model arm
+           by openRightPanelForSwitch. Read-only readouts; placement is
+           the only way to commit a switch to the project. All 5 readouts
+           populate from SWITCH_CATALOG[sku] + getUnitPrice(sku). -->
+      <div class="rp-switch-fields">
+        <div class="rp-field">
+          <label class="rp-label">Manufacturer &amp; Model</label>
+          <div class="rp-readout" id="rp-switch-model-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Ports</label>
+          <div class="rp-readout" id="rp-switch-ports-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">PoE Power</label>
+          <div class="rp-readout" id="rp-switch-poe-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Industrial</label>
+          <div class="rp-readout" id="rp-switch-industrial-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Unit Price</label>
+          <div class="rp-readout" id="rp-switch-price-readout">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Head-end (CMVR) right-panel block. Visible when data-mode is
            "headend" — opened on tier-3 model arm by openRightPanelForHeadend
            (read-only readouts; no editable fields yet). All 5 readouts
@@ -2972,6 +3012,23 @@ var CMVR_CATALOG = {
   'EN-BR820e-0': { code:'820e',  model:'CMVR 820e',  name:'Eagle Eye CMVR 820e (Enterprise)', maxCams:165, usableTB:160, poe:0, ai:false }
 };
 
+// Network switch catalog (Switch Topology Phase 1; mirrors CMVR_CATALOG
+// shape). Keys are vendor SKUs (EN-SW* prefix); price comes live from the
+// loaded pricingBook.json via getUnitPrice(sku), NOT from this table.
+// `ports` + `poeW` + `industrial` feed the BOM row description + right-
+// panel readouts. poeW=null means the unit is unrated/passive on PoE
+// budget. Sole writer = armSwitchModel + placeSwitch; sole reader at BOM
+// time = networkRows roll-up. Phase 2 will add a PoE-budget warning and
+// camera→switch→CMVR cabling; Phase 1 is placement + price only.
+var SWITCH_CATALOG = {
+  'EN-SW05m-001':  { code:'SW05m',  model:'Switch SW05m',  name:'Eagle Eye Switch SW05m',  ports:4,  poeW:null, industrial:false, desc:'4-port managed PoE+ · 100M uplink' },
+  'EN-SW26m-001':  { code:'SW26m',  model:'Switch SW26m',  name:'Eagle Eye Switch SW26m',  ports:24, poeW:null, industrial:false, desc:'24-port managed PoE+ · 2× Gig uplink' },
+  'EN-SW10g-001':  { code:'SW10g',  model:'Switch SW10g',  name:'Eagle Eye Switch SW10g',  ports:8,  poeW:130,  industrial:false, desc:'8-port Gb managed PoE+ · 2× SFP · 130W' },
+  'EN-SW20g-001':  { code:'SW20g',  model:'Switch SW20g',  name:'Eagle Eye Switch SW20g',  ports:16, poeW:250,  industrial:false, desc:'16-port Gb managed PoE+ · 2× SFP · 250W' },
+  'EN-SW28g-001':  { code:'SW28g',  model:'Switch SW28g',  name:'Eagle Eye Switch SW28g',  ports:24, poeW:370,  industrial:false, desc:'24-port Gb managed PoE+ · 2× SFP · 370W' },
+  'EN-SW10gn-001': { code:'SW10gn', model:'Switch SW10gn', name:'Eagle Eye Switch SW10gn (Industrial)', ports:8, poeW:240, industrial:true,  desc:'8-port Gb industrial DIN PoE+ · 2× SFP · 240W · w/PSU' }
+};
+
 // ─── DORI ─────────────────────────────────────────────────────────────────────
 var DORI_LEVELS = [
   { key:'id',  ppm:250, label:'Identification', color:'#dc2626' },
@@ -3043,11 +3100,13 @@ var fovVisible=true;
 var calibrations={}, calibMode=false, calibPoints=[], calibCursor=null;
 var headends = {};            // pageIdx -> {x, y} in logical PDF units
 var headendMode = false;      // currently placing head-end?
-// Panel-cleanup P8: Network Switch placements. Mirrors headends — one
-// switch per page (single point on the canvas). A future Switch Topology
-// pass will likely expand this to an array per page with port/uplink
-// metadata; for now it's a single point with no downstream relationships.
-var switches = {};            // pageIdx -> {x, y} in logical PDF units
+// Switch Topology Phase 1: network switch placements. Array (multi-per-
+// page); each entry {id, page, x, y, sku}. Mirrors acDevices shape, NOT
+// the per-page-singleton headends map. Replaces the prior P8 map
+// (pageIdx -> {x,y}); legacy P8 saves drop those placements silently
+// with a console.warn — they had no SKU. Phase 2 will add hit-test,
+// click-to-select, drag-to-move, delete, and camera→switch→CMVR cabling.
+var switches = [];
 var switchMode = false;       // currently placing a network switch?
 var cablesMode = true;        // showing cable runs? default on; gated by headend presence at draw time
 var cableOverhead = 1.25;     // multiplier for cable routing (vs straight-line)
@@ -7484,6 +7543,20 @@ function armCmvrModel(sku){
   if(sku && typeof openRightPanelForHeadend === 'function') openRightPanelForHeadend(sku);
 }
 
+// Switch Topology Phase 1 — armSwitchModel mirrors armCmvrModel. Sole
+// writer of currentSwitchSku. Arming-only: sets state, repaints the
+// Tier-3 list highlight, opens the right-panel switch readouts. Does
+// NOT mutate any placed switch (placement happens at next canvas click
+// via startSwitchPlacement → placeSwitch). null sku is reachable only
+// from defensive null-backfill paths.
+var currentSwitchSku = null;
+function armSwitchModel(sku){
+  if(sku !== null && !SWITCH_CATALOG.hasOwnProperty(sku)) return;
+  currentSwitchSku = sku;
+  if(typeof _renderSwitchModelList === 'function') _renderSwitchModelList();
+  if(sku && typeof openRightPanelForSwitch === 'function') openRightPanelForSwitch(sku);
+}
+
 // Single-open accordion state. Tracks which left-pane tier-2 section is
 // currently expanded — exactly one of: 'cameras' (a camera-style tier-2
 // is active and the camera tier-3 model list is showing), 'cmvr',
@@ -7637,7 +7710,7 @@ function _renderAccessoryTier3(){
   if(currentAccessoryTier2 === 'cmvr'){
     _renderCmvrModelList();
   } else if(currentAccessoryTier2 === 'network'){
-    el.innerHTML = '<div class="stub">Switch catalog coming soon</div>';
+    _renderSwitchModelList();
   } else if(currentAccessoryTier2 === 'accessories'){
     el.innerHTML = '<div class="stub">Accessories catalog coming soon</div>';
   } else {
@@ -7670,6 +7743,29 @@ function _renderCmvrModelList(){
   el.innerHTML = html;
 }
 
+// Switch Topology Phase 1 — mirrors _renderCmvrModelList. Renders the
+// SWITCH_CATALOG into the SHARED accessory tier-3 container
+// (#lp-cmvr-models — same container CMVR uses; pickAccessoryTier2 swaps
+// its content per active tier-2). Tile label = entry.code (SW05m,
+// SW10g, …); click arms the SKU + starts canvas placement. Reuses
+// .tier3-tile chrome + .lp-tier3-list 5-col grid from the shared CSS.
+function _renderSwitchModelList(){
+  var el = document.getElementById('lp-cmvr-models');
+  if(!el) return;
+  var html = '';
+  Object.keys(SWITCH_CATALOG).forEach(function(sku){
+    var s = SWITCH_CATALOG[sku];
+    var activeCls = (sku === currentSwitchSku) ? ' active' : '';
+    html += '<div class="tier3-tile' + activeCls + '"'
+         +  ' data-sku="' + escapeHtml(sku) + '"'
+         +  ' onclick="armSwitchModel(\'' + sku + '\'); startSwitchPlacement();"'
+         +  ' title="' + escapeHtml(s.name + ' — ' + s.desc) + '">'
+         +    '<div class="t3-name">' + escapeHtml(s.code) + '</div>'
+         +  '</div>';
+  });
+  el.innerHTML = html;
+}
+
 // Right-panel populator for the head-end "headend" mode. Mirrors
 // openRightPanelForCamera structure — opens the panel, sets data-mode,
 // populates all 5 readouts from CMVR_CATALOG[sku] + getUnitPrice(sku).
@@ -7695,6 +7791,35 @@ function openRightPanelForHeadend(sku){
   rp.setAttribute('data-mode', 'headend');
   var title = document.getElementById('rp-title');
   if(title) title.textContent = 'Head-End Details';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
+}
+
+// Switch Topology Phase 1 — mirrors openRightPanelForHeadend. Populates
+// the 5 read-only readouts from SWITCH_CATALOG[sku] + getUnitPrice(sku).
+// "—" placeholder for missing fields (PoE null on unrated units, no
+// pricing book loaded).
+function openRightPanelForSwitch(sku){
+  var s = SWITCH_CATALOG[sku];
+  if(!s) return;
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  var modelEl      = document.querySelector('#rp-switch-model-readout .rp-model-name');
+  var portsEl      = document.querySelector('#rp-switch-ports-readout .rp-model-name');
+  var poeEl        = document.querySelector('#rp-switch-poe-readout .rp-model-name');
+  var industrialEl = document.querySelector('#rp-switch-industrial-readout .rp-model-name');
+  var priceEl      = document.querySelector('#rp-switch-price-readout .rp-model-name');
+  if(modelEl)      modelEl.textContent      = s.name;
+  if(portsEl)      portsEl.textContent      = s.ports + '-port';
+  if(poeEl)        poeEl.textContent        = (typeof s.poeW === 'number' && s.poeW > 0) ? (s.poeW + ' W') : '—';
+  if(industrialEl) industrialEl.textContent = s.industrial ? 'yes' : 'no';
+  var price = getUnitPrice(sku);
+  if(priceEl) priceEl.textContent = (typeof price === 'number' && isFinite(price))
+    ? '$' + price.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    : '—';
+  rp.setAttribute('data-mode', 'switch');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Network Switch';
   rp.classList.add('open');
   rp.setAttribute('aria-hidden', 'false');
 }
@@ -8339,6 +8464,7 @@ function routeFile(f){
 async function loadImage(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
+  switches=[];                  // Switch Topology Phase 1: reset on raw image re-import (QUEUE-flagged gotcha)
   // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
   // selection states on fresh import.
   smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
@@ -8407,6 +8533,7 @@ async function loadImage(file){
 async function loadPDF(file){
   pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
   acDevices=[];acCounters={};acSelectedId=null;
+  switches=[];                  // Switch Topology Phase 1: reset on raw PDF re-import (QUEUE-flagged gotcha; headends still leaks — separate pass)
   // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
   // selection states on fresh PDF import.
   smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
@@ -8766,6 +8893,10 @@ function deletePage(idx){
   cameras.forEach(function(c){ if(c.page > idx) c.page--; });
   acDevices = acDevices.filter(function(d){return d.page !== idx;});
   acDevices.forEach(function(d){ if(d.page > idx) d.page--; });
+  // Switch Topology Phase 1: cascade page delete to the switches[] array
+  // (same shape as cameras + acDevices: filter + decrement).
+  switches = switches.filter(function(sw){return sw.page !== idx;});
+  switches.forEach(function(sw){ if(sw.page > idx) sw.page--; });
   // Pass N+1 M3: cascade page delete to smart-apartment + suites arrays
   // and their counter maps. Otherwise devices on the deleted page would
   // orphan or shift their page index incorrectly.
@@ -8826,7 +8957,7 @@ function rewindToNoPdf(){
   sourceDocumentBytes = null; sourceDocumentName = null; sourceDocumentMime = null;
   currentPage = 0;
   pdfLoaded = false;
-  pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {}; switches = {};
+  pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {}; switches = [];
   smartApartment = []; smartAptCounters = { intercom: {}, parcel: {}, mailbox: {} };
   suites = []; suiteCounters = {};
   tabOrder = null;            // Pass A.7: clear manual order with the rest of state
@@ -9746,17 +9877,19 @@ function placeHeadend(cssX, cssY){
   redraw();
 }
 
-// ── Network Switch placement (P8) ───────────────────────────────────────
-// Mirrors the head-end placement flow: tile → arm switchMode → click on
-// canvas → write switches[currentPage] → cancel mode. Single switch per
-// page (this is the basic-placeable per the brief; topology comes later).
-// Distinct active-tile color (#0e7490 teal) so the user can tell which
-// placement mode they're in when the calib-banner says only "Click to
-// place ...".
+// ── Network Switch placement (Switch Topology Phase 1) ─────────────────
+// Multi-per-page array (mirrors acDevices). Tier-3 SWITCH_CATALOG tile
+// click → armSwitchModel(sku) → startSwitchPlacement → user clicks
+// canvas → placeSwitch pushes {id, page, x, y, sku} → markDirty.
+// Phase 1 is placement + price only; no hit-test, no click-to-select,
+// no drag, no delete — all deferred to Phase 2 (unified select pass).
 function startSwitchPlacement(){
   if(!pdfLoaded) return;
-  // Same typical-floor guard as the head-end: a switch is a physical
-  // device, not a logical per-floor copy.
+  // Requires an armed SWITCH_CATALOG sku — Network tier-3 tiles arm
+  // before calling. Defensive guard against console callers.
+  if(!currentSwitchSku) return;
+  // Typical-floor guard: a switch is a physical device, not a logical
+  // per-floor copy.
   if(pageMultiplier(currentPage) > 1){
     alert('Place the switch on a non-typical floor (parkade, lobby, or single floor). Typical floors share the same network equipment.');
     return;
@@ -9764,8 +9897,6 @@ function startSwitchPlacement(){
   if(calibMode) cancelCalibrationFlow();
   if(headendMode) cancelHeadendPlacement();
   switchMode = true;
-  var btn = document.getElementById('tb-switch');
-  if(btn) btn.classList.add('active');
   document.getElementById('calib-banner').classList.add('show');
   document.getElementById('calib-msg').textContent = 'Click to place network switch on this page';
   redraw();
@@ -9773,55 +9904,61 @@ function startSwitchPlacement(){
 
 function cancelSwitchPlacement(){
   switchMode = false;
-  var btn = document.getElementById('tb-switch');
-  if(btn) btn.classList.remove('active');
   document.getElementById('calib-banner').classList.remove('show');
   redraw();
 }
 
 function placeSwitch(cssX, cssY){
-  switches[currentPage] = { x: cssX/viewScale, y: cssY/viewScale };
+  var sw = {
+    id:   'sw-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    page: currentPage,
+    x:    cssX/viewScale,
+    y:    cssY/viewScale,
+    sku:  currentSwitchSku
+  };
+  switches.push(sw);
   markDirty();
   cancelSwitchPlacement();
   redraw();
 }
 
-// Hit-test for switch icon. ±10 px on x, ±8 px on y — matches the drawn
-// rectangle's silhouette so click-to-delete-while-armed feels natural.
-function switchAt(cssX, cssY){
-  var s = switches[currentPage];
-  if(!s) return null;
-  var px = s.x * viewScale, py = s.y * viewScale;
-  return (Math.abs(cssX - px) <= 10 && Math.abs(cssY - py) <= 8) ? s : null;
-}
-
-// Canvas render. Cyan-teal chassis with "SW" label + glow ring; matches
-// the head-end's iconography style but with the network palette so the
-// two are visually distinguishable when both are placed on the same page.
-function drawSwitch(){
-  var s = switches[currentPage];
-  if(!s) return;
-  var sx = s.x * viewScale, sy = s.y * viewScale;
-  var w = 20, h = 12;
-  // Body
-  ctx.beginPath();
-  ctx.rect(sx - w/2, sy - h/2, w, h);
-  ctx.fillStyle = '#0e7490';
-  ctx.fill();
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // Label
-  ctx.font = 'bold 7px Courier New';
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('SW', sx, sy);
-  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  // Glow ring
-  ctx.beginPath(); ctx.arc(sx, sy, Math.max(w, h) * 0.85, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(14,116,144,0.4)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
+// Canvas render — reuses the Network Tier-2 tile silhouette (24×24
+// viewBox: 18×6 chassis at y=9..15 with 5 port pins below + 2 indicator
+// dots). Drawn at 20×7 css px for visual parity with the AC reader /
+// headend markers. White stroke on dark teal fill so the icon reads on
+// both light and dark plan backgrounds. Z-order is intentionally BEHIND
+// cameras + acDevices (infrastructure layer; see main draw loop).
+function drawSwitch(c, sw, vs){
+  var x  = sw.x * vs;
+  var y  = sw.y * vs;
+  var W  = 20;  // chassis width (css px)
+  var H  = 6;   // chassis height — matches the SVG 18×6 ratio at 24-unit viewBox
+  c.save();
+  // Chassis
+  c.fillStyle   = '#0e7490';
+  c.strokeStyle = '#fff';
+  c.lineWidth   = 1.4;
+  c.beginPath();
+  c.rect(x - W/2, y - H/2, W, H);
+  c.fill();
+  c.stroke();
+  // 5 port pins (down-strokes) at the SVG's x=6,9,12,15,18 of viewBox 24 —
+  // remapped to chassis-local: -8, -4, 0, 4, 8 from the rect's bottom edge.
+  c.strokeStyle = '#fff';
+  c.lineWidth   = 1.4;
+  var portY0 = y + H/2;
+  var portY1 = portY0 + 2.5;
+  [-8, -4, 0, 4, 8].forEach(function(px){
+    c.beginPath();
+    c.moveTo(x + px, portY0);
+    c.lineTo(x + px, portY1);
+    c.stroke();
+  });
+  // 2 indicator dots — SVG cx=6,9 cy=12 → chassis-local (-8,0) and (-4,0)
+  c.fillStyle = '#fff';
+  c.beginPath(); c.arc(x - 8, y, 0.9, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(x - 4, y, 0.9, 0, Math.PI * 2); c.fill();
+  c.restore();
 }
 
 // Estimate cable length in meters for a camera, given head-end on its page
@@ -10166,6 +10303,14 @@ function redraw(){
     drawCableRuns();
   }
 
+  // Switch Topology Phase 1: network switches paint as INFRASTRUCTURE —
+  // behind cameras + AC + smart-apt + suites + head-end. Phase 2 will
+  // add cabling from cameras → switches → CMVR; for now they're just
+  // placement glyphs.
+  switches.filter(function(sw){return sw.page===currentPage;}).forEach(function(sw){
+    drawSwitch(ctx, sw, viewScale);
+  });
+
   // Two-pass: cones for every camera first, then bodies on top so icons stay
   // visible when multiple FOV cones overlap. FOV toggle skips the cone pass.
   var pageCams = cameras.filter(function(c){return c.page===currentPage;});
@@ -10209,11 +10354,6 @@ function redraw(){
   // Draw head-end marker on top
   if(headends[currentPage]){
     drawHeadEnd();
-  }
-  // Panel-cleanup P8: network switch marker (same draw-order tier as
-  // head-end — on top of camera/AC markers).
-  if(switches[currentPage]){
-    drawSwitch();
   }
 
   if(calibMode) drawCalibrationOverlay();
@@ -10515,27 +10655,17 @@ cv.addEventListener('mousedown',function(e){
     placeHeadend(p.cx, p.cy);
     return;
   }
-  // Panel-cleanup P8: same click-to-place/click-to-remove pattern for
-  // the network switch — armed via the Network tile in Camera Accessories.
+  // Switch Topology Phase 1: armed-mode click drops a switch. No
+  // click-to-delete, no hit-test, no drag — all deferred to Phase 2
+  // (unified select pass). Placement guard runs in startSwitchPlacement
+  // (currentSwitchSku non-null, pageMultiplier === 1).
   if(switchMode){
-    if(switchAt(p.cx, p.cy)){
-      delete switches[currentPage];
-      markDirty();
-      cancelSwitchPlacement();
-      redraw();
-      return;
-    }
     placeSwitch(p.cx, p.cy);
     return;
   }
   // Head-end is drawn on top of everything; hit-test it first so a click on
   // the CMVR/NVR icon starts a drag in either panel mode.
   if(headendAt(p.cx, p.cy)){ dragging = {type:'head-end-move'}; return; }
-  // Panel-cleanup P8 follow-up: same drag-to-move for the network switch.
-  // Hit-tested AFTER the switchMode placement branch above (so a click
-  // while armed is delete, not drag) and BEFORE the universal cross-mode
-  // hit-test (so switch grabs win over an underlying camera/AC click).
-  if(switchAt(p.cx, p.cy)){ dragging = {type:'switch-move'}; return; }
 
   // Universal cross-mode hit-test. Runs BEFORE the per-mode placement
   // branches. When the click lands on a device that belongs to a
@@ -10682,9 +10812,7 @@ cv.addEventListener('mousemove',function(e){
     // (same priority order as the mousedown universal hit-test). Tip-grab
     // for camera rotation handles stays cameras-mode-only since it's a
     // selection sub-element, not a placement target.
-    if(headendAt(p.cx, p.cy) || switchAt(p.cx, p.cy)){
-      // Panel-cleanup P8 follow-up: switch joins head-end in the
-      // "move-cursor on hover" group so the drag affordance is discoverable.
+    if(headendAt(p.cx, p.cy)){
       cv.style.cursor = 'move';
     } else if(panelMode === 'cameras' && tipAt(p.cx, p.cy)){
       cv.style.cursor = 'grab';
@@ -10703,14 +10831,6 @@ cv.addEventListener('mousemove',function(e){
   if(dragging.type==='head-end-move'){
     var he = headends[currentPage];
     if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; markDirty(); redraw(); }
-    return;
-  }
-  // Panel-cleanup P8 follow-up: switch drag-to-move. Same lifecycle as
-  // the head-end above — mutate switches[currentPage] in place, markDirty,
-  // redraw. Mouseup clears dragging globally (see cv mouseup listener).
-  if(dragging.type==='switch-move'){
-    var sw = switches[currentPage];
-    if(sw){ sw.x = p.cx/viewScale; sw.y = p.cy/viewScale; markDirty(); redraw(); }
     return;
   }
   if(dragging.type==='reader-move'){
@@ -10857,7 +10977,6 @@ document.addEventListener('keydown',function(e){
     // modal and dismiss with that modal's Esc handler above.
     if(calibMode){ cancelCalibrationFlow(); return; }
     if(headendMode){ cancelHeadendPlacement(); return; }
-    // Panel-cleanup P8: Escape also cancels switch placement.
     if(switchMode){ cancelSwitchPlacement(); return; }
     // closeRightPanel handles the camera-selected case (clears selectedId,
     // hides the panel, redraws). Always reset acSelectedId too.
@@ -13534,7 +13653,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 22,             // generation tag — v22 adds headends[*].sku per placed CMVR head-end (cmvr-headend-models pass)
+      version: 23,             // generation tag — v23 switches[] array (multi-per-page with sku) — Switch Topology Phase 1 (was v22 map per P8)
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -13749,7 +13868,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 22,            // cmvr-headend-models: headends[*].sku (string|null) per placed CMVR head-end (default null)
+    version: 23,            // Switch Topology Phase 1: switches[] array of {id,page,x,y,sku} (was v22 map pageIdx -> {x,y})
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -13830,9 +13949,15 @@ function applyProjectState(data){
   Object.keys(headends).forEach(function(p){
     if(headends[p] && typeof headends[p].sku === 'undefined') headends[p].sku = null;
   });
-  // Panel-cleanup P8: backfill switches map from save. Older saves
-  // (pre-P8) have no switches key → start with an empty map.
-  switches = (data.switches && typeof data.switches === 'object') ? data.switches : {};
+  // Switch Topology Phase 1 (v23): switches[] array. Wholesale assign
+  // when the save carries an array; legacy P8 v22 saves whose `switches`
+  // was a map (pageIdx → {x,y}) silently drop those placements — they
+  // had no SKU and the data shape is fundamentally different. Pre-P8
+  // saves with no switches key default to []. Never reject.
+  if(data.switches !== undefined && !Array.isArray(data.switches)){
+    console.warn('switch-topology-phase1: legacy map-shape switches dropped on load (v22 P8 placements have no SKU; place via new Network Tier-3 tiles to re-add)');
+  }
+  switches = Array.isArray(data.switches) ? data.switches : [];
   if(data.projectInfo) projectInfo = data.projectInfo;
   // Door Hardware M1 (v18): load module state through the normalizer so
   // partial / older / missing payloads backfill to empty-state defaults.
@@ -16867,39 +16992,49 @@ function computeAutoRows(){
   // CMVR onboard capacity is the assumed default until expansion math
   // (per-model expansion bay count, drive size selection) lands.
 
-  // Auto-network: PoE switch sized to multiplied camera count.
-  // BOM two-tier M1: placed switches[] override the camera-count-derived
-  // sizing on a per-page basis. Pages with a switches[pageIdx] entry
-  // contribute one placed-switch row (aggregated, qty = placed count);
-  // placement is guarded to pageMultiplier=1 floors so typical-floor
-  // multiplication doesn't apply. The derived sizing row reflects only
-  // cameras on pages WITHOUT a placed switch; when every camera lives on
-  // a placed-switch page the derived row is omitted to avoid a meaningless
-  // 0-camera sizing line.
+  // Auto-network rows. Switch Topology Phase 1: when ≥1 switch has been
+  // placed, emit one row per distinct sku (qty = count of placed switches
+  // with that sku; NOT page-multiplied — switches are physical per-floor
+  // devices and placement is already guarded to pageMultiplier=1 floors).
+  // Unit price comes live from getUnitPrice(sku); falls to 0 when the
+  // pricing book hasn't been loaded. The legacy camera-count-derived
+  // generic-switch row is suppressed wholesale when ≥1 switch is placed
+  // (per brief). Zero placements → the generic row remains intact for
+  // legacy projects.
   var networkRows = [];
-  var placedSwitchPages = Object.keys(switches).filter(function(p){
-    return switches[p] != null;
-  }).map(function(p){ return parseInt(p, 10); });
-  if(placedSwitchPages.length > 0){
-    var swN = placedSwitchPages.length;
-    networkRows.push({
-      auto:true, src:'network', key:'placed-switch',
-      desc: 'Network Switch — placed location (' + swN + ' switch' + (swN === 1 ? '' : 'es') + ')',
-      qty: swN, unit: 0, sectionAuto:true
+  if(switches.length > 0){
+    var swBySku = {};
+    switches.forEach(function(sw){
+      if(!sw || !sw.sku) return;
+      if(!swBySku[sw.sku]) swBySku[sw.sku] = 0;
+      swBySku[sw.sku]++;
     });
-  }
-  var derivedCams = filteredCams.filter(function(c){
-    return placedSwitchPages.indexOf(c.page) === -1;
-  });
-  if(derivedCams.length > 0){
-    var ch2 = multipliedTotal(derivedCams);
-    var ports = ch2 <= 4 ? 8 : ch2 <= 8 ? 8 : ch2 <= 16 ? 16 : ch2 <= 24 ? 24 : 48;
-    var switchCount = Math.ceil(ch2 / ports);
-    networkRows.push({
-      auto:true, src:'network', key:'auto-switch',
-      desc: ports + '-Port PoE+ Network Switch ('+ch2+' camera'+(ch2===1?'':'s')+', '+switchCount+' switch'+(switchCount===1?'':'es')+')',
-      qty: switchCount, unit: 0, sectionAuto:true
+    Object.keys(swBySku).forEach(function(sku){
+      var spec = SWITCH_CATALOG[sku];
+      if(!spec) return;
+      var unit = (typeof getUnitPrice === 'function') ? getUnitPrice(sku) : null;
+      var desc = spec.name + ' — ' + spec.ports + '-port'
+               + (spec.poeW ? ' · ' + spec.poeW + 'W' : '')
+               + (spec.industrial ? ' · industrial' : '');
+      networkRows.push({
+        auto:true, src:'network', key:'switch-'+sku, sku:sku,
+        desc: desc,
+        qty: swBySku[sku],
+        unit: (typeof unit === 'number' && isFinite(unit)) ? unit : 0,
+        sectionAuto:true
+      });
     });
+  } else {
+    var ch2 = multipliedTotal(filteredCams);
+    if(ch2 > 0){
+      var ports = ch2 <= 4 ? 8 : ch2 <= 8 ? 8 : ch2 <= 16 ? 16 : ch2 <= 24 ? 24 : 48;
+      var switchCount = Math.ceil(ch2 / ports);
+      networkRows.push({
+        auto:true, src:'network', key:'auto-switch',
+        desc: ports + '-Port PoE+ Network Switch ('+ch2+' camera'+(ch2===1?'':'s')+', '+switchCount+' switch'+(switchCount===1?'':'es')+')',
+        qty: switchCount, unit: 0, sectionAuto:true
+      });
+    }
   }
 
   // BOM Restructure pass: the legacy camera-install labor block (BOM
