@@ -3108,6 +3108,12 @@ var headendMode = false;      // currently placing head-end?
 // click-to-select, drag-to-move, delete, and camera→switch→CMVR cabling.
 var switches = [];
 var switchMode = false;       // currently placing a network switch?
+// Phase 2a — selection state for placed switches + head-ends. Switches
+// keyed by id (array), head-ends keyed by page (map). Reset to null in
+// switchPage / loadImage / loadPDF / rewindToNoPdf. Sole writers:
+// selectSwitch / selectHeadend / closeRightPanel / page-reset paths.
+var selectedSwitchId    = null;
+var selectedHeadendPage = null;
 var cablesMode = true;        // showing cable runs? default on; gated by headend presence at draw time
 var cableOverhead = 1.25;     // multiplier for cable routing (vs straight-line)
 var maxCableM = 90;           // PoE Cat6 max length
@@ -8462,9 +8468,10 @@ function routeFile(f){
 }
 
 async function loadImage(file){
-  pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
-  acDevices=[];acCounters={};acSelectedId=null;
+  pages=[];cameras=[];counters={};currentPage=0;
+  acDevices=[];acCounters={};
   switches=[];                  // Switch Topology Phase 1: reset on raw image re-import (QUEUE-flagged gotcha)
+  _clearAllPlaceableSelections();   // Phase 2a M4: replaces selectedId=null;acSelectedId=null;
   // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
   // selection states on fresh import.
   smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
@@ -8531,9 +8538,10 @@ async function loadImage(file){
 }
 
 async function loadPDF(file){
-  pages=[];cameras=[];counters={};currentPage=0;selectedId=null;
-  acDevices=[];acCounters={};acSelectedId=null;
+  pages=[];cameras=[];counters={};currentPage=0;
+  acDevices=[];acCounters={};
   switches=[];                  // Switch Topology Phase 1: reset on raw PDF re-import (QUEUE-flagged gotcha; headends still leaks — separate pass)
+  _clearAllPlaceableSelections();   // Phase 2a M4: replaces selectedId=null;acSelectedId=null;
   // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
   // selection states on fresh PDF import.
   smartApartment=[]; smartAptCounters={ intercom:{}, parcel:{}, mailbox:{} };
@@ -8948,10 +8956,9 @@ function deletePage(idx){
 // closed, chrome disabled, dropzone visible. Drag-drop on canvas-wrap stays
 // wired (those handlers were attached once at script load and aren't removed).
 function rewindToNoPdf(){
-  // Reset state. Pass N+1 M1: clears all six selection states + the four
-  // new smart-apartment / suites arrays so a fresh PDF lands cleanly.
-  selectedId = null; acSelectedId = null;
-  intercomSelectedId = parcelSelectedId = mailboxSelectedId = suiteSelectedId = null;
+  // Reset state. Phase 2a M4: shared helper covers all 8 selection
+  // states (6 pre-existing + selectedSwitchId + selectedHeadendPage).
+  _clearAllPlaceableSelections();
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
   sourceDocumentBytes = null; sourceDocumentName = null; sourceDocumentMime = null;
@@ -9011,10 +9018,11 @@ function rewindToNoPdf(){
 
 function switchPage(idx){
   if(calibMode) cancelCalibrationFlow();
-  // Pass N+1 M1: page switch clears all six selection states (no cross-page
-  // selection persisted).
-  currentPage=idx; selectedId=null; acSelectedId=null;
-  intercomSelectedId = parcelSelectedId = mailboxSelectedId = suiteSelectedId = null;
+  // Phase 2a M4: page switch clears every placeable's selection state
+  // (no cross-page selection persisted). Helper covers all 8 vars
+  // including selectedSwitchId + selectedHeadendPage.
+  currentPage = idx;
+  _clearAllPlaceableSelections();
   // Just toggle the active class. Don't replace the tab DOM — we need each
   // .tab-label node to survive long enough for a dblclick event to register
   // on it (browser fires dblclick only when both clicks land on the same
@@ -9928,7 +9936,7 @@ function placeSwitch(cssX, cssY){
 // headend markers. White stroke on dark teal fill so the icon reads on
 // both light and dark plan backgrounds. Z-order is intentionally BEHIND
 // cameras + acDevices (infrastructure layer; see main draw loop).
-function drawSwitch(c, sw, vs){
+function drawSwitch(c, sw, vs, isSelected){
   var x  = sw.x * vs;
   var y  = sw.y * vs;
   var W  = 20;  // chassis width (css px)
@@ -9958,6 +9966,17 @@ function drawSwitch(c, sw, vs){
   c.fillStyle = '#fff';
   c.beginPath(); c.arc(x - 8, y, 0.9, 0, Math.PI * 2); c.fill();
   c.beginPath(); c.arc(x - 4, y, 0.9, 0, Math.PI * 2); c.fill();
+  // Phase 2a M9 — selection halo. IDENTICAL treatment to drawHeadEnd's:
+  // yellow #fbbf24 ring at radius=22 + lineWidth 3. Switch has no
+  // permanent glow to clash with, but consistent halo across both
+  // infrastructure families means the user reads "selection" the same
+  // way regardless of what they clicked.
+  if(isSelected){
+    c.beginPath(); c.arc(x, y, 22, 0, Math.PI * 2);
+    c.strokeStyle = '#fbbf24';
+    c.lineWidth   = 3;
+    c.stroke();
+  }
   c.restore();
 }
 
@@ -10308,7 +10327,7 @@ function redraw(){
   // add cabling from cameras → switches → CMVR; for now they're just
   // placement glyphs.
   switches.filter(function(sw){return sw.page===currentPage;}).forEach(function(sw){
-    drawSwitch(ctx, sw, viewScale);
+    drawSwitch(ctx, sw, viewScale, sw.id === selectedSwitchId);
   });
 
   // Two-pass: cones for every camera first, then bodies on top so icons stay
@@ -10575,11 +10594,23 @@ function drawHeadEnd(){
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('NVR', sx, sy);
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  // Glow ring
+  // Glow ring (permanent decoration — blue, low-alpha, sits just outside
+  // the chassis at radius=size=16).
   ctx.beginPath(); ctx.arc(sx, sy, size, 0, Math.PI*2);
   ctx.strokeStyle = 'rgba(30,58,138,0.4)';
   ctx.lineWidth = 2;
   ctx.stroke();
+  // Phase 2a M9 — selection halo. Distinct from the permanent blue glow:
+  // YELLOW #fbbf24 at radius=22 (6px outside the glow) + lineWidth 3.
+  // The radius gap + opaque-yellow vs translucent-blue contrast keeps
+  // selected vs unselected head-end visually unambiguous even when the
+  // permanent glow is also present.
+  if(selectedHeadendPage === currentPage){
+    ctx.beginPath(); ctx.arc(sx, sy, 22, 0, Math.PI*2);
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
 }
 
 function hexAlpha(hex,a){
@@ -10663,9 +10694,18 @@ cv.addEventListener('mousedown',function(e){
     placeSwitch(p.cx, p.cy);
     return;
   }
-  // Head-end is drawn on top of everything; hit-test it first so a click on
-  // the CMVR/NVR icon starts a drag in either panel mode.
-  if(headendAt(p.cx, p.cy)){ dragging = {type:'head-end-move'}; return; }
+  // Phase 2a M5: hit-test placed infrastructure (switches + head-end)
+  // BEFORE the universal cross-mode hit-test. Both gated by !switchMode
+  // && !headendMode so an armed-placement click on an existing object
+  // falls through to the armed-mode branches above (which handle
+  // place-or-delete per Phase 1's design). Selection + drag arm in one
+  // gesture, mirroring the universal cross-mode pattern at lines below.
+  if(!switchMode && !headendMode){
+    var hitSw = switchAt(p.cx, p.cy);
+    if(hitSw){ selectSwitch(hitSw.id); dragging = { id: hitSw.id, type: 'switch-move' }; return; }
+    var hitHe = headendAt(p.cx, p.cy);
+    if(hitHe){ selectHeadend(currentPage); dragging = { type: 'head-end-move' }; return; }
+  }
 
   // Universal cross-mode hit-test. Runs BEFORE the per-mode placement
   // branches. When the click lands on a device that belongs to a
@@ -10779,14 +10819,34 @@ cv.addEventListener('mousedown',function(e){
   addCamera(p.cx,p.cy);
 });
 
-// Hit-test the head-end marker on the current page. Matches drawHeadEnd's
-// 16px square with a small padding for finger forgiveness.
+// Hit-test the head-end marker on the current page. Phase 2a M5b:
+// promoted from boolean to entry-or-null so callers can drive selection
+// + drag from the same hit. Matches drawHeadEnd's 16px square with a
+// small padding for finger forgiveness. Returns the headends[currentPage]
+// entry ({x, y, sku}) or null. All 3 existing callers use truthy/falsy
+// checks → object/null is back-compat.
 function headendAt(cssX, cssY){
   var he = headends[currentPage];
-  if(!he) return false;
+  if(!he) return null;
   var dx = cssX - he.x*viewScale;
   var dy = cssY - he.y*viewScale;
-  return Math.abs(dx) <= 10 && Math.abs(dy) <= 10;
+  return (Math.abs(dx) <= 10 && Math.abs(dy) <= 10) ? he : null;
+}
+
+// Hit-test placed switches on the current page (Phase 2a). Mirrors
+// readerAt's reverse-order iteration (top-most-drawn first). Footprint
+// matches drawSwitch's 20×6 chassis + a small forgiveness pad so port
+// pins + indicator dots are clickable. Returns the entry {id, page, x,
+// y, sku} or null.
+function switchAt(cssX, cssY){
+  var hits = switches.filter(function(s){return s.page === currentPage;});
+  for(var i = hits.length - 1; i >= 0; i--){
+    var sw = hits[i];
+    var dx = cssX - sw.x*viewScale;
+    var dy = cssY - sw.y*viewScale;
+    if(Math.abs(dx) <= 12 && Math.abs(dy) <= 6) return sw;
+  }
+  return null;
 }
 
 cv.addEventListener('contextmenu',function(e){
@@ -10829,8 +10889,20 @@ cv.addEventListener('mousemove',function(e){
     return;
   }
   if(dragging.type==='head-end-move'){
+    // Phase 2a M6 deliberate divergence from precedent: markDirty fires
+    // ONCE on mouseup (see mouseup handler below), not every mousemove
+    // tick. Reduces autosave storm + scrubs an entire drag into a single
+    // dirty-state transition. Existing per-tick markDirty stays in place
+    // for cameras / readers / smart-apt / suites — cross-family
+    // alignment is a future cleanup pass.
     var he = headends[currentPage];
-    if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; markDirty(); redraw(); }
+    if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; redraw(); }
+    return;
+  }
+  if(dragging.type==='switch-move'){
+    // Phase 2a M6 — same drag-end-only markDirty as head-end-move.
+    var sw = switches.find(function(x){return x.id === dragging.id;});
+    if(sw){ sw.x = p.cx/viewScale; sw.y = p.cy/viewScale; redraw(); }
     return;
   }
   if(dragging.type==='reader-move'){
@@ -10867,7 +10939,17 @@ cv.addEventListener('mousemove',function(e){
   markDirty();
   redraw();
 });
-cv.addEventListener('mouseup', function(){dragging=null; cv.style.cursor='crosshair'; updateList(); updateAcList();});
+cv.addEventListener('mouseup', function(){
+  // Phase 2a M6 — drag-end-only markDirty for the two new drag types.
+  // Snapshot dragging.type BEFORE nulling so we know whether the just-
+  // ended drag was a switch / head-end move (in which case state was
+  // mutated during mousemove without a per-tick markDirty).
+  var wasInfraDrag = dragging && (dragging.type === 'switch-move' || dragging.type === 'head-end-move');
+  dragging = null;
+  cv.style.cursor = 'crosshair';
+  if(wasInfraDrag) markDirty();
+  updateList(); updateAcList();
+});
 cv.addEventListener('mouseleave',function(){dragging=null;});
 
 document.addEventListener('mousedown',function(e){
@@ -10958,6 +11040,9 @@ document.addEventListener('keydown',function(e){
     else if(mailboxSelectedId){  deleteMailbox(mailboxSelectedId);   }
     // Pass N+1 M6: suite delete.
     else if(suiteSelectedId){    deleteSuite(suiteSelectedId);       }
+    // Phase 2a M7: infrastructure delete (switch / head-end).
+    else if(selectedSwitchId){   deleteSwitch(selectedSwitchId);     }
+    else if(selectedHeadendPage !== null){ deleteHeadend(selectedHeadendPage); }
   }
   if(e.key==='Escape'){
     if(openMenuEl){ closeAllMenus(); return; }
@@ -11182,13 +11267,9 @@ function placeReader(cssX, cssY){
 }
 
 function selectReader(id){
+  // Phase 2a M4: shared helper replaces the per-function 5-var cascade.
+  _clearAllPlaceableSelections();
   acSelectedId = id;
-  // Pass N+1 M1: clear all other selection states.
-  selectedId         = null;
-  intercomSelectedId = null;
-  parcelSelectedId   = null;
-  mailboxSelectedId  = null;
-  suiteSelectedId    = null;
   var d = acDevices.find(function(x){return x.id === id;});
   if(!d){ redraw(); updateList(); updateAcList(); return; }
 
@@ -11652,27 +11733,24 @@ function placeMailbox(cssX, cssY){
 // smartApartment, refresh the list and bail rather than opening an empty
 // panel.
 function selectIntercom(id){
+  _clearAllPlaceableSelections();
   intercomSelectedId = id;
-  selectedId = null; acSelectedId = null;
-  parcelSelectedId = null; mailboxSelectedId = null; suiteSelectedId = null;
   var dev = smartApartment.find(function(d){return d.id === id;});
   if(!dev){ redraw(); updateIntercomList(); return; }
   redraw(); updateIntercomList();
   openRightPanelForIntercom(dev);
 }
 function selectParcel(id){
+  _clearAllPlaceableSelections();
   parcelSelectedId = id;
-  selectedId = null; acSelectedId = null;
-  intercomSelectedId = null; mailboxSelectedId = null; suiteSelectedId = null;
   var dev = smartApartment.find(function(d){return d.id === id;});
   if(!dev){ redraw(); updateParcelList(); return; }
   redraw(); updateParcelList();
   openRightPanelForParcel(dev);
 }
 function selectMailbox(id){
+  _clearAllPlaceableSelections();
   mailboxSelectedId = id;
-  selectedId = null; acSelectedId = null;
-  intercomSelectedId = null; parcelSelectedId = null; suiteSelectedId = null;
   var dev = smartApartment.find(function(d){return d.id === id;});
   if(!dev){ redraw(); updateMailboxList(); return; }
   redraw(); updateMailboxList();
@@ -12493,13 +12571,70 @@ function placeSuite(cssX, cssY, label, unitTypeId){
 // Selection — clear the other 5 states (cascade mirrors selectReader).
 // M7 wires the right-panel open call (replaces the M6 TODO marker).
 function selectSuite(id){
+  _clearAllPlaceableSelections();
   suiteSelectedId = id;
-  selectedId = null; acSelectedId = null;
-  intercomSelectedId = null; parcelSelectedId = null; mailboxSelectedId = null;
   var dev = suites.find(function(s){return s.id === id;});
   if(!dev){ redraw(); updateSuiteList(); return; }
   redraw(); updateSuiteList();
   openRightPanelForSuite(dev);
+}
+
+// Phase 2a M4 — placed-switch selection. Mirrors selectReader's
+// structure: clear all other selections via the shared helper, assign
+// our own var, repaint canvas + right panel. Right panel reuses
+// openRightPanelForSwitch which pulls its readouts straight from
+// SWITCH_CATALOG[sw.sku] + getUnitPrice(sw.sku). NO markDirty —
+// selection is read-state, not project-state. NO mutation of arming
+// state (currentSwitchSku / currentCmvrSku / leftPaneOpenSection): the
+// user is inspecting an existing object, not arming a new one.
+function selectSwitch(id){
+  _clearAllPlaceableSelections();
+  selectedSwitchId = id;
+  var sw = switches.find(function(x){return x.id === id;});
+  if(!sw){ redraw(); return; }
+  redraw();
+  if(sw.sku) openRightPanelForSwitch(sw.sku);
+}
+
+// Phase 2a M5b — placed head-end selection. Mirrors selectSwitch but
+// keyed by page (headends is a per-page-singleton map, NOT an array).
+function selectHeadend(page){
+  _clearAllPlaceableSelections();
+  selectedHeadendPage = page;
+  var he = headends[page];
+  if(!he){ redraw(); return; }
+  redraw();
+  if(he.sku) openRightPanelForHeadend(he.sku);
+}
+
+// Phase 2a M7 — delete a placed switch by id. Mirrors deleteReader.
+// closeRightPanel only fires when the right panel is currently showing
+// THIS switch (data-mode === 'switch'); other-mode panels survive so
+// the user's prior reader/camera selection doesn't get nuked as a side
+// effect of an unrelated delete.
+function deleteSwitch(id){
+  switches = switches.filter(function(sw){return sw.id !== id;});
+  markDirty();
+  var rp = document.getElementById('right-panel');
+  if(selectedSwitchId === id){
+    if(rp && rp.getAttribute('data-mode') === 'switch') closeRightPanel();
+    else { selectedSwitchId = null; redraw(); }
+  } else {
+    redraw();
+  }
+}
+
+// Phase 2a M5b — delete a placed head-end by page. Mirrors deleteSwitch.
+function deleteHeadend(page){
+  delete headends[page];
+  markDirty();
+  var rp = document.getElementById('right-panel');
+  if(selectedHeadendPage === page){
+    if(rp && rp.getAttribute('data-mode') === 'headend') closeRightPanel();
+    else { selectedHeadendPage = null; redraw(); }
+  } else {
+    redraw();
+  }
 }
 
 function deleteSuite(id){
@@ -12729,18 +12864,32 @@ function addCamera(cssX,cssY){
   }
 }
 
+// Single source of truth for clearing every placeable's selection state.
+// Phase 2a M4: extracted from the 30+ scattered null-cascades across
+// closeRightPanel, switchPage, rewindToNoPdf, loadImage, loadPDF, and
+// the 6 per-family select* functions. Each select* function calls this
+// BEFORE assigning its own *SelectedId — same net behavior as the prior
+// hand-rolled cascades. Net behavior unchanged for existing 6 vars;
+// adds the 2 Phase 2a vars (selectedSwitchId + selectedHeadendPage) so
+// camera/reader/intercom/parcel/mailbox/suite selection cleanly clears
+// any switch / head-end halo too.
+function _clearAllPlaceableSelections(){
+  selectedId          = null;
+  acSelectedId        = null;
+  intercomSelectedId  = null;
+  parcelSelectedId    = null;
+  mailboxSelectedId   = null;
+  suiteSelectedId     = null;
+  selectedSwitchId    = null;
+  selectedHeadendPage = null;
+}
+
 // Single deselect path for either mode (camera or reader). Clears both
 // selection vars; the UI lights/redraws are idempotent if one side wasn't set.
 function closeRightPanel(){
-  // Pass N+1 M1: clear all six selection states. Devices for the four new
-  // modes can't be placed yet (M3/M6) so their *SelectedId vars stay null,
-  // but the cascade is wired here so M3/M6 plumbing has no extra work.
-  selectedId         = null;
-  acSelectedId       = null;
-  intercomSelectedId = null;
-  parcelSelectedId   = null;
-  mailboxSelectedId  = null;
-  suiteSelectedId    = null;
+  // Phase 2a M4/M8: cascade now includes selectedSwitchId +
+  // selectedHeadendPage via the shared helper.
+  _clearAllPlaceableSelections();
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
   redraw(); updateList(); updateAcList(); updateDoriInfo();
@@ -13230,14 +13379,9 @@ function updateSelectedMailbox(){
 }
 
 function selectCamera(id){
+  // Phase 2a M4: shared helper replaces the per-function 5-var cascade.
+  _clearAllPlaceableSelections();
   selectedId=id;
-  // Pass A.8 / Pass N+1 M1: clear all other selection states so the right
-  // panel cleanly swaps to camera-mode (no dual selection across families).
-  acSelectedId       = null;
-  intercomSelectedId = null;
-  parcelSelectedId   = null;
-  mailboxSelectedId  = null;
-  suiteSelectedId    = null;
   var cam=cameras.find(function(c){return c.id===id;});
   if(!cam) return;
   document.getElementById('inp-label').value=cam.label;
