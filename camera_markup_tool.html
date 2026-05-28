@@ -359,6 +359,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .bom-row .bom-del { color:#d1d5db; cursor:pointer; font-size:14px; text-align:center; }
 .bom-row .bom-del:hover { color:var(--primary); }
 .bom-row.auto-row .bom-desc { color:#6b7280; font-style:italic; }
+/* Phase 2a F3: inline BOM warning row (e.g. "No CMVR Present"). Amber
+   text + bold, no inputs, no line-total — purely informational. Matches
+   the palette of .dhw-warn / .bom-sec-hdr.warn so the severity reads
+   consistently across the tool. On-screen only; PDF + CSV consumers
+   filter rows with row.warn === true. */
+.bom-row.warn-row .bom-desc { color:#b45309; font-weight:700; font-style:normal; }
 
 .bom-empty { padding:14px 16px; color:#9ca3af; font-size:10px; font-style:italic; }
 
@@ -2241,6 +2247,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
            populate from SWITCH_CATALOG[sku] + getUnitPrice(sku). -->
       <div class="rp-switch-fields">
         <div class="rp-field">
+          <label class="rp-label">Label</label>
+          <div class="rp-slot" data-rp-slot="label-switch">
+            <input type="text" id="inp-label-switch" oninput="updateSelectedSwitchLabel()">
+          </div>
+        </div>
+        <div class="rp-field">
           <label class="rp-label">Manufacturer &amp; Model</label>
           <div class="rp-readout" id="rp-switch-model-readout">
             <div class="rp-model-name">&mdash;</div>
@@ -2277,6 +2289,12 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
            (read-only readouts; no editable fields yet). All 5 readouts
            populate from CMVR_CATALOG[sku] + getUnitPrice(sku). -->
       <div class="rp-headend-fields">
+        <div class="rp-field">
+          <label class="rp-label">Label</label>
+          <div class="rp-slot" data-rp-slot="label-headend">
+            <input type="text" id="inp-label-headend" oninput="updateSelectedHeadendLabel()">
+          </div>
+        </div>
         <div class="rp-field">
           <label class="rp-label">Manufacturer &amp; Model</label>
           <div class="rp-readout" id="rp-headend-model-readout">
@@ -3098,7 +3116,12 @@ var currentType='dome', blindMode=false, doriMode=false, heatmapMode=false;
 // FOV Toggle: per-session canvas-only flag for hiding camera cones. NOT persisted in JSON.
 var fovVisible=true;
 var calibrations={}, calibMode=false, calibPoints=[], calibCursor=null;
-var headends = {};            // pageIdx -> {x, y} in logical PDF units
+// CMVR Head-Ends Phase (v24->v25): multi-per-page array, mirrors switches.
+// Each entry {id, page, x, y, sku, label}. Replaces the prior per-page-
+// singleton map (v24 and earlier). applyProjectState migrates legacy map
+// shape on load (never drops). Cable routing currently picks the FIRST
+// head-end per page (array order); Phase 2c does proper multi-routing.
+var headends = [];
 var headendMode = false;      // currently placing head-end?
 // Switch Topology Phase 1: network switch placements. Array (multi-per-
 // page); each entry {id, page, x, y, sku}. Mirrors acDevices shape, NOT
@@ -3113,7 +3136,7 @@ var switchMode = false;       // currently placing a network switch?
 // switchPage / loadImage / loadPDF / rewindToNoPdf. Sole writers:
 // selectSwitch / selectHeadend / closeRightPanel / page-reset paths.
 var selectedSwitchId    = null;
-var selectedHeadendPage = null;
+var selectedHeadendId = null;
 var cablesMode = true;        // showing cable runs? default on; gated by headend presence at draw time
 var cableOverhead = 1.25;     // multiplier for cable routing (vs straight-line)
 var maxCableM = 90;           // PoE Cat6 max length
@@ -7515,6 +7538,10 @@ var currentModelKey = null;     // currently picked model for next placement
 function armModel(key){
   var spec = CAMERA_DB[key];
   if(!spec) return;
+  // Sticky-placement pass: same-key tile re-click toggles off. Different
+  // key clears any other family's arm first (one-armed tool-wide).
+  if(key === currentModelKey){ _cancelAllPlacement(); return; }
+  _cancelAllPlacement();
   currentModelKey = key;
   setType(spec.type, true);
   document.getElementById('inp-resolution').value = nearestRes(spec.hPx);
@@ -7544,6 +7571,10 @@ function armModel(key){
 var currentCmvrSku = null;
 function armCmvrModel(sku){
   if(sku !== null && !CMVR_CATALOG.hasOwnProperty(sku)) return;
+  // Sticky: same-sku tile re-click toggles off. Different sku clears
+  // any other family's arm first.
+  if(sku !== null && sku === currentCmvrSku){ _cancelAllPlacement(); return; }
+  if(sku !== null) _cancelAllPlacement();
   currentCmvrSku = sku;
   if(typeof _renderCmvrModelList === 'function') _renderCmvrModelList();
   if(sku && typeof openRightPanelForHeadend === 'function') openRightPanelForHeadend(sku);
@@ -7558,6 +7589,10 @@ function armCmvrModel(sku){
 var currentSwitchSku = null;
 function armSwitchModel(sku){
   if(sku !== null && !SWITCH_CATALOG.hasOwnProperty(sku)) return;
+  // Sticky: same-sku tile re-click toggles off. Different sku clears
+  // any other family's arm first.
+  if(sku !== null && sku === currentSwitchSku){ _cancelAllPlacement(); return; }
+  if(sku !== null) _cancelAllPlacement();
   currentSwitchSku = sku;
   if(typeof _renderSwitchModelList === 'function') _renderSwitchModelList();
   if(sku && typeof openRightPanelForSwitch === 'function') openRightPanelForSwitch(sku);
@@ -7776,11 +7811,32 @@ function _renderSwitchModelList(){
 // openRightPanelForCamera structure — opens the panel, sets data-mode,
 // populates all 5 readouts from CMVR_CATALOG[sku] + getUnitPrice(sku).
 // "—" placeholder for missing/null values (PoE === 0, no price book).
+// Phase 2a F6 — label edit handler. Mirrors updateSelectedReaderLabel
+// pattern. Fires markDirty + redraw on every keystroke (matches camera
+// label editing precedent).
+function updateSelectedHeadendLabel(){
+  if(!selectedHeadendId) return;
+  var he = headends.find(function(x){return x.id === selectedHeadendId;});
+  if(!he) return;
+  he.label = document.getElementById('inp-label-headend').value;
+  markDirty();
+  redraw();
+}
+
 function openRightPanelForHeadend(sku){
   var c = CMVR_CATALOG[sku];
   if(!c) return;
   var rp = document.getElementById('right-panel');
   if(!rp) return;
+  // Phase 2a F6: seed the label input from the placed entry (when
+  // selectedHeadendId is set — i.e. user clicked a placed head-end,
+  // not just armed a sku via Tier-3 tile). For arm-only entry (no
+  // selection yet) the input shows blank. v25 array lookup by id.
+  var labelInp = document.getElementById('inp-label-headend');
+  if(labelInp){
+    var he = selectedHeadendId ? headends.find(function(x){return x.id === selectedHeadendId;}) : null;
+    labelInp.value = (he && he.label) ? he.label : '';
+  }
   var modelEl = document.querySelector('#rp-headend-model-readout .rp-model-name');
   var capEl   = document.querySelector('#rp-headend-capacity-readout .rp-model-name');
   var poeEl   = document.querySelector('#rp-headend-poe-readout .rp-model-name');
@@ -7805,11 +7861,29 @@ function openRightPanelForHeadend(sku){
 // the 5 read-only readouts from SWITCH_CATALOG[sku] + getUnitPrice(sku).
 // "—" placeholder for missing fields (PoE null on unrated units, no
 // pricing book loaded).
+// Phase 2a F5 — label edit handler for selected switch. Mirrors the
+// head-end variant.
+function updateSelectedSwitchLabel(){
+  if(!selectedSwitchId) return;
+  var sw = switches.find(function(x){return x.id === selectedSwitchId;});
+  if(!sw) return;
+  sw.label = document.getElementById('inp-label-switch').value;
+  markDirty();
+  redraw();
+}
+
 function openRightPanelForSwitch(sku){
   var s = SWITCH_CATALOG[sku];
   if(!s) return;
   var rp = document.getElementById('right-panel');
   if(!rp) return;
+  // Phase 2a F5: seed the label input from the selected switch entry
+  // when one is selected; blank when entering via Tier-3 tile arm.
+  var labelInp = document.getElementById('inp-label-switch');
+  if(labelInp){
+    var sw = selectedSwitchId ? switches.find(function(x){return x.id === selectedSwitchId;}) : null;
+    labelInp.value = (sw && sw.label) ? sw.label : '';
+  }
   var modelEl      = document.querySelector('#rp-switch-model-readout .rp-model-name');
   var portsEl      = document.querySelector('#rp-switch-ports-readout .rp-model-name');
   var poeEl        = document.querySelector('#rp-switch-poe-readout .rp-model-name');
@@ -8198,6 +8272,16 @@ function acIconFor(key){ return AC_ICONS[key] || ''; }
 // variant default for that subcategory). State only — no acDevices
 // mutation, no canvas redraw. Caller fires renderLeftPaneDrillDown('ac').
 function armAcDevice(category, subcategory){
+  // Sticky: same (category, subcategory) toggle off when already armed.
+  // Different combo clears any other family first.
+  if(currentACBrand === 'brivo'
+     && category === currentACCategory
+     && subcategory === currentACSubcategory
+     && currentReaderModel){
+    _cancelAllPlacement();
+    return;
+  }
+  _cancelAllPlacement();
   currentACBrand       = 'brivo';
   currentACCategory    = category;
   currentACSubcategory = subcategory;
@@ -8471,6 +8555,7 @@ async function loadImage(file){
   pages=[];cameras=[];counters={};currentPage=0;
   acDevices=[];acCounters={};
   switches=[];                  // Switch Topology Phase 1: reset on raw image re-import (QUEUE-flagged gotcha)
+  headends=[];                  // v25 CMVR Phase: reset on raw image re-import (was leaking via the map; now fixed)
   _clearAllPlaceableSelections();   // Phase 2a M4: replaces selectedId=null;acSelectedId=null;
   // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
   // selection states on fresh import.
@@ -8540,7 +8625,8 @@ async function loadImage(file){
 async function loadPDF(file){
   pages=[];cameras=[];counters={};currentPage=0;
   acDevices=[];acCounters={};
-  switches=[];                  // Switch Topology Phase 1: reset on raw PDF re-import (QUEUE-flagged gotcha; headends still leaks — separate pass)
+  switches=[];                  // Switch Topology Phase 1: reset on raw PDF re-import (QUEUE-flagged gotcha)
+  headends=[];                  // v25 CMVR Phase: reset on raw PDF re-import (was leaking via the map; now fixed alongside the array conversion)
   _clearAllPlaceableSelections();   // Phase 2a M4: replaces selectedId=null;acSelectedId=null;
   // Pass N+1 M1: reset smart-apartment + suites arrays and the four new
   // selection states on fresh PDF import.
@@ -8688,7 +8774,7 @@ function rebuildTabsDom(){
     }
 
     // Pass A.5: warning badge when a typical (mult>1) page also has a head-end.
-    if(mult > 1 && headends[pageIdx]){
+    if(mult > 1 && headends.some(function(h){return h.page === pageIdx;})){
       var warn = document.createElement('span');
       warn.className = 'tab-warning-badge';
       warn.textContent = '⚠';
@@ -8917,7 +9003,9 @@ function deletePage(idx){
   smartAptCounters.mailbox  = remapPageKeys(smartAptCounters.mailbox,  idx);
   suiteCounters             = remapPageKeys(suiteCounters,             idx);
   calibrations = remapPageKeys(calibrations, idx);
-  headends     = remapPageKeys(headends, idx);
+  // v25 array: cascade page delete via filter + decrement (mirrors cameras + switches).
+  headends = headends.filter(function(h){return h.page !== idx;});
+  headends.forEach(function(h){ if(h.page > idx) h.page--; });
   acCounters   = remapPageKeys(acCounters, idx);
   // Pass A.7: drop deleted page from manual order and shift higher indices down.
   if(tabOrder){
@@ -8957,14 +9045,14 @@ function deletePage(idx){
 // wired (those handlers were attached once at script load and aren't removed).
 function rewindToNoPdf(){
   // Reset state. Phase 2a M4: shared helper covers all 8 selection
-  // states (6 pre-existing + selectedSwitchId + selectedHeadendPage).
+  // states (6 pre-existing + selectedSwitchId + selectedHeadendId).
   _clearAllPlaceableSelections();
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
   sourceDocumentBytes = null; sourceDocumentName = null; sourceDocumentMime = null;
   currentPage = 0;
   pdfLoaded = false;
-  pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = {}; switches = [];
+  pages = []; cameras = []; acDevices = []; acCounters = {}; calibrations = {}; headends = []; switches = [];
   smartApartment = []; smartAptCounters = { intercom: {}, parcel: {}, mailbox: {} };
   suites = []; suiteCounters = {};
   tabOrder = null;            // Pass A.7: clear manual order with the rest of state
@@ -9020,7 +9108,7 @@ function switchPage(idx){
   if(calibMode) cancelCalibrationFlow();
   // Phase 2a M4: page switch clears every placeable's selection state
   // (no cross-page selection persisted). Helper covers all 8 vars
-  // including selectedSwitchId + selectedHeadendPage.
+  // including selectedSwitchId + selectedHeadendId.
   currentPage = idx;
   _clearAllPlaceableSelections();
   // Just toggle the active class. Don't replace the tab DOM — we need each
@@ -9872,14 +9960,24 @@ function cancelHeadendPlacement(){
 }
 
 function placeHeadend(cssX, cssY){
-  // CMVR head-end models: stamp the currently-armed sku at commit time.
-  // null = no model armed → BOM falls back to the generic auto-nvr row.
-  headends[currentPage] = { x: cssX/viewScale, y: cssY/viewScale, sku: currentCmvrSku || null };
+  // CMVR head-ends array (v25): multi-per-page, mirrors switches.
+  // Each call pushes a new entry; arm survives for sticky placement.
+  // null sku = no model armed → BOM emits a "No CMVR Present" warning (F3).
+  // Auto-label CMVR-N derived from existing head-end labels (max+1).
+  var label = _nextInfraLabel('CMVR', headends.map(function(h){return h.label;}));
+  var he = {
+    id:    'he-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    page:  currentPage,
+    x:     cssX/viewScale,
+    y:     cssY/viewScale,
+    sku:   currentCmvrSku || null,
+    label: label
+  };
+  headends.push(he);
   markDirty();
-  cancelHeadendPlacement();
-  // Placing a head-end implies the user wants to see cables. Force the
-  // Cables toggle on regardless of prior state, then resync both View
-  // menu + eye-dropdown checkmarks via _syncViewToggleUI.
+  // Sticky-placement pass: do NOT cancelHeadendPlacement here. headendMode
+  // + currentCmvrSku + banner all survive for the next click. Cables
+  // toggle still flips on once (any-time first-placement convenience).
   cablesMode = true;
   _syncViewToggleUI();
   redraw();
@@ -9916,17 +10014,43 @@ function cancelSwitchPlacement(){
   redraw();
 }
 
+// Phase 2a F5/F6 — auto-label generator. Scans existing labels matching
+// the given prefix ("SW" / "CMVR") for their trailing integer; returns
+// "<prefix>-<max+1>". Stateless + survives delete-and-replace without
+// collision. Examples: [] → "SW-1"; ["SW-1","SW-3"] → "SW-4";
+// ["SW-1","CUSTOM"] → "SW-2".
+function _nextInfraLabel(prefix, existingLabels){
+  var max = 0;
+  var re = new RegExp('^' + prefix + '-(\\d+)$');
+  existingLabels.forEach(function(label){
+    if(!label) return;
+    var m = String(label).match(re);
+    if(m){
+      var n = parseInt(m[1], 10);
+      if(isFinite(n) && n > max) max = n;
+    }
+  });
+  return prefix + '-' + (max + 1);
+}
+
 function placeSwitch(cssX, cssY){
+  // Phase 2a F5: auto-label SW-N derived from existing switch labels.
+  // Computed BEFORE the push so the new entry doesn't influence its own
+  // counter; mirrors the addCamera label-timing convention from
+  // CLAUDE.md's "addCamera label increment timing" pitfall.
+  var label = _nextInfraLabel('SW', switches.map(function(x){return x.label;}));
   var sw = {
     id:   'sw-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
     page: currentPage,
     x:    cssX/viewScale,
     y:    cssY/viewScale,
-    sku:  currentSwitchSku
+    sku:  currentSwitchSku,
+    label: label
   };
   switches.push(sw);
   markDirty();
-  cancelSwitchPlacement();
+  // Sticky-placement pass: do NOT cancelSwitchPlacement here. switchMode
+  // + currentSwitchSku + banner all survive for the next click.
   redraw();
 }
 
@@ -9977,12 +10101,24 @@ function drawSwitch(c, sw, vs, isSelected){
     c.lineWidth   = 3;
     c.stroke();
   }
+  // Phase 2a F5: label below glyph + halo. Mirrors drawReader's
+  // 9px Courier bold treatment; positioned just outside the 22px
+  // selection halo so the label stays readable when selected.
+  if(sw.label){
+    c.fillStyle = '#0e7490';
+    c.font = 'bold 9px Courier New';
+    c.textAlign = 'center';
+    c.fillText(sw.label, x, y + 28);
+    c.textAlign = 'left';
+  }
   c.restore();
 }
 
-// Estimate cable length in meters for a camera, given head-end on its page
+// Estimate cable length in meters for a camera, given head-end on its page.
+// v25 multi-per-page interim: route to the FIRST head-end on the page
+// (array order). Phase 2c handles proper multi-head-end routing.
 function cableLengthM(cam, pageIdx){
-  var he = headends[pageIdx];
+  var he = headends.find(function(h){return h.page === pageIdx;});
   var ppm = getPPM(pageIdx);
   if(!he || !ppm) return null;
   var dx = (cam.x - he.x);
@@ -10317,8 +10453,11 @@ function redraw(){
     ctx.restore();
   }
 
-  // Draw cable runs first (so they appear under cameras)
-  if(cablesMode && headends[currentPage]){
+  // Draw cable runs first (so they appear under cameras). v25: gate on
+  // ANY head-end on this page; cable routing connects cameras to the
+  // FIRST head-end (array-order) — multi-per-page proper routing is
+  // Phase 2c territory.
+  if(cablesMode && headends.some(function(h){return h.page === currentPage;})){
     drawCableRuns();
   }
 
@@ -10370,10 +10509,11 @@ function redraw(){
     drawSuite(ctx, s, viewScale, s.id===suiteSelectedId);
   });
 
-  // Draw head-end marker on top
-  if(headends[currentPage]){
-    drawHeadEnd();
-  }
+  // Draw head-end markers on top — v25 multi-per-page. Each gets its
+  // own selection halo check.
+  headends.filter(function(h){return h.page === currentPage;}).forEach(function(he){
+    drawHeadEnd(he, he.id === selectedHeadendId);
+  });
 
   if(calibMode) drawCalibrationOverlay();
   ctx.restore();
@@ -10539,7 +10679,9 @@ function drawCalibrationOverlay(){
 }
 
 function drawCableRuns(){
-  var he = headends[currentPage];
+  // v25 multi-per-page interim: cables route to the FIRST head-end on
+  // the page (array order). Phase 2c proper routing TBD.
+  var he = headends.find(function(h){return h.page === currentPage;});
   if(!he) return;
   var vs = viewScale;
   var hex = he.x*vs, hey = he.y*vs;
@@ -10575,8 +10717,10 @@ function drawCableRuns(){
   });
 }
 
-function drawHeadEnd(){
-  var he = headends[currentPage];
+// v25 — accepts the entry explicitly (mirrors drawSwitch signature).
+// Main draw loop iterates headends.filter(page===currentPage) and passes
+// each entry plus its selection state.
+function drawHeadEnd(he, isSelected){
   if(!he) return;
   var sx = he.x*viewScale, sy = he.y*viewScale;
   // Triangle / rack icon
@@ -10600,16 +10744,24 @@ function drawHeadEnd(){
   ctx.strokeStyle = 'rgba(30,58,138,0.4)';
   ctx.lineWidth = 2;
   ctx.stroke();
-  // Phase 2a M9 — selection halo. Distinct from the permanent blue glow:
-  // YELLOW #fbbf24 at radius=22 (6px outside the glow) + lineWidth 3.
-  // The radius gap + opaque-yellow vs translucent-blue contrast keeps
-  // selected vs unselected head-end visually unambiguous even when the
-  // permanent glow is also present.
-  if(selectedHeadendPage === currentPage){
+  // v25 selection halo — yellow #fbbf24 at radius=22 + lineWidth 3.
+  // Distinct from the permanent blue glow at radius=16. Caller passes
+  // isSelected so multiple head-ends on the same page can each show
+  // their own selection state.
+  if(isSelected){
     ctx.beginPath(); ctx.arc(sx, sy, 22, 0, Math.PI*2);
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 3;
     ctx.stroke();
+  }
+  // Phase 2a F6: label below glyph + halo. Same treatment as drawReader's
+  // 9px Courier bold; positioned just outside the 22px selection halo.
+  if(he.label){
+    ctx.fillStyle = '#1e3a8a';
+    ctx.font = 'bold 9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(he.label, sx, sy + 28);
+    ctx.textAlign = 'left';
   }
 }
 
@@ -10671,41 +10823,45 @@ cv.addEventListener('mousedown',function(e){
   var p=canvasXY(e);
   if(calibMode){ handleCalibClick(p.cx,p.cy); return; }
   if(headendMode){
-    // Click on the existing head-end while in placement mode → remove it.
-    // Pre-existing UX gap: there was no other way to delete a head-end
-    // (right-click/Delete don't act on it). Toggling the mode and clicking
-    // the icon is the discoverable path for now. Hit-test reuses headendAt
-    // (±10 px, same radius as the drag-grab).
-    if(headendAt(p.cx, p.cy)){
-      delete headends[currentPage];
-      markDirty();
-      cancelHeadendPlacement();
-      redraw();
+    // Sticky-placement Regression B: hit-test FIRST. While armed, a click
+    // that lands on the existing head-end → SELECT + drag (Phase 2a
+    // semantics), not delete + not place-on-top. The legacy Phase 1
+    // delete-on-armed-hit behavior is gone — delete-key on a selected
+    // head-end is now the deletion path. Empty-canvas click → place.
+    var heHitArmed = headendAt(p.cx, p.cy);
+    if(heHitArmed){
+      selectHeadend(heHitArmed.id, { keepArm: true });
+      dragging = { id: heHitArmed.id, type: 'head-end-move' };
       return;
     }
     placeHeadend(p.cx, p.cy);
     return;
   }
-  // Switch Topology Phase 1: armed-mode click drops a switch. No
-  // click-to-delete, no hit-test, no drag — all deferred to Phase 2
-  // (unified select pass). Placement guard runs in startSwitchPlacement
-  // (currentSwitchSku non-null, pageMultiplier === 1).
   if(switchMode){
+    // Sticky-placement Regression B: same hit-test-first rule for the
+    // switch armed branch. Click on existing switch → select + drag;
+    // empty canvas → place a new switch.
+    var swHitArmed = switchAt(p.cx, p.cy);
+    if(swHitArmed){
+      selectSwitch(swHitArmed.id, { keepArm: true });
+      dragging = { id: swHitArmed.id, type: 'switch-move' };
+      return;
+    }
     placeSwitch(p.cx, p.cy);
     return;
   }
   // Phase 2a M5: hit-test placed infrastructure (switches + head-end)
-  // BEFORE the universal cross-mode hit-test. Both gated by !switchMode
-  // && !headendMode so an armed-placement click on an existing object
-  // falls through to the armed-mode branches above (which handle
-  // place-or-delete per Phase 1's design). Selection + drag arm in one
-  // gesture, mirroring the universal cross-mode pattern at lines below.
-  if(!switchMode && !headendMode){
-    var hitSw = switchAt(p.cx, p.cy);
-    if(hitSw){ selectSwitch(hitSw.id); dragging = { id: hitSw.id, type: 'switch-move' }; return; }
-    var hitHe = headendAt(p.cx, p.cy);
-    if(hitHe){ selectHeadend(currentPage); dragging = { type: 'head-end-move' }; return; }
-  }
+  // BEFORE the universal cross-mode hit-test. The armed-mode branches
+  // above already handle hit-and-select for armed clicks (Regression B
+  // fix) — so this dedicated hit-test runs unconditionally for non-armed
+  // clicks. Selection + drag arm in one gesture, mirroring the universal
+  // cross-mode pattern at lines below.
+  // Sticky Regression A: canvas-drag-paths preserve any active arm so
+  // user can drag an existing infra device without losing their arm.
+  var hitSw = switchAt(p.cx, p.cy);
+  if(hitSw){ selectSwitch(hitSw.id, { keepArm: true }); dragging = { id: hitSw.id, type: 'switch-move' }; return; }
+  var hitHe = headendAt(p.cx, p.cy);
+  if(hitHe){ selectHeadend(hitHe.id, { keepArm: true }); dragging = { id: hitHe.id, type: 'head-end-move' }; return; }
 
   // Universal cross-mode hit-test. Runs BEFORE the per-mode placement
   // branches. When the click lands on a device that belongs to a
@@ -10738,12 +10894,17 @@ cv.addEventListener('mousedown',function(e){
   // — it survives the closeRightPanel cascade.
   if(uniHit && uniFam !== panelMode){
     setPanelMode(uniFam);
-    if(uniFam === 'cameras'){       selectCamera(uniHit.id);   dragging = { id: uniHit.id, type: 'move' }; }
-    else if(uniFam === 'access'){   selectReader(uniHit.id);   dragging = { id: uniHit.id, type: 'reader-move' }; }
-    else if(uniFam === 'intercom'){ selectIntercom(uniHit.id); dragging = { id: uniHit.id, type: 'intercom-move' }; }
-    else if(uniFam === 'parcel'){   selectParcel(uniHit.id);   dragging = { id: uniHit.id, type: 'parcel-move' }; }
-    else if(uniFam === 'mailbox'){  selectMailbox(uniHit.id);  dragging = { id: uniHit.id, type: 'mailbox-move' }; }
-    else if(uniFam === 'suite'){    selectSuite(uniHit.id);    dragging = { id: uniHit.id, type: 'suite-move' }; }
+    // Sticky Regression A: keepArm preserves any active arm across the
+    // cross-family canvas drag. setPanelMode above already disarms via
+    // its own _cancelAllPlacement (mode-swap cancels), so by the time
+    // selectX runs the arm is already null — keepArm here is largely a
+    // no-op for the arm var, but consistent intent across all drag-paths.
+    if(uniFam === 'cameras'){       selectCamera(uniHit.id,   { keepArm: true }); dragging = { id: uniHit.id, type: 'move' }; }
+    else if(uniFam === 'access'){   selectReader(uniHit.id,   { keepArm: true }); dragging = { id: uniHit.id, type: 'reader-move' }; }
+    else if(uniFam === 'intercom'){ selectIntercom(uniHit.id, { keepArm: true }); dragging = { id: uniHit.id, type: 'intercom-move' }; }
+    else if(uniFam === 'parcel'){   selectParcel(uniHit.id,   { keepArm: true }); dragging = { id: uniHit.id, type: 'parcel-move' }; }
+    else if(uniFam === 'mailbox'){  selectMailbox(uniHit.id,  { keepArm: true }); dragging = { id: uniHit.id, type: 'mailbox-move' }; }
+    else if(uniFam === 'suite'){    selectSuite(uniHit.id,    { keepArm: true }); dragging = { id: uniHit.id, type: 'suite-move' }; }
     return;
   }
   // Same-family hit OR no hit — fall through to existing per-mode logic
@@ -10751,7 +10912,7 @@ cv.addEventListener('mousedown',function(e){
 
   if(panelMode === 'access'){
     var dev = readerAt(p.cx, p.cy);
-    if(dev){ selectReader(dev.id); dragging = {id:dev.id, type:'reader-move'}; return; }
+    if(dev){ selectReader(dev.id, { keepArm: true }); dragging = {id:dev.id, type:'reader-move'}; return; }
     // Deselect-on-empty-click when something is selected (matches drawing-app
     // convention; second click in empty space then places). Pass A.8 routes
     // through closeRightPanel so the reader details panel slides out too.
@@ -10764,21 +10925,21 @@ cv.addEventListener('mousedown',function(e){
   // Deselect-on-empty-click closes the right panel for parity with AC.
   if(panelMode === 'intercom'){
     var idev = intercomAt(p.cx, p.cy);
-    if(idev){ selectIntercom(idev.id); dragging = {id:idev.id, type:'intercom-move'}; return; }
+    if(idev){ selectIntercom(idev.id, { keepArm: true }); dragging = {id:idev.id, type:'intercom-move'}; return; }
     if(intercomSelectedId){ closeRightPanel(); return; }
     placeIntercom(p.cx, p.cy);
     return;
   }
   if(panelMode === 'parcel'){
     var pdev = parcelAt(p.cx, p.cy);
-    if(pdev){ selectParcel(pdev.id); dragging = {id:pdev.id, type:'parcel-move'}; return; }
+    if(pdev){ selectParcel(pdev.id, { keepArm: true }); dragging = {id:pdev.id, type:'parcel-move'}; return; }
     if(parcelSelectedId){ closeRightPanel(); return; }
     placeParcel(p.cx, p.cy);
     return;
   }
   if(panelMode === 'mailbox'){
     var mdev = mailboxAt(p.cx, p.cy);
-    if(mdev){ selectMailbox(mdev.id); dragging = {id:mdev.id, type:'mailbox-move'}; return; }
+    if(mdev){ selectMailbox(mdev.id, { keepArm: true }); dragging = {id:mdev.id, type:'mailbox-move'}; return; }
     if(mailboxSelectedId){ closeRightPanel(); return; }
     placeMailbox(p.cx, p.cy);
     return;
@@ -10789,7 +10950,7 @@ cv.addEventListener('mousedown',function(e){
   // user can confirm label + unit type before commit).
   if(panelMode === 'suite'){
     var sdev = suiteAt(p.cx, p.cy);
-    if(sdev){ selectSuite(sdev.id); dragging = {id:sdev.id, type:'suite-move'}; return; }
+    if(sdev){ selectSuite(sdev.id, { keepArm: true }); dragging = {id:sdev.id, type:'suite-move'}; return; }
     if(suiteSelectedId){ closeRightPanel(); return; }
     // Empty-state redirect: with no unit types defined, route through
     // Modal #1 first. Stash the click coords so saveUnitTypes can chain
@@ -10807,7 +10968,7 @@ cv.addEventListener('mousedown',function(e){
   var tip=tipAt(p.cx,p.cy);
   if(tip){dragging={id:tip.id,type:'tip'}; return;}
   var cam=camAt(p.cx,p.cy);
-  if(cam){selectCamera(cam.id); dragging={id:cam.id,type:'move'}; return;}
+  if(cam){selectCamera(cam.id, { keepArm: true }); dragging={id:cam.id,type:'move'}; return;}
   // Empty-canvas in Cameras mode now unifies with AC/intercom/parcel/mailbox:
   // if a camera is selected, first empty click deselects (no placement);
   // second empty click places. Supersedes the Pass A.7 always-place rule.
@@ -10816,21 +10977,28 @@ cv.addEventListener('mousedown',function(e){
   // input value or `_inpLabelSource`, so the next placement still uses the
   // typed seed (FRONT-01 → FRONT-02 etc.).
   if(selectedId){ closeRightPanel(); return; }
+  // Phase 2a F2: cold-start no-op guard. addCamera would otherwise drop
+  // a "custom" camera (model:null) when no model is armed — most
+  // commonly after a one-shot switch/head-end arm clears, where the
+  // user's next empty-canvas click would phantom-place a camera.
+  if(!currentModelKey) return;
   addCamera(p.cx,p.cy);
 });
 
-// Hit-test the head-end marker on the current page. Phase 2a M5b:
-// promoted from boolean to entry-or-null so callers can drive selection
-// + drag from the same hit. Matches drawHeadEnd's 16px square with a
-// small padding for finger forgiveness. Returns the headends[currentPage]
-// entry ({x, y, sku}) or null. All 3 existing callers use truthy/falsy
-// checks → object/null is back-compat.
+// Hit-test placed head-ends on the current page. v25 array shape:
+// iterates reverse-order (top-most-drawn first, same convention as
+// switchAt/readerAt). Matches drawHeadEnd's 16px square with a small
+// padding for finger forgiveness. Returns the entry {id, page, x, y,
+// sku, label} or null. Callers use the entry's .id for selection/drag.
 function headendAt(cssX, cssY){
-  var he = headends[currentPage];
-  if(!he) return null;
-  var dx = cssX - he.x*viewScale;
-  var dy = cssY - he.y*viewScale;
-  return (Math.abs(dx) <= 10 && Math.abs(dy) <= 10) ? he : null;
+  var hits = headends.filter(function(h){return h.page === currentPage;});
+  for(var i = hits.length - 1; i >= 0; i--){
+    var he = hits[i];
+    var dx = cssX - he.x*viewScale;
+    var dy = cssY - he.y*viewScale;
+    if(Math.abs(dx) <= 10 && Math.abs(dy) <= 10) return he;
+  }
+  return null;
 }
 
 // Hit-test placed switches on the current page (Phase 2a). Mirrors
@@ -10881,7 +11049,9 @@ cv.addEventListener('mousemove',function(e){
               parcelAt(p.cx, p.cy)   ||
               intercomAt(p.cx, p.cy) ||
               readerAt(p.cx, p.cy)   ||
-              camAt(p.cx, p.cy)){
+              camAt(p.cx, p.cy)      ||
+              switchAt(p.cx, p.cy)){
+      // Phase 2a F1: switch joins the move-cursor hover group.
       cv.style.cursor = 'move';
     } else {
       cv.style.cursor = 'crosshair';
@@ -10889,13 +11059,8 @@ cv.addEventListener('mousemove',function(e){
     return;
   }
   if(dragging.type==='head-end-move'){
-    // Phase 2a M6 deliberate divergence from precedent: markDirty fires
-    // ONCE on mouseup (see mouseup handler below), not every mousemove
-    // tick. Reduces autosave storm + scrubs an entire drag into a single
-    // dirty-state transition. Existing per-tick markDirty stays in place
-    // for cameras / readers / smart-apt / suites — cross-family
-    // alignment is a future cleanup pass.
-    var he = headends[currentPage];
+    // v25 array: lookup by dragging.id (mirror switch-move).
+    var he = headends.find(function(x){return x.id === dragging.id;});
     if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; redraw(); }
     return;
   }
@@ -11042,7 +11207,7 @@ document.addEventListener('keydown',function(e){
     else if(suiteSelectedId){    deleteSuite(suiteSelectedId);       }
     // Phase 2a M7: infrastructure delete (switch / head-end).
     else if(selectedSwitchId){   deleteSwitch(selectedSwitchId);     }
-    else if(selectedHeadendPage !== null){ deleteHeadend(selectedHeadendPage); }
+    else if(selectedHeadendId){  deleteHeadend(selectedHeadendId);   }
   }
   if(e.key==='Escape'){
     if(openMenuEl){ closeAllMenus(); return; }
@@ -11061,11 +11226,12 @@ document.addEventListener('keydown',function(e){
     // its Esc branch is dropped. IoT controls now sit inside the Unit Types
     // modal and dismiss with that modal's Esc handler above.
     if(calibMode){ cancelCalibrationFlow(); return; }
-    if(headendMode){ cancelHeadendPlacement(); return; }
-    if(switchMode){ cancelSwitchPlacement(); return; }
-    // closeRightPanel handles the camera-selected case (clears selectedId,
-    // hides the panel, redraws). Always reset acSelectedId too.
-    acSelectedId = null;
+    // Sticky-placement pass: Esc is the single "clear everything"
+    // gesture — cancels any armed placement (all 7 families) AND closes
+    // the right panel (deselects any placed object). Other cancel routes
+    // (tile re-click, select-placed, setPanelMode) only clear arms;
+    // panel state is independent of arm state.
+    _cancelAllPlacement();
     closeRightPanel();
     updateAcList();
   }
@@ -11102,6 +11268,11 @@ function deleteSelected(){
 
 // ─── Access Control ──────────────────────────────────────────────────────────
 function setPanelMode(mode){
+  // Sticky-placement pass: swapping panel modes cancels any armed
+  // placement (panel-mode swap === user is changing intent). Cross-mode
+  // arms should not persist invisibly while the user works in a
+  // different family.
+  if(typeof _cancelAllPlacement === 'function') _cancelAllPlacement();
   panelMode = mode;
   document.getElementById('panel').setAttribute('data-mode', mode);
   document.querySelectorAll('.pmt-btn').forEach(function(b){
@@ -11257,18 +11428,20 @@ function placeReader(cssX, cssY){
   };
   acDevices.push(dev);
   markDirty();
-  // Pass Left-Pane M4-fix: mirror addCamera's selectCamera(id) tail.
-  // selectReader sets acSelectedId via its own side-effect chain (no
-  // more bare acSelectedId assignment — CLAUDE.md "Selection state"
-  // pitfall), full-syncs the drill-down to the placed device, redraws,
-  // updates the AC list, and slides the right panel open. Replaces the
-  // previous bare-assign + redraw + updateAcList trio.
-  selectReader(dev.id);
+  // Sticky-placement pass: no longer auto-selects the placed device.
+  // Arm stays active for the next click. Visual refresh + counter list
+  // update still needed; routed via the lightweight non-selecting path.
+  redraw();
+  updateAcList();
 }
 
-function selectReader(id){
+function selectReader(id, opts){
   // Phase 2a M4: shared helper replaces the per-function 5-var cascade.
   _clearAllPlaceableSelections();
+  // Sticky-placement Regression A: keepArm flag preserves arm for
+  // armed-drag-from-canvas paths; pure-inspect callers (sidebar) call
+  // without it and disarm per strict-B.
+  if(!opts || !opts.keepArm) _cancelAllPlacement();
   acSelectedId = id;
   var d = acDevices.find(function(x){return x.id === id;});
   if(!d){ redraw(); updateList(); updateAcList(); return; }
@@ -11286,16 +11459,20 @@ function selectReader(id){
   // fall through to the 'other' tile (currentACBrand='other'), which
   // M4 will then surface in the right-panel SKU override dropdown so
   // the user can promote them in-place.
+  // Sticky-placement pass — strict mutual exclusion: select-placed
+  // NEVER leaves an arm. _cancelAllPlacement() above nulled
+  // currentReaderModel. Brand + category + subcategory nav state below
+  // still syncs so the drill-down expands to show the placed device's
+  // location; the Tier-3 variant tile won't get .active because that
+  // requires currentReaderModel to be set, which would be an arm leak.
   if(d.category && d.subcategory){
     currentACBrand       = 'brivo';
     currentACCategory    = d.category;
     currentACSubcategory = d.subcategory;
-    currentReaderModel   = d.sku || d.model || null;
   } else {
     currentACBrand       = 'other';
     currentACCategory    = null;
     currentACSubcategory = null;
-    currentReaderModel   = d.model || null;
   }
   renderLeftPaneDrillDown('ac');
   redraw(); updateList(); updateAcList();
@@ -11625,6 +11802,10 @@ function armIntercomBrand(brand){
   renderLeftPaneDrillDown('intercom');
 }
 function armIntercom(sku){
+  // Sticky: same-sku tile re-click toggles off. Different sku clears
+  // any other family first.
+  if(sku === currentIntercomModel){ _cancelAllPlacement(); return; }
+  _cancelAllPlacement();
   var spec = INTERCOM_DB[sku];
   if(spec){ currentIntercomBrand = spec.brand; }
   currentIntercomModel = sku;
@@ -11636,6 +11817,8 @@ function armParcelBrand(brand){
   renderLeftPaneDrillDown('parcel');
 }
 function armParcel(sku){
+  if(sku === currentParcelModel){ _cancelAllPlacement(); return; }
+  _cancelAllPlacement();
   var spec = PARCEL_DB[sku];
   if(spec){ currentParcelBrand = spec.brand; }
   currentParcelModel = sku;
@@ -11650,6 +11833,8 @@ function armMailboxBrand(brand){
   renderLeftPaneDrillDown('mailbox');
 }
 function armMailbox(sku){
+  if(sku === currentMailboxModel){ _cancelAllPlacement(); return; }
+  _cancelAllPlacement();
   var spec = MAILBOX_DB[sku];
   if(spec){ currentMailboxBrand = spec.brand; }
   currentMailboxModel = sku;
@@ -11675,7 +11860,9 @@ function placeIntercom(cssX, cssY){
   };
   smartApartment.push(dev);
   markDirty();
-  selectIntercom(dev.id);
+  // Sticky-placement pass: no auto-select. Arm stays active.
+  redraw();
+  updateIntercomList();
 }
 function placeParcel(cssX, cssY){
   if(!currentParcelModel){
@@ -11696,7 +11883,9 @@ function placeParcel(cssX, cssY){
   };
   smartApartment.push(dev);
   markDirty();
-  selectParcel(dev.id);
+  // Sticky-placement pass: no auto-select. Arm stays active.
+  redraw();
+  updateParcelList();
 }
 function placeMailbox(cssX, cssY){
   // Catalog-Tier1 v17: mailbox shape is { brand, cols, rows } — no model
@@ -11724,7 +11913,9 @@ function placeMailbox(cssX, cssY){
   };
   smartApartment.push(dev);
   markDirty();
-  selectMailbox(dev.id);
+  // Sticky-placement pass: no auto-select. Arm stays active.
+  redraw();
+  updateMailboxList();
 }
 
 // Selection — clear the other 5 states (cascade mirrors selectReader from M1).
@@ -11732,24 +11923,28 @@ function placeMailbox(cssX, cssY){
 // guard mirrors selectReader: if the id doesn't match anything in
 // smartApartment, refresh the list and bail rather than opening an empty
 // panel.
-function selectIntercom(id){
+function selectIntercom(id, opts){
   _clearAllPlaceableSelections();
+  // Sticky Regression A: keepArm preserves arm on armed-drag.
+  if(!opts || !opts.keepArm) _cancelAllPlacement();
   intercomSelectedId = id;
   var dev = smartApartment.find(function(d){return d.id === id;});
   if(!dev){ redraw(); updateIntercomList(); return; }
   redraw(); updateIntercomList();
   openRightPanelForIntercom(dev);
 }
-function selectParcel(id){
+function selectParcel(id, opts){
   _clearAllPlaceableSelections();
+  if(!opts || !opts.keepArm) _cancelAllPlacement();
   parcelSelectedId = id;
   var dev = smartApartment.find(function(d){return d.id === id;});
   if(!dev){ redraw(); updateParcelList(); return; }
   redraw(); updateParcelList();
   openRightPanelForParcel(dev);
 }
-function selectMailbox(id){
+function selectMailbox(id, opts){
   _clearAllPlaceableSelections();
+  if(!opts || !opts.keepArm) _cancelAllPlacement();
   mailboxSelectedId = id;
   var dev = smartApartment.find(function(d){return d.id === id;});
   if(!dev){ redraw(); updateMailboxList(); return; }
@@ -12570,8 +12765,9 @@ function placeSuite(cssX, cssY, label, unitTypeId){
 
 // Selection — clear the other 5 states (cascade mirrors selectReader).
 // M7 wires the right-panel open call (replaces the M6 TODO marker).
-function selectSuite(id){
+function selectSuite(id, opts){
   _clearAllPlaceableSelections();
+  if(!opts || !opts.keepArm) _cancelAllPlacement();
   suiteSelectedId = id;
   var dev = suites.find(function(s){return s.id === id;});
   if(!dev){ redraw(); updateSuiteList(); return; }
@@ -12587,8 +12783,9 @@ function selectSuite(id){
 // selection is read-state, not project-state. NO mutation of arming
 // state (currentSwitchSku / currentCmvrSku / leftPaneOpenSection): the
 // user is inspecting an existing object, not arming a new one.
-function selectSwitch(id){
+function selectSwitch(id, opts){
   _clearAllPlaceableSelections();
+  if(!opts || !opts.keepArm) _cancelAllPlacement();
   selectedSwitchId = id;
   var sw = switches.find(function(x){return x.id === id;});
   if(!sw){ redraw(); return; }
@@ -12596,12 +12793,14 @@ function selectSwitch(id){
   if(sw.sku) openRightPanelForSwitch(sw.sku);
 }
 
-// Phase 2a M5b — placed head-end selection. Mirrors selectSwitch but
-// keyed by page (headends is a per-page-singleton map, NOT an array).
-function selectHeadend(page){
+// v25 head-end selection. Keyed by id (mirror selectSwitch). opts.keepArm
+// preserves arm for armed-drag-from-canvas; pure-inspect (sidebar) callers
+// disarm per strict-B.
+function selectHeadend(id, opts){
   _clearAllPlaceableSelections();
-  selectedHeadendPage = page;
-  var he = headends[page];
+  if(!opts || !opts.keepArm) _cancelAllPlacement();
+  selectedHeadendId = id;
+  var he = headends.find(function(x){return x.id === id;});
   if(!he){ redraw(); return; }
   redraw();
   if(he.sku) openRightPanelForHeadend(he.sku);
@@ -12624,14 +12823,14 @@ function deleteSwitch(id){
   }
 }
 
-// Phase 2a M5b — delete a placed head-end by page. Mirrors deleteSwitch.
-function deleteHeadend(page){
-  delete headends[page];
+// v25 — delete a placed head-end by id. Mirrors deleteSwitch exactly.
+function deleteHeadend(id){
+  headends = headends.filter(function(h){return h.id !== id;});
   markDirty();
   var rp = document.getElementById('right-panel');
-  if(selectedHeadendPage === page){
+  if(selectedHeadendId === id){
     if(rp && rp.getAttribute('data-mode') === 'headend') closeRightPanel();
-    else { selectedHeadendPage = null; redraw(); }
+    else { selectedHeadendId = null; redraw(); }
   } else {
     redraw();
   }
@@ -12836,11 +13035,10 @@ function addCamera(cssX,cssY){
     // new value to all cameras on that page (see beginTabRename).
     floor:(pages[currentPage] && (pages[currentPage].name || pages[currentPage].label)) || ('Floor ' + (currentPage + 1)),
     notes:document.getElementById('inp-notes').value.trim()});
-  // Pass C: route through selectCamera so configureReachSlider runs on
-  // placement — keeps the reach slider's data-unit/range/value in sync with
-  // the new camera's reachM and the page's calibration unit. selectCamera
-  // sets _inpLabelSource = 'selection' as a side effect.
-  selectCamera(id);
+  // Sticky-placement pass: no auto-select. Arm stays active for the
+  // next click. The reach-slider sync that selectCamera used to run on
+  // placement is no longer needed — arm-time configureReachSlider (via
+  // armModel) already aligned the slider to the armed model's spec.
   markDirty();
   redraw(); updateList(); updateDoriInfo();
   // Pass A.7: post-placement tail. If the captured source was 'typed', the
@@ -12870,7 +13068,7 @@ function addCamera(cssX,cssY){
 // the 6 per-family select* functions. Each select* function calls this
 // BEFORE assigning its own *SelectedId — same net behavior as the prior
 // hand-rolled cascades. Net behavior unchanged for existing 6 vars;
-// adds the 2 Phase 2a vars (selectedSwitchId + selectedHeadendPage) so
+// adds the 2 Phase 2a vars (selectedSwitchId + selectedHeadendId) so
 // camera/reader/intercom/parcel/mailbox/suite selection cleanly clears
 // any switch / head-end halo too.
 function _clearAllPlaceableSelections(){
@@ -12881,14 +13079,61 @@ function _clearAllPlaceableSelections(){
   mailboxSelectedId   = null;
   suiteSelectedId     = null;
   selectedSwitchId    = null;
-  selectedHeadendPage = null;
+  selectedHeadendId = null;
+}
+
+// Sticky-placement pass: single source of truth for cancelling ANY
+// armed placement, tool-wide. Clears the 7 arm-discriminator vars + the
+// 2 banner-mode flags + the placement banner + repaints tier-3 lists so
+// the .active highlight drops off the previously-armed tile.
+//
+// Does NOT close the right panel — selection state is independent of
+// arm state. Only the Esc handler bundles closeRightPanel() with this
+// call (Esc = "clear everything"); the other cancel routes (tile
+// re-click toggle-off, select-placed-object, setPanelMode swap) leave
+// the panel alone so a mid-inspection user isn't disrupted.
+//
+// Suites are EXEMPT (modal-driven; no arm var).
+function _cancelAllPlacement(){
+  // Camera arm
+  currentModelKey      = null;
+  // Reader/AC arm (currentACBrand/Category/Subcategory are drill-down
+  // navigation, NOT arm — leave them so the user's left-pane state
+  // persists across cancellations).
+  currentReaderModel   = null;
+  // Head-end + Switch (catalog families)
+  currentCmvrSku       = null;
+  currentSwitchSku     = null;
+  // Smart-apartment families
+  currentIntercomModel = null;
+  currentParcelModel   = null;
+  currentMailboxModel  = null;
+  // Banner-mode flags
+  switchMode  = false;
+  headendMode = false;
+  // Banner UI
+  var banner = document.getElementById('calib-banner');
+  if(banner) banner.classList.remove('show');
+  // Tier-3 highlight repaints. Each renderer reads its arm var and
+  // paints .active accordingly — with arm vars nulled above, the next
+  // paint flips all tier-3 tiles off. Idempotent + cheap.
+  if(typeof renderLeftPaneDrillDown === 'function'){
+    renderLeftPaneDrillDown('cameras');
+    renderLeftPaneDrillDown('ac');
+    renderLeftPaneDrillDown('intercom');
+    renderLeftPaneDrillDown('parcel');
+    renderLeftPaneDrillDown('mailbox');
+  }
+  if(typeof _renderCmvrModelList   === 'function') _renderCmvrModelList();
+  if(typeof _renderSwitchModelList === 'function') _renderSwitchModelList();
+  redraw();
 }
 
 // Single deselect path for either mode (camera or reader). Clears both
 // selection vars; the UI lights/redraws are idempotent if one side wasn't set.
 function closeRightPanel(){
   // Phase 2a M4/M8: cascade now includes selectedSwitchId +
-  // selectedHeadendPage via the shared helper.
+  // selectedHeadendId via the shared helper.
   _clearAllPlaceableSelections();
   var rp = document.getElementById('right-panel');
   if(rp){ rp.classList.remove('open'); rp.setAttribute('aria-hidden', 'true'); }
@@ -13378,9 +13623,15 @@ function updateSelectedMailbox(){
   redraw(); updateMailboxList();
 }
 
-function selectCamera(id){
+function selectCamera(id, opts){
   // Phase 2a M4: shared helper replaces the per-function 5-var cascade.
   _clearAllPlaceableSelections();
+  // Sticky-placement Regression A: armed-drag-from-canvas paths pass
+  // {keepArm:true} so the user's arm survives the drag. Pure-inspect
+  // paths (sidebar list clicks, programmatic) call without the flag and
+  // disarm per strict-B. _cancelAllPlacement here nulls EVERY family's
+  // arm including currentModelKey when armCancellation is enabled.
+  if(!opts || !opts.keepArm) _cancelAllPlacement();
   selectedId=id;
   var cam=cameras.find(function(c){return c.id===id;});
   if(!cam) return;
@@ -13410,16 +13661,14 @@ function selectCamera(id){
   //   3. currentType     ← cam.type   (via setType, which also syncs Tier 2 tiles)
   //   4. renderLeftPaneDrillDown('cameras') ← repaints Tier 1 / 2 / 3 + breadcrumbs
   //
-  // Behavior change (vs. M2's first cut): selecting an existing camera
-  // now wholesale-arms its model for the next placement, including a
-  // visible Tier 1 flip if the camera is from a different brand than was
-  // armed. M2's partial sync (currentBrand-only inside the if-branch with
-  // a truthy guard, separate else-branch for 'other') left the Tier 3
-  // active row stale and the visible Tier 1 active out of sync with the
-  // armed model — caught by manual Test 8. Single linear assignment block
-  // here eliminates the guard so the prefix-classification can't silently
-  // skip.
-  currentModelKey = cam.model || null;
+  // Sticky-placement pass — strict mutual exclusion: select-placed
+  // NEVER leaves an arm. _cancelAllPlacement() above nulled
+  // currentModelKey. Left-pane VISUAL sync below (brand + style tile
+  // highlights, drill-down expansion) still runs from currentBrand +
+  // currentType so the user sees the placed camera's family location.
+  // The Tier-3 .active on the specific model tile does NOT light — that
+  // requires currentModelKey, and arming it would leak placement intent
+  // into a pure inspection gesture.
   if(cam.model && CAMERA_DB[cam.model]){
     if(cam.model.indexOf('een-') === 0)      currentBrand = 'een';
     else if(cam.model.indexOf('hwa-') === 0) currentBrand = 'hwa';
@@ -13797,7 +14046,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 23,             // generation tag — v23 switches[] array (multi-per-page with sku) — Switch Topology Phase 1 (was v22 map per P8)
+      version: 25,             // generation tag — v25 headends is an ARRAY [{id,page,x,y,sku,label}] (was a map keyed by pageIdx). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -14012,7 +14261,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 23,            // Switch Topology Phase 1: switches[] array of {id,page,x,y,sku} (was v22 map pageIdx -> {x,y})
+    version: 25,            // v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -14084,14 +14333,41 @@ function parseTabOrderFromSave(saved, n){
 function applyProjectState(data){
   if(data.cameras) cameras = data.cameras;
   if(data.calibrations) calibrations = data.calibrations;
-  if(data.headends) headends = data.headends;
-  // cmvr-headend-models (v22): backfill sku:null on any pre-v22 entry
-  // that doesn't carry the field. Runs UNCONDITIONALLY on every load —
-  // no version branch — so legacy v21/v20/... saves get the field
-  // defaulted without rejection. BOM roll-up treats null as "no model"
-  // → generic fallback row.
-  Object.keys(headends).forEach(function(p){
-    if(headends[p] && typeof headends[p].sku === 'undefined') headends[p].sku = null;
+  // v25 CMVR Phase: headends is now an array. Migrate legacy v24-and-
+  // earlier map shape ({pageIdx → {x,y,sku,label}}) to v25 array entries.
+  // Preserves x/y/sku/label, generates a fresh id per migrated entry.
+  // Never rejects — legacy projects round-trip without loss.
+  if(data.headends){
+    if(Array.isArray(data.headends)){
+      headends = data.headends;
+    } else if(typeof data.headends === 'object'){
+      var migratedHe = [];
+      Object.keys(data.headends).sort(function(a, b){
+        return parseInt(a, 10) - parseInt(b, 10);
+      }).forEach(function(p, i){
+        var src = data.headends[p];
+        if(!src) return;
+        migratedHe.push({
+          id:    'he-' + Date.now() + '-' + Math.random().toString(36).slice(2,7) + '-' + i,
+          page:  parseInt(p, 10),
+          x:     src.x,
+          y:     src.y,
+          sku:   (typeof src.sku === 'string' || src.sku === null) ? src.sku : null,
+          label: (typeof src.label === 'string' && src.label) ? src.label : ('CMVR-' + (i + 1))
+        });
+      });
+      headends = migratedHe;
+    } else {
+      headends = [];
+    }
+  } else {
+    headends = [];
+  }
+  // Defensive per-entry backfill — covers any v25 save with missing
+  // sku/label keys. Runs unconditionally; idempotent for clean entries.
+  headends.forEach(function(he, i){
+    if(typeof he.sku === 'undefined') he.sku = null;
+    if(typeof he.label !== 'string' || !he.label) he.label = 'CMVR-' + (i + 1);
   });
   // Switch Topology Phase 1 (v23): switches[] array. Wholesale assign
   // when the save carries an array; legacy P8 v22 saves whose `switches`
@@ -14102,6 +14378,13 @@ function applyProjectState(data){
     console.warn('switch-topology-phase1: legacy map-shape switches dropped on load (v22 P8 placements have no SKU; place via new Network Tier-3 tiles to re-add)');
   }
   switches = Array.isArray(data.switches) ? data.switches : [];
+  // Phase 2a F5/F6 (v24): backfill missing labels on legacy v23 entries.
+  // By-index default — "SW-1, SW-2, …" in array order; "CMVR-1, CMVR-2,
+  // …" in page-index order. Existing labels are preserved.
+  switches.forEach(function(sw, i){
+    if(typeof sw.label !== 'string' || !sw.label) sw.label = 'SW-' + (i + 1);
+  });
+  // (v25 CMVR head-end label backfill moved into the migration block above.)
   if(data.projectInfo) projectInfo = data.projectInfo;
   // Door Hardware M1 (v18): load module state through the normalizer so
   // partial / older / missing payloads backfill to empty-state defaults.
@@ -14714,15 +14997,18 @@ async function runExportPDF(){
       tc.drawImage(pg.offCanvas,0,0);
       var doriThisPage = doriMode && getPPM(i);
       var savedPage=currentPage; currentPage=i;
-      if(cablesMode && headends[i]){
+      // v25: cables gate on any head-end on this page; routing uses
+      // first-array-order (drawCableRunsToCanvas applies same policy).
+      if(cablesMode && headends.some(function(h){return h.page === i;})){
         drawCableRunsToCanvas(tc, RENDER_SCALE, i);
       }
       cameras.filter(function(c){return c.page===i;}).forEach(function(cam){
         drawCam(tc,cam,RENDER_SCALE,false,doriThisPage);
       });
-      if(headends[i]){
-        drawHeadEndToCanvas(tc, RENDER_SCALE, i);
-      }
+      // v25 multi-per-page: paint every head-end on this page.
+      headends.filter(function(h){return h.page === i;}).forEach(function(he){
+        drawHeadEndToCanvas(tc, RENDER_SCALE, he);
+      });
       currentPage=savedPage;
       drawLegend(tc, pg.offCanvas.width, pg.offCanvas.height, i);
       var imgData=tmp.toDataURL('image/jpeg',0.9);
@@ -14745,9 +15031,10 @@ async function runExportPDF(){
   hideProgress();
 }
 
-// Draw cable runs onto an arbitrary canvas at a given scale (used for export)
+// Draw cable runs onto an arbitrary canvas at a given scale (used for export).
+// v25 multi-per-page interim: routes to first head-end (array order).
 function drawCableRunsToCanvas(tc, vs, pageIdx){
-  var he = headends[pageIdx];
+  var he = headends.find(function(h){return h.page === pageIdx;});
   if(!he) return;
   var hex = he.x*vs, hey = he.y*vs;
   var ppm = getPPM(pageIdx);
@@ -14777,8 +15064,9 @@ function drawCableRunsToCanvas(tc, vs, pageIdx){
   });
 }
 
-function drawHeadEndToCanvas(tc, vs, pageIdx){
-  var he = headends[pageIdx];
+// v25 — accepts the entry explicitly (mirrors drawHeadEnd's new signature).
+// Caller iterates headends.filter(page===pageIdx).
+function drawHeadEndToCanvas(tc, vs, he){
   if(!he) return;
   var sx = he.x*vs, sy = he.y*vs;
   var size = 16*vs/4;
@@ -15106,9 +15394,14 @@ function drawProposalBOM(doc, W, H){
   var MIN_TIER1_FIT = 72;
 
   BOM_TEMPLATE.tiers.forEach(function(tier){
+    // Phase 2a F3: customer PDF skips warn rows (warn:true is on-screen-
+    // only). The visibleSubs filter counts NON-warn auto rows + all
+    // custom rows; subs that only contain a warn row hide from PDF.
     var visibleSubs = tier.subs.filter(function(sub){
       var b = buckets[sub.id];
-      return b && (b.auto.length > 0 || b.custom.length > 0);
+      if(!b) return false;
+      var realAutoCount = b.auto.filter(function(r){return !r.warn;}).length;
+      return (realAutoCount > 0 || b.custom.length > 0);
     });
     if(visibleSubs.length === 0) return;
 
@@ -15154,7 +15447,8 @@ function drawProposalBOM(doc, W, H){
       y += BAND_H2 + 14;
 
       // Auto rows first, then custom rows (matches drawer ordering).
-      b.auto.forEach(_drawCustomerRow);
+      // Phase 2a F3: skip warn rows (on-screen Security Quote only).
+      b.auto.forEach(function(r){ if(!r.warn) _drawCustomerRow(r); });
       b.custom.forEach(function(cust){
         _drawCustomerRow(cust.line);
       });
@@ -15577,7 +15871,7 @@ function computeRiserModel(){
       intercoms:  intercoms,
       parcels:    parcels,
       mailboxes:  mailboxes,
-      hasHeadend: !!headends[pageIdx]
+      hasHeadend: headends.some(function(h){return h.page === pageIdx;})
     };
   });
 
@@ -17079,8 +17373,9 @@ function computeAutoRows(){
   // see TODO below).
   var recordingRows = [];
   var cmvrSkuGroups = {};
-  Object.keys(headends).forEach(function(p){
-    var he = headends[p];
+  // v25 multi-per-page: iterate the array directly. qty = count of
+  // placed head-ends with that sku (not count of pages).
+  headends.forEach(function(he){
     if(!he || !he.sku) return;
     if(!CMVR_CATALOG.hasOwnProperty(he.sku)) return;
     if(!cmvrSkuGroups[he.sku]) cmvrSkuGroups[he.sku] = 0;
@@ -17098,36 +17393,17 @@ function computeAutoRows(){
       sectionAuto:true
     });
   });
-  var hasCmvrModelRow = cmvrSkuKeys.length > 0;
 
-  if(filteredCams.length > 0 && !hasCmvrModelRow){
-    var ch = multCount;
-    var channels = ch <= 4 ? 4 : ch <= 8 ? 8 : ch <= 16 ? 16 : ch <= 32 ? 32 : ch <= 64 ? 64 : 128;
+  // Phase 2a F3: zero real-sku CMVR (including legacy sku:null head-ends
+  // — filtered by the !he.sku guard above) → emit a single warning row
+  // "No CMVR Present". On-screen Security Quote only; PDF + CSV filter
+  // out `warn:true` rows. Replaces the prior auto-nvr + auto-hdd
+  // generic-fallback rows wholesale.
+  if(cmvrSkuKeys.length === 0){
     recordingRows.push({
-      auto:true, src:'recording', key:'auto-nvr',
-      desc: channels+'-Channel NVR / VMS Recorder (sized for '+ch+' cam'+(ch===1?'':'s')+')',
-      qty: 1, unit: 0, sectionAuto:true
-    });
-    // Surveillance-rated HDDs based on storage calc.
-    // Each camera's GB/day contribution scales by pageMultiplier(c.page).
-    var days = parseFloat(document.getElementById('stor-days').value) || 30;
-    var fps  = parseFloat(document.getElementById('stor-fps').value) || 15;
-    var codec = document.getElementById('stor-codec').value;
-    var mode  = document.getElementById('stor-mode').value;
-    var modeFactor = mode === 'motion' ? 0.30 : (mode === 'business' ? 0.50 : 1.0);
-    var gbPerDay = 0;
-    filteredCams.forEach(function(cam){
-      var br = estimateBitrateMbps(cam.resolution || 2560, fps, codec);
-      gbPerDay += (br * 3600 * 24 * modeFactor) / (8 * 1000) * pageMultiplier(cam.page);
-    });
-    var tbTotal = (gbPerDay * days) / 1000;
-    var recommendedTB = Math.ceil(tbTotal * 1.20);
-    var driveSize = recommendedTB <= 8 ? 8 : (recommendedTB <= 12 ? 12 : (recommendedTB <= 18 ? 18 : 22));
-    var driveCount = Math.max(1, Math.ceil(recommendedTB / driveSize));
-    recordingRows.push({
-      auto:true, src:'recording', key:'auto-hdd',
-      desc: driveSize+'TB Surveillance-rated HDD (WD Purple / Seagate SkyHawk) — '+days+'d retention @ '+fps+'fps '+codec.toUpperCase(),
-      qty: driveCount, unit: 0, sectionAuto:true
+      auto:true, warn:true, src:'recording', key:'cmvr-warn',
+      desc:'No CMVR Present',
+      qty:0, unit:0, sectionAuto:true
     });
   }
   // TODO (future pass): when hasCmvrModelRow AND requiredTB > Σ usableTB
@@ -17136,50 +17412,35 @@ function computeAutoRows(){
   // CMVR onboard capacity is the assumed default until expansion math
   // (per-model expansion bay count, drive size selection) lands.
 
-  // Auto-network rows. Switch Topology Phase 1: when ≥1 switch has been
-  // placed, emit one row per distinct sku (qty = count of placed switches
-  // with that sku; NOT page-multiplied — switches are physical per-floor
-  // devices and placement is already guarded to pageMultiplier=1 floors).
-  // Unit price comes live from getUnitPrice(sku); falls to 0 when the
-  // pricing book hasn't been loaded. The legacy camera-count-derived
-  // generic-switch row is suppressed wholesale when ≥1 switch is placed
-  // (per brief). Zero placements → the generic row remains intact for
-  // legacy projects.
+  // Auto-network rows. Switch Topology Phase 2a F4: roll up placed
+  // switches by sku (qty = count; NOT page-multiplied — switches are
+  // physical per-floor devices and placement is already guarded to
+  // pageMultiplier=1 floors). Unit price comes live from getUnitPrice(sku);
+  // falls to 0 when the pricing book hasn't been loaded. Zero placed
+  // switches → section emits NOTHING (a system doesn't require a switch;
+  // F4 removed the Phase 1 generic auto-switch fallback wholesale).
   var networkRows = [];
-  if(switches.length > 0){
-    var swBySku = {};
-    switches.forEach(function(sw){
-      if(!sw || !sw.sku) return;
-      if(!swBySku[sw.sku]) swBySku[sw.sku] = 0;
-      swBySku[sw.sku]++;
+  var swBySku = {};
+  switches.forEach(function(sw){
+    if(!sw || !sw.sku) return;
+    if(!swBySku[sw.sku]) swBySku[sw.sku] = 0;
+    swBySku[sw.sku]++;
+  });
+  Object.keys(swBySku).forEach(function(sku){
+    var spec = SWITCH_CATALOG[sku];
+    if(!spec) return;
+    var unit = (typeof getUnitPrice === 'function') ? getUnitPrice(sku) : null;
+    var desc = spec.name + ' — ' + spec.ports + '-port'
+             + (spec.poeW ? ' · ' + spec.poeW + 'W' : '')
+             + (spec.industrial ? ' · industrial' : '');
+    networkRows.push({
+      auto:true, src:'network', key:'switch-'+sku, sku:sku,
+      desc: desc,
+      qty: swBySku[sku],
+      unit: (typeof unit === 'number' && isFinite(unit)) ? unit : 0,
+      sectionAuto:true
     });
-    Object.keys(swBySku).forEach(function(sku){
-      var spec = SWITCH_CATALOG[sku];
-      if(!spec) return;
-      var unit = (typeof getUnitPrice === 'function') ? getUnitPrice(sku) : null;
-      var desc = spec.name + ' — ' + spec.ports + '-port'
-               + (spec.poeW ? ' · ' + spec.poeW + 'W' : '')
-               + (spec.industrial ? ' · industrial' : '');
-      networkRows.push({
-        auto:true, src:'network', key:'switch-'+sku, sku:sku,
-        desc: desc,
-        qty: swBySku[sku],
-        unit: (typeof unit === 'number' && isFinite(unit)) ? unit : 0,
-        sectionAuto:true
-      });
-    });
-  } else {
-    var ch2 = multipliedTotal(filteredCams);
-    if(ch2 > 0){
-      var ports = ch2 <= 4 ? 8 : ch2 <= 8 ? 8 : ch2 <= 16 ? 16 : ch2 <= 24 ? 24 : 48;
-      var switchCount = Math.ceil(ch2 / ports);
-      networkRows.push({
-        auto:true, src:'network', key:'auto-switch',
-        desc: ports + '-Port PoE+ Network Switch ('+ch2+' camera'+(ch2===1?'':'s')+', '+switchCount+' switch'+(switchCount===1?'':'es')+')',
-        qty: switchCount, unit: 0, sectionAuto:true
-      });
-    }
-  }
+  });
 
   // BOM Restructure pass: the legacy camera-install labor block (BOM
   // Labor section auto-rows) was removed. Labor lives on the Take-Off
@@ -17418,8 +17679,13 @@ function computeAutoCableRows(){
   var rows = [];
   // Pass A.5: typical pages multiply both totalM and runs by pageMultiplier.
   var totalM = 0, runs = 0, anyOverLimit = false, anyTypical = false;
-  Object.keys(headends).forEach(function(p){
-    var pageIdx = parseInt(p);
+  // v25 multi-per-page: iterate UNIQUE PAGES that have any head-end.
+  // cableLengthM internally picks the first head-end on the page (Phase
+  // 2c proper multi-routing TBD), so the totals stay correct.
+  var headendPages = {};
+  headends.forEach(function(h){ headendPages[h.page] = true; });
+  Object.keys(headendPages).forEach(function(p){
+    var pageIdx = parseInt(p, 10);
     var ppm = getPPM(pageIdx);
     if(!ppm) return;
     var mult = pageMultiplier(pageIdx);
@@ -17465,7 +17731,11 @@ function computeNonBomRows(){
   var overheadMultiplier = 1.10;
   var totalRuns = 0;
   var totalLengthMRaw = 0;
-  Object.keys(headends).forEach(function(p){
+  // v25 multi-per-page: same unique-pages-with-head-ends pattern as
+  // computeAutoCableRows above.
+  var nbHeadendPages = {};
+  headends.forEach(function(h){ nbHeadendPages[h.page] = true; });
+  Object.keys(nbHeadendPages).forEach(function(p){
     var pageIdx = parseInt(p, 10);
     var ppm = getPPM(pageIdx);
     if(!ppm) return;
@@ -17501,7 +17771,8 @@ function computeNonBomRows(){
   // drive the "IoT per suite" qty (matches the per-unit-type math in
   // computeAutoRows' smart-apartment IoT block).
   var camCount = multipliedTotal(cameras);
-  var headendCount = Object.keys(headends).length;
+  // v25: total placed head-ends (was Object.keys count of pages).
+  var headendCount = headends.length;
   var hasInstallScope = (headendCount > 0 || camCount > 0);
 
   var readerCountForLabor = 0, controllerCountForLabor = 0;
@@ -17763,10 +18034,12 @@ function buildTakeOffData(){
 
   // Section 5 — Head-End equipment. Matches BOM auto-row convention: one
   // NVR + switchCount switches + one UPS, sized to the project's total
-  // camera count. Multi-head-end is out of scope per the brief, so per-
-  // head-end duplication is not tracked here. Rows only emitted when at
-  // least one head-end is placed OR cameras exist (parity with BOM gating).
-  var headendCount = Object.keys(headends).length;
+  // camera count. v25: multi-head-end is supported by computeBomTree's
+  // sku-grouping path; THIS fallback path (generic NVR rows when no
+  // real CMVR sku is placed) doesn't duplicate per head-end. Rows only
+  // emitted when at least one head-end is placed OR cameras exist
+  // (parity with BOM gating).
+  var headendCount = headends.length;
   var camCount = multipliedTotal(cameras);
   var ports     = camCount <= 4 ? 8 : camCount <= 8 ? 8 : camCount <= 16 ? 16 : camCount <= 24 ? 24 : 48;
   var switchCount = Math.max(1, Math.ceil(camCount / ports));
@@ -18056,6 +18329,16 @@ function recalcBom(){
       // (section-agnostic); data-section carries the tier-2 id for inspectors
       // / future grouping use — updateAutoRow itself does not read it.
       b.auto.forEach(function(row){
+        // Phase 2a F3: warning rows (row.warn === true) render as a
+        // single amber line with no qty/unit inputs and no line-total.
+        // They don't contribute to subtotal. On-screen only.
+        if(row.warn){
+          html += '<div class="bom-row warn-row" data-section="'+sub.id+'" data-key="'+row.key+'">';
+          html += '<div class="bom-desc">'+escapeHtml(row.desc)+'</div>';
+          html += '<div></div><div></div><div></div><div></div><div></div>';
+          html += '</div>';
+          return;
+        }
         var lineTotal = (row.qty || 0) * (row.unit || 0);
         subtotal += lineTotal;
         html += '<div class="bom-row auto-row" data-section="'+sub.id+'" data-key="'+row.key+'">';
@@ -18394,6 +18677,8 @@ function exportBomCSV(){
       if(!b || (b.auto.length === 0 && b.custom.length === 0)) return;
       // Auto rows first (matches drawer + PDF ordering).
       b.auto.forEach(function(r){
+        // Phase 2a F3: CSV export skips warn rows (on-screen only).
+        if(r.warn) return;
         var line = (r.qty||0) * (r.unit||0);
         subtotal += line;
         leafCount++;
