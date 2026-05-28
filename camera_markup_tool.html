@@ -453,6 +453,20 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 .bom-row .bom-cell-qty.locked:hover {
   background:#f3f4f6;
 }
+/* SQ-wizard M2e: NOTICE-MODAL STACKING CONVENTION.
+   Notices that explain a constraint (e.g. the locked-qty popup) must
+   stack ABOVE every other modal in the tool, including the Security
+   Quote drawer (#bom-drawer @ z-index:50). The default .big-modal
+   z-index of 30 sits BELOW the SQ drawer and gets occluded — that was
+   the original bug. --z-notice-modal sets a new tier above all
+   standard modals (50 / SQ drawer) but below the catastrophic
+   missing-libraries overlay (99999) and #ctx-menu (100).
+   Any future notice modal authored over an open modal should add
+   `z-index: var(--z-notice-modal)` to its rule. The notice element
+   itself must also be a direct child of <body> (not nested in any
+   stacking context — common gotcha). */
+:root { --z-notice-modal: 80; }
+#sq-qty-lock-modal { z-index: var(--z-notice-modal); }
 /* SQ-wizard M2c: Tier Filter standalone block — sits at top of Materials
    step (extracted from the old #bom-summary container). Light surface +
    bottom rule so it reads as a control band above the rule strip. */
