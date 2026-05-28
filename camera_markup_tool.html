@@ -18904,9 +18904,12 @@ var bomSectionRules = {};
 // M5 wires save/load via bom.config.labour*.
 //
 //   Resolution priority (per row): line > section > project default.
-//   Rule shape varies by mode:
+//   Mode availability is asymmetric (M3-fixup):
+//     Project default + section overrides : Hourly ONLY.
+//     Per-line overrides                   : Hourly OR Flat.
+//   Rule shapes:
 //     Hourly : { mode:'hourly', costRate, sellRate }  (rate per hour)
-//     Flat   : { mode:'flat',   cost,     sell     }  (per unit)
+//     Flat   : { mode:'flat',   cost,     sell     }  (per unit) — line only
 //   Line keys: r.key for auto rows; cust.line.id for custom rows.
 var bomLabourRule         = { mode: 'hourly', costRate: 0, sellRate: 0 };
 var bomLabourSectionRules = {};
@@ -18927,7 +18930,23 @@ function getSectionRule(sectionId){
 // reference as the underlying state — caller must not mutate.
 function getLabourRule(sectionId, lineKey){
   if(lineKey && bomLabourLineRules[lineKey]) return bomLabourLineRules[lineKey];
-  if(sectionId && bomLabourSectionRules[sectionId]) return bomLabourSectionRules[sectionId];
+  // M3-fixup: section + project default are Hourly-only. If a stored
+  // section/default rule ever shows up with mode='flat' (transient bug
+  // or future regression), coerce to hourly + warn. No persistence yet
+  // so the bad shape never round-trips.
+  if(sectionId && bomLabourSectionRules[sectionId]){
+    var sr = bomLabourSectionRules[sectionId];
+    if(sr && sr.mode === 'flat'){
+      try { console.warn('[labour] section rule for ' + sectionId + ' had mode=flat; coerced to hourly. Flat is line-only.'); } catch(_){ }
+      sr = { mode: 'hourly', costRate: 0, sellRate: 0 };
+      bomLabourSectionRules[sectionId] = sr;
+    }
+    return sr;
+  }
+  if(bomLabourRule && bomLabourRule.mode === 'flat'){
+    try { console.warn('[labour] project default had mode=flat; coerced to hourly. Flat is line-only.'); } catch(_){ }
+    bomLabourRule = { mode: 'hourly', costRate: 0, sellRate: 0 };
+  }
   return bomLabourRule;
 }
 
@@ -19246,16 +19265,11 @@ function _sqRenderGrandSubtotal(sums){
 // Render the project default labour rule strip. Supply-only toggle on
 // the LEFT (a checkbox + label badge) so it's the first thing the user
 // sees and reads independent of the rule editor on the right.
+// M3-fixup: project default is Hourly ONLY. Mode select removed; the
+// two inputs are Hourly Cost $/hr and Hourly Sell $/hr.
 function _sqRenderLabourDefaultStrip(){
-  var mode = (bomLabourRule && bomLabourRule.mode === 'flat') ? 'flat' : 'hourly';
-  var v1   = (mode === 'flat')
-    ? ((bomLabourRule && typeof bomLabourRule.cost === 'number') ? bomLabourRule.cost : 0)
-    : ((bomLabourRule && typeof bomLabourRule.costRate === 'number') ? bomLabourRule.costRate : 0);
-  var v2   = (mode === 'flat')
-    ? ((bomLabourRule && typeof bomLabourRule.sell === 'number') ? bomLabourRule.sell : 0)
-    : ((bomLabourRule && typeof bomLabourRule.sellRate === 'number') ? bomLabourRule.sellRate : 0);
-  var label1 = (mode === 'flat') ? 'Cost' : 'Cost/hr';
-  var label2 = (mode === 'flat') ? 'Sell' : 'Sell/hr';
+  var v1 = (bomLabourRule && typeof bomLabourRule.costRate === 'number') ? bomLabourRule.costRate : 0;
+  var v2 = (bomLabourRule && typeof bomLabourRule.sellRate === 'number') ? bomLabourRule.sellRate : 0;
   var supplyChk = bomLabourSupplyOnly ? ' checked' : '';
   return '<div class="sq-default-rule-strip">'
        +   '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;">'
@@ -19263,14 +19277,10 @@ function _sqRenderLabourDefaultStrip(){
        +     '<span>Supply only</span>'
        +   '</label>'
        +   '<span style="flex:0 0 auto; color:var(--text-muted); padding:0 6px;">|</span>'
-       +   '<label>Default labour rule</label>'
-       +   '<select onchange="_sqSetLabourDefaultMode(this.value)">'
-       +     '<option value="hourly"' + (mode === 'hourly' ? ' selected' : '') + '>Hourly</option>'
-       +     '<option value="flat"'   + (mode === 'flat'   ? ' selected' : '') + '>Flat</option>'
-       +   '</select>'
-       +   '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">' + label1 + '</span>'
+       +   '<label>Default labour (hourly)</label>'
+       +   '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">Cost $/hr</span>'
        +   '<input type="number" min="0" step="0.01" value="' + v1 + '" onchange="_sqSetLabourDefaultV1(this.value)">'
-       +   '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">' + label2 + '</span>'
+       +   '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">Sell $/hr</span>'
        +   '<input type="number" min="0" step="0.01" value="' + v2 + '" onchange="_sqSetLabourDefaultV2(this.value)">'
        + '</div>';
 }
@@ -19390,30 +19400,20 @@ var bomLabourLineQty = {};
 
 // Default-strip setters. Each writes the matching field on bomLabourRule
 // + markDirty + recalcLabour + recalcSummaryOnly (so Tax + Grand Total
-// reflect the change immediately).
-function _sqSetLabourDefaultMode(mode){
-  if(mode !== 'hourly' && mode !== 'flat') return;
-  bomLabourRule = (mode === 'flat')
-    ? { mode: 'flat',   cost:     (typeof bomLabourRule.cost     === 'number' ? bomLabourRule.cost     : 0),
-                        sell:     (typeof bomLabourRule.sell     === 'number' ? bomLabourRule.sell     : 0) }
-    : { mode: 'hourly', costRate: (typeof bomLabourRule.costRate === 'number' ? bomLabourRule.costRate : 0),
-                        sellRate: (typeof bomLabourRule.sellRate === 'number' ? bomLabourRule.sellRate : 0) };
-  markDirty();
-  recalcLabour();
-  recalcSummaryOnly();
-}
+// reflect the change immediately). M3-fixup: project default is
+// Hourly-only — V1 writes costRate, V2 writes sellRate. The previous
+// _sqSetLabourDefaultMode handler is removed (mode select no longer
+// exists in the strip).
 function _sqSetLabourDefaultV1(raw){
   var v = parseFloat(raw); if(!isFinite(v) || v < 0) v = 0;
-  if(bomLabourRule.mode === 'flat') bomLabourRule.cost     = v;
-  else                              bomLabourRule.costRate = v;
+  bomLabourRule.costRate = v;
   markDirty();
   recalcLabour();
   recalcSummaryOnly();
 }
 function _sqSetLabourDefaultV2(raw){
   var v = parseFloat(raw); if(!isFinite(v) || v < 0) v = 0;
-  if(bomLabourRule.mode === 'flat') bomLabourRule.sell     = v;
-  else                              bomLabourRule.sellRate = v;
+  bomLabourRule.sellRate = v;
   markDirty();
   recalcLabour();
   recalcSummaryOnly();
@@ -19427,8 +19427,9 @@ function _sqSetLabourSupplyOnly(b){
   _sqRenderSupplyOnlyBadge();
 }
 
-// Pill editor — swap pill → in-place editor with mode + 2 inputs + ✓/✗.
-// Enter commits; Esc cancels (re-render restores the pill).
+// Pill editor — swap pill → in-place editor.
+// M3-fixup: section editor is Hourly-only (no mode select). Line editor
+// keeps Hourly + Flat. Enter commits; Esc cancels (re-render restores).
 function _sqStartEditLabourPill(scope, scopeId, sectionId){
   var sel = '.sq-rule-pill[data-labour-scope="' + scope + '"][data-labour-id="' + scopeId + '"]';
   var pill = document.querySelector(sel);
@@ -19436,7 +19437,10 @@ function _sqStartEditLabourPill(scope, scopeId, sectionId){
   var current = (scope === 'line')
     ? (bomLabourLineRules[scopeId]    || getLabourRule(sectionId, scopeId))
     : (bomLabourSectionRules[scopeId] || bomLabourRule);
-  var mode = (current && current.mode === 'flat') ? 'flat' : 'hourly';
+  // For section scope, force mode to 'hourly' display regardless of any
+  // stale 'flat' state (the getLabourRule defensive coerce + the
+  // committed value below also gate against this).
+  var mode = (scope === 'line' && current && current.mode === 'flat') ? 'flat' : 'hourly';
   var v1 = (mode === 'flat')
     ? ((current && typeof current.cost === 'number') ? current.cost : 0)
     : ((current && typeof current.costRate === 'number') ? current.costRate : 0);
@@ -19445,11 +19449,17 @@ function _sqStartEditLabourPill(scope, scopeId, sectionId){
     : ((current && typeof current.sellRate === 'number') ? current.sellRate : 0);
   var idEsc  = escapeHtml(scopeId);
   var secEsc = escapeHtml(sectionId);
+  // Section: no mode select — emit a hidden input so the commit handler
+  // can still read it via the same getElementById path. Line: full
+  // Hourly/Flat select.
+  var modeControl = (scope === 'line')
+    ? ( '<select id="sq-edit-lab-mode-' + idEsc + '">'
+      +   '<option value="hourly"' + (mode === 'hourly' ? ' selected' : '') + '>Hourly</option>'
+      +   '<option value="flat"'   + (mode === 'flat'   ? ' selected' : '') + '>Flat</option>'
+      + '</select>' )
+    : '<input type="hidden" id="sq-edit-lab-mode-' + idEsc + '" value="hourly">';
   var editorHtml = '<span class="sq-rule-pill-editor" data-labour-scope="' + scope + '" data-labour-id="' + idEsc + '">'
-                +    '<select id="sq-edit-lab-mode-' + idEsc + '">'
-                +      '<option value="hourly"' + (mode === 'hourly' ? ' selected' : '') + '>Hourly</option>'
-                +      '<option value="flat"'   + (mode === 'flat'   ? ' selected' : '') + '>Flat</option>'
-                +    '</select>'
+                +    modeControl
                 +    '<input type="number" id="sq-edit-lab-v1-' + idEsc + '" min="0" step="0.01" value="' + v1 + '" onkeydown="_sqLabourPillEditorKey(event,\'' + scope + '\',\'' + idEsc + '\',\'' + secEsc + '\')">'
                 +    '<input type="number" id="sq-edit-lab-v2-' + idEsc + '" min="0" step="0.01" value="' + v2 + '" onkeydown="_sqLabourPillEditorKey(event,\'' + scope + '\',\'' + idEsc + '\',\'' + secEsc + '\')">'
                 +    '<button class="ok"     type="button" onclick="_sqCommitLabourPill(\'' + scope + '\',\'' + idEsc + '\',\'' + secEsc + '\')" title="Save">&check;</button>'
@@ -19468,7 +19478,10 @@ function _sqCommitLabourPill(scope, scopeId, sectionId){
   var v1El   = document.getElementById('sq-edit-lab-v1-'   + scopeId);
   var v2El   = document.getElementById('sq-edit-lab-v2-'   + scopeId);
   if(!modeEl || !v1El || !v2El) return;
-  var mode = (modeEl.value === 'flat') ? 'flat' : 'hourly';
+  // M3-fixup: section commits ALWAYS write Hourly regardless of any
+  // value (defensive — the editor doesn't expose a select for section
+  // scope but a console caller might). Line commits accept either.
+  var mode = (scope === 'line' && modeEl.value === 'flat') ? 'flat' : 'hourly';
   var v1   = parseFloat(v1El.value); if(!isFinite(v1) || v1 < 0) v1 = 0;
   var v2   = parseFloat(v2El.value); if(!isFinite(v2) || v2 < 0) v2 = 0;
   var rule = (mode === 'flat')
