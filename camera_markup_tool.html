@@ -17662,7 +17662,17 @@ function computeAutoRows(){
 
   var camRows = Object.keys(camGroups).map(function(k){
     var g = camGroups[k];
-    return { auto:true, src:'cameras', key:k, desc:g.desc, qty:g.qty, unit:0, sectionAuto:true };
+    // SQ M2 fixup: backfill the SKU column for the Materials render.
+    // Vendor EN-* SKU lives on CAMERA_DB[k].sku (Pricing M3 backfill);
+    // when absent (custom synthetic rows or models whose Brivo Video
+    // sheet entry has sku:null, e.g. DZ04), fall back to the model key
+    // (the 'een-*' / 'hwa-*' identifier) so the row is at least
+    // self-identifying. Display-only — does NOT affect r.key,
+    // bomAutoOverrides, or pricing-book lookup (bomRowSku stays the
+    // resolver for those paths).
+    var camCat = CAMERA_DB[k];
+    var camSku = (camCat && typeof camCat.sku === 'string' && camCat.sku) ? camCat.sku : k;
+    return { auto:true, src:'cameras', key:k, sku:camSku, desc:g.desc, qty:g.qty, unit:0, sectionAuto:true };
   });
 
   // Pass A.5: NVR/switch sizing + storage math use multiplied totals so the
@@ -17812,7 +17822,11 @@ function computeAutoRows(){
     // changes its emitted row key (auto-ac-<SKU> → auto-ac-oh-<SKU>), so
     // any bomAutoOverrides on the old key orphans. Inert today (unit:0
     // throughout), real concern in Pass 2 pricing — track, don't fix now.
-    var row = { auto: true, src: 'accessControl', desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true };
+    // SQ M2 fixup: carry g.sku as r.sku so the Materials SKU column
+    // renders the vendor SKU (e.g. B-BSMF-B) directly. Display-only;
+    // r.key keeps the 'auto-ac-<SKU>' shape for override + pricing-
+    // book lookup unchanged.
+    var row = { auto: true, src: 'accessControl', sku: g.sku, desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true };
     if(g.overheadDoor){
       row.key     = 'auto-ac-oh-' + g.sku;
       row.section = '2.2';
@@ -17867,8 +17881,10 @@ function computeAutoRows(){
   });
   Object.keys(intercomGroups).sort().forEach(function(sku){
     var g = intercomGroups[sku];
+    // SQ M2 fixup: surface the intercom sku in r.sku for the Materials
+    // SKU column. r.key keeps the 'auto-sa-intercom-<sku>' prefix.
     smartAptRows.push({
-      auto: true, src: 'smartApartment', key: 'auto-sa-intercom-' + sku,
+      auto: true, src: 'smartApartment', key: 'auto-sa-intercom-' + sku, sku: sku,
       desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
     });
   });
@@ -17888,8 +17904,10 @@ function computeAutoRows(){
   });
   Object.keys(parcelGroups).sort().forEach(function(sku){
     var g = parcelGroups[sku];
+    // SQ M2 fixup: surface the parcel sku in r.sku for the Materials
+    // SKU column.
     smartAptRows.push({
-      auto: true, src: 'smartApartment', key: 'auto-sa-parcel-' + sku,
+      auto: true, src: 'smartApartment', key: 'auto-sa-parcel-' + sku, sku: sku,
       desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
     });
   });
@@ -18990,7 +19008,14 @@ function _sqResetPill(sectionId){
 // caring whether qty is an input or a span. Custom rows keep editable
 // Qty inputs (see _sqRenderCustomRow).
 function _sqRenderAutoRow(row, sectionId, rule){
-  var sku  = (row.sku || '');
+  // SQ M2 fixup: row.sku may be missing for derived rows (mailbox banks,
+  // IoT flags, auto-ac-credentials) — render an em-dash + muted style
+  // so a blank cell doesn't look like a render failure. Trim defends
+  // against accidental whitespace-only sku from a future producer.
+  var sku  = (typeof row.sku === 'string') ? row.sku.trim() : '';
+  var skuCellHtml = sku
+    ? '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
+    : '<div class="bom-cell-sku muted">—</div>';
   var cost = (typeof row.cost === 'number') ? row.cost : 0;
   var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
   var qty  = (typeof row.qty  === 'number') ? row.qty  : 0;
@@ -19003,7 +19028,7 @@ function _sqRenderAutoRow(row, sectionId, rule){
     ? '<div class="bom-cell muted bom-cell-list">—</div>'
     : '<div class="bom-cell bom-cell-list">' + _sqFmtMoney(list) + '</div>';
   return '<div class="bom-row auto-row" data-section="' + sectionId + '" data-key="' + escapeHtml(row.key || '') + '" data-list="' + (list == null ? '' : list) + '">'
-       +   '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
+       +   skuCellHtml
        +   '<div class="bom-desc" title="Auto-generated from your placements">' + escapeHtml(row.desc || '') + '</div>'
        +   listCell
        +   '<input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)">'
