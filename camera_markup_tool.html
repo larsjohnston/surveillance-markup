@@ -17860,7 +17860,14 @@ function computeAutoRows(){
       for(var ci = 0; ci < BRIVO_CATALOG.length; ci++){
         if(BRIVO_CATALOG[ci].sku === sku){ catalogEntry = BRIVO_CATALOG[ci]; break; }
       }
-      var desc = catalogEntry ? (catalogEntry.name + ' — ' + sku) : (sku + ' (custom AC device)');
+      // SQ M3-fixup: AC reader/controller descs no longer append " — <SKU>"
+      // — SKU has its own column in SQ Materials/Labour, and the PDF/CSV
+      // bomDisplayDesc strip handles any legacy " — <SKU>" suffix that
+      // might still appear from a future producer. The "(custom AC
+      // device)" path still includes the sku because that branch lacks
+      // a catalog name and the user needs *some* identifier in the
+      // Description column.
+      var desc = catalogEntry ? catalogEntry.name : (sku + ' (custom AC device)');
       acGroups[groupKey] = { desc: desc, qty: 0, sku: sku, cat: cat, overheadDoor: oh };
     }
     acGroups[groupKey].qty += mult;
