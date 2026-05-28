@@ -253,6 +253,48 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 #btn-cables.active { background:#06b6d4; color:#000; }
 #btn-headend.active { background:#fbbf24; color:#000; }
 
+/* ── Global form-controls baseline (M3-fixup) ───────────────────
+   Every editable input/select/textarea picks up a visible outline +
+   shaded fill so the user can tell at a glance the field is editable.
+   :where() carries ZERO specificity so existing per-context rules
+   (.bom-row input, .sq-rule-pill-editor input, .sq-summary-row ...
+   input, .sq-default-rule-strip input[type=number], .ctrl input,
+   .modal-row input, .ut-row input, .sp-field input, .rp-slot input,
+   etc.) win without an !important war.
+
+   Excludes: readonly + disabled attrs (defensive — zero exist today
+   but a future contributor adding a readonly input gets the right
+   look without revisiting this rule). Checkbox/radio/range/file/
+   button/hidden are excluded by the type-narrowing selector list. */
+:where(input[type="text"]:not([readonly]):not([disabled]),
+       input[type="number"]:not([readonly]):not([disabled]),
+       select:not([disabled]),
+       textarea:not([readonly]):not([disabled])) {
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  border-radius: 4px;
+  transition: border-color .12s, background .12s;
+}
+:where(input[type="text"]:not([readonly]):not([disabled]),
+       input[type="number"]:not([readonly]):not([disabled]),
+       select:not([disabled]),
+       textarea:not([readonly]):not([disabled])):focus {
+  border-color: var(--primary);
+  background: var(--surface);
+  outline: none;
+}
+/* Native spinner-arrow removal for number inputs — applies everywhere.
+   The arrows interfere with the visual editable-field cue, and the
+   tool's numeric fields are typed-in (price/qty/etc.), not spun. */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* ── BOM Drawer ── centered modal variant (CSS-only) ───────── */
 #bom-drawer {
   position: fixed; top:50%; left:50%;
@@ -441,6 +483,52 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 /* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
    shows the full 11-col grid via horizontal scroll instead of clipping. */
 #bom-body { overflow-x:auto; }
+/* SQ-wizard M3 rework: segmented [Flat][Hourly] toggle. Reuses
+   .tier-btn aesthetic; container butts pills via overflow:hidden +
+   zero gap so the seam reads as a single segmented control. The
+   active pill carries .tier-btn's primary-faint fill; inactive pill
+   stays white. .sq-mode-reset is the section-override × shown only
+   when bomLabourSectionRules[sectionId] is set. */
+.sq-mode-toggle {
+  display:inline-flex; align-items:center; gap:0;
+  border-radius:999px; overflow:hidden;
+  border:1.5px solid var(--border); background:#fff;
+  margin-left:auto;
+}
+.sq-mode-toggle .tier-btn {
+  border:none; border-radius:0; padding:4px 12px;
+  border-right:1px solid var(--border);
+}
+.sq-mode-toggle .tier-btn:last-of-type { border-right:none; }
+.sq-mode-toggle .tier-btn.active {
+  background:var(--primary-faint); color:var(--primary);
+}
+.sq-mode-reset {
+  margin-left:6px; padding:0 6px;
+  color:var(--text-muted); font:700 13px var(--font-ui); line-height:1;
+  cursor:pointer; user-select:none;
+}
+.sq-mode-reset:hover { color:var(--primary); }
+/* SQ-wizard M3 rework: per-row override indicator. Small orange dot
+   in the trailing column of labour Hourly rows when the row carries
+   a typed Cost OR Sell override. Click clears the override (.cost +
+   .sell on the line rule entry). Reuses --mode-parcel #ea580c — no
+   new color hex. */
+.sq-override-dot {
+  display:inline-block; width:6px; height:6px;
+  border-radius:50%; background:#ea580c;
+  margin-left:6px; vertical-align:middle;
+  cursor:help;
+}
+.sq-override-dot:hover { box-shadow:0 0 0 2px rgba(234,88,12,.18); }
+/* SQ-wizard M3 rework: Flat-mode labour rows + their col-hdr use a
+   9-column grid (no Hours column). Hourly rows inherit the standard
+   11-col .bom-row grid. */
+.bom-row.labour-flat-row,
+.bom-row.labour-flat-col-hdr {
+  grid-template-columns: 75px minmax(140px, 1fr) 65px 65px 45px 70px 70px 70px 55px;
+}
+
 /* SQ-wizard M2d: locked Qty cell on auto rows. Visually distinct from
    the editable Cost input above (dotted underline + help cursor) and
    distinct from the muted derived cells. Click pops the notice modal. */
@@ -3093,9 +3181,19 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
   </div>
   </div><!-- /#sq-step-materials -->
   <div id="sq-step-labour" data-step="2" style="display:none">
-    <div class="dhw-step-placeholder">Labour breakdown — coming in M2.</div>
+    <!-- SQ-wizard M3: labour body. Populated imperatively by recalcLabour()
+         on every recalcBom + on labour rule/qty edits. Renders the
+         default rule strip (with Supply-only toggle) at top, per-section
+         blocks with rule pills + 10-col rows + section subtotals, and a
+         static LABOUR SUBTOTAL footer at the end. Empty when no rows. -->
+    <div id="sq-labour-body"></div>
   </div>
   <div id="sq-step-summary" data-step="3" style="display:none">
+    <!-- SQ-wizard M3: Supply-only badge host. Populated by
+         _sqRenderSupplyOnlyBadge() — empty when bomLabourSupplyOnly is
+         false; renders an amber notice when true. Sits above the counts
+         grid so it reads as a top-level state flag. -->
+    <div id="sq-summary-supply-only-badge"></div>
     <!-- SQ-wizard M2c: Counts grid relocated from Materials. Same .bom-stat
          tiles + same ids — recalcBom writes to them unchanged. Subtotal /
          Margin / Tax / Grand-Total tiles + Tier Filter were extracted (the
@@ -14844,6 +14942,19 @@ function applyProjectState(data){
   }
   if(data.bom){
     if(data.bom.customLines) bomCustomLines = data.bom.customLines;
+    // SQ-wizard M3: backfill stable id on any legacy custom line missing
+    // it. Pre-M3 saves stored lines as {desc,qty,unit} only. New writes
+    // include {id,desc,qty,unit}. Backfilling at load is additive +
+    // idempotent — once minted the id round-trips through future saves.
+    Object.keys(bomCustomLines).forEach(function(sec){
+      if(Array.isArray(bomCustomLines[sec])){
+        bomCustomLines[sec].forEach(function(row){
+          if(typeof row.id !== 'string' || !row.id){
+            row.id = 'cust-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+          }
+        });
+      }
+    });
     // Pass N M3: backfill the ACCESS CONTROL key when loading a save
     // predating Pass N (the wholesale assignment above drops keys the
     // saved object didn't have). Other sections were present in earlier
@@ -17795,7 +17906,14 @@ function computeAutoRows(){
       for(var ci = 0; ci < BRIVO_CATALOG.length; ci++){
         if(BRIVO_CATALOG[ci].sku === sku){ catalogEntry = BRIVO_CATALOG[ci]; break; }
       }
-      var desc = catalogEntry ? (catalogEntry.name + ' — ' + sku) : (sku + ' (custom AC device)');
+      // SQ M3-fixup: AC reader/controller descs no longer append " — <SKU>"
+      // — SKU has its own column in SQ Materials/Labour, and the PDF/CSV
+      // bomDisplayDesc strip handles any legacy " — <SKU>" suffix that
+      // might still appear from a future producer. The "(custom AC
+      // device)" path still includes the sku because that branch lacks
+      // a catalog name and the user needs *some* identifier in the
+      // Description column.
+      var desc = catalogEntry ? catalogEntry.name : (sku + ' (custom AC device)');
       acGroups[groupKey] = { desc: desc, qty: 0, sku: sku, cat: cat, overheadDoor: oh };
     }
     acGroups[groupKey].qty += mult;
@@ -18751,15 +18869,51 @@ function recalcBom(){
 
   document.getElementById('bom-body').innerHTML = html;
 
+  // SQ-wizard M3: materials rendering done — repaint labour so a
+  // materials Qty/rule edit propagates through to the labour seed +
+  // section + footer. Supply-only badge in Summary also re-syncs.
+  if(typeof recalcLabour === 'function') recalcLabour();
+  if(typeof _sqRenderSupplyOnlyBadge === 'function') _sqRenderSupplyOnlyBadge();
+
   // Summary tiles. SQ-wizard M2b: global Margin is hidden in the
   // wizard UI but its computation lives on for PDF/CSV/cover until M4/M5
   // wholesale removal. recalcBom's #bom-margin-amt write is forced to 0
   // so the (now-hidden) tile reflects the wizard's "Sell already
   // includes margin" semantics; the input value at #bom-margin-pct is
   // preserved untouched for save/load round-trip.
-  var subtotal = grandQSell;   // on-screen subtotal = Sell total (was Cost total).
-  var marginAmt = 0;           // see comment above.
-  var afterMargin = subtotal;  // == grandQSell.
+  //
+  // SQ-wizard M3: the materials grandQSell is the materials portion;
+  // recalcSummaryOnly (called below indirectly by users editing rows)
+  // sums materials + labour. For the initial paint we compute the
+  // labour Sell off the same buckets so the tiles render correctly
+  // without waiting for a DOM walk.
+  var labourSell = 0;
+  if(!bomLabourSupplyOnly){
+    BOM_TEMPLATE.tiers.forEach(function(tier){
+      tier.subs.forEach(function(sub){
+        var b = buckets[sub.id];
+        if(!b) return;
+        b.auto.forEach(function(r){
+          if(r.warn) return;
+          var lineKey = r.key || '';
+          var u = _sqLabourUnit(getLabourRule(sub.id, lineKey));
+          var matQty = (typeof r.qty === 'number') ? r.qty : 0;
+          var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
+          labourSell += qty * u.sell;
+        });
+        b.custom.forEach(function(cust){
+          var lineKey = (cust.line && cust.line.id) || '';
+          var u = _sqLabourUnit(getLabourRule(sub.id, lineKey));
+          var matQty = (cust.line && typeof cust.line.qty === 'number') ? cust.line.qty : 0;
+          var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
+          labourSell += qty * u.sell;
+        });
+      });
+    });
+  }
+  var subtotal = grandQSell + labourSell;   // SQ-wizard M3: materials Sell + labour Sell.
+  var marginAmt = 0;                        // see comment above.
+  var afterMargin = subtotal;
   var taxAmt = afterMargin * taxPct / 100;
   var grand = afterMargin + taxAmt;
 
@@ -18839,11 +18993,116 @@ var bomAutoOverrides = {}; // key -> { unit, qty }
 var bomPricingRule  = { mode: 'markup', value: 40 };
 var bomSectionRules = {};
 
+// SQ-wizard M3 (rework) — Labour state. Three-tier resolution + a
+// supply-only kill switch. NOT persisted this pass — M5 wires save/load
+// via bom.config.labour*.
+//
+// Mode resolution (per row): section.mode > project.mode. Both Flat
+// and Hourly are valid at any level — project default + each section
+// independently toggle their mode.
+//
+// Rate/value resolution (per row, mode-aware):
+//   Hourly: cost = lineRule.cost  ?? bomLabourRule.costRate
+//           sell = lineRule.sell  ?? bomLabourRule.sellRate
+//           hours= lineRule.hours ?? matRow.qty (1h × device count seed)
+//           ext  = cost × hours, ext sell = sell × hours
+//   Flat  : cost = lineRule.cost  ?? 0  (no project default for Flat)
+//           sell = lineRule.sell  ?? 0
+//           ext  = cost × matRow.qty, ext sell = sell × matRow.qty
+//
+// State shapes:
+//   bomLabourRule         { mode, costRate, sellRate } — costRate/sellRate
+//                         honored only when mode='hourly'. Toggling project
+//                         default to Flat preserves the rates (just hides
+//                         the inputs) so toggling back restores them.
+//   bomLabourSectionRules { '<sectionId>': { mode } } — MODE-ONLY at section.
+//                         Sections inherit rate context from project default
+//                         (Hourly) or per-line (Flat).
+//   bomLabourLineRules    { '<lineKey>': { cost?, sell?, hours? } } — partial
+//                         overrides. Presence of any field = user-typed
+//                         override. Hourly rows display an override dot
+//                         when .cost or .sell is set; click clears both
+//                         (keeps .hours if set).
+//   bomLabourSupplyOnly   bool — zeroes the labour Sub-Total contribution
+//                         + shows the SUMMARY badge.
+//
+// Line keys: r.key for auto rows; cust.line.id for custom rows. Same
+// stable-id convention used by MATERIALS' bomAutoOverrides + the M3
+// addBomLine id mint.
+var bomLabourRule         = { mode: 'hourly', costRate: 0, sellRate: 0 };
+var bomLabourSectionRules = {};
+var bomLabourLineRules    = {};
+var bomLabourSupplyOnly   = false;
+
 // Resolve the rule for a section: per-section override wins, else the
 // project default. Returns the SAME object reference as the underlying
 // state (caller must not mutate in place).
 function getSectionRule(sectionId){
   return bomSectionRules[sectionId] || bomPricingRule;
+}
+
+// SQ-wizard M3 rework — Mode resolver. Returns 'hourly' or 'flat'.
+// Section override wins, else project default. Defensive default to
+// 'hourly' if state somehow shapes up empty.
+function getLabourMode(sectionId){
+  var sectionRule = sectionId ? bomLabourSectionRules[sectionId] : null;
+  if(sectionRule && sectionRule.mode === 'flat')   return 'flat';
+  if(sectionRule && sectionRule.mode === 'hourly') return 'hourly';
+  if(bomLabourRule && bomLabourRule.mode === 'flat') return 'flat';
+  return 'hourly';
+}
+
+// SQ-wizard M3 rework — Per-row labour computation. Pulls together
+// mode + cost + sell + hours + extension math + override flag. Returns
+// a flat object the renderer + recalc paths read directly. Pure
+// function (no DOM, no state writes) — defensive Number() coercion
+// keeps NaN out of cells.
+//
+//   matQty : the material row's qty (used as the Hours seed in Hourly
+//            mode and the multiplier in Flat mode).
+//
+// Returned fields:
+//   mode            'hourly' | 'flat'
+//   cost            unit cost (per hour Hourly; per unit Flat)
+//   sell            unit sell
+//   hours           hours used (Hourly only; null in Flat)
+//   matQty          the passed-in matQty (echoed for Flat ext math)
+//   extCost / extSell / margin / gm
+//   hasLineOverride bool — true when bomLabourLineRules[lineKey] has
+//                   .cost OR .sell set. Drives the orange override dot
+//                   visibility in Hourly mode.
+function _sqRowLabour(sectionId, lineKey, matQty){
+  var mode = getLabourMode(sectionId);
+  var line = (lineKey && bomLabourLineRules[lineKey]) ? bomLabourLineRules[lineKey] : null;
+  var q = Number(matQty); if(!isFinite(q)) q = 0;
+  var hasLineOverride = !!(line && ((typeof line.cost === 'number') || (typeof line.sell === 'number')));
+  if(mode === 'flat'){
+    var fc = (line && typeof line.cost === 'number') ? line.cost : 0;
+    var fs = (line && typeof line.sell === 'number') ? line.sell : 0;
+    var fec = fc * q;
+    var fes = fs * q;
+    return {
+      mode: 'flat', cost: fc, sell: fs, hours: null, matQty: q,
+      extCost: fec, extSell: fes, margin: fes - fec,
+      gm: fes > 0 ? ((fes - fec) / fes) * 100 : null,
+      hasLineOverride: hasLineOverride
+    };
+  }
+  // Hourly
+  var defCost = Number(bomLabourRule && bomLabourRule.costRate); if(!isFinite(defCost)) defCost = 0;
+  var defSell = Number(bomLabourRule && bomLabourRule.sellRate); if(!isFinite(defSell)) defSell = 0;
+  var hc = (line && typeof line.cost  === 'number') ? line.cost  : defCost;
+  var hs = (line && typeof line.sell  === 'number') ? line.sell  : defSell;
+  var hh = (line && typeof line.hours === 'number') ? line.hours : q;
+  if(!isFinite(hh)) hh = 0;
+  var hec = hc * hh;
+  var hes = hs * hh;
+  return {
+    mode: 'hourly', cost: hc, sell: hs, hours: hh, matQty: q,
+    extCost: hec, extSell: hes, margin: hes - hec,
+    gm: hes > 0 ? ((hes - hec) / hes) * 100 : null,
+    hasLineOverride: hasLineOverride
+  };
 }
 
 // Pure derivation: Sell from cost/list + rule. Handles a missing list
@@ -19133,6 +19392,424 @@ function _sqRenderGrandSubtotal(sums){
        + '</div>';
 }
 
+// ─── SQ-wizard M3 — Labour render + handlers ─────────────────────────────────
+// Labour step mirrors MATERIALS' state pattern (project default rule +
+// per-section override + per-line override). Layout differs slightly:
+// 10-col row (no List column — labour has no MSRP equivalent) + a
+// trailing pill cell for the per-line rule. Sticky LABOUR SUBTOTAL
+// footer is deferred to M4 polish; M3 emits a static .bom-row.grand-
+// subtotal at the end of #sq-labour-body.
+
+// Render the project default labour rule strip. Supply-only on the
+// LEFT, project default [Flat][Hourly] segmented toggle next to it,
+// then the Hourly rate inputs (Cost $/hr + Sell $/hr) — visible ONLY
+// when project default mode is Hourly. Flat project default has no
+// rate inputs (per-line entry is the only Flat data path).
+function _sqRenderLabourDefaultStrip(){
+  var defMode = (bomLabourRule && bomLabourRule.mode === 'flat') ? 'flat' : 'hourly';
+  var supplyChk = bomLabourSupplyOnly ? ' checked' : '';
+  var flatActive   = (defMode === 'flat')   ? ' active' : '';
+  var hourlyActive = (defMode === 'hourly') ? ' active' : '';
+  var rateInputs = '';
+  if(defMode === 'hourly'){
+    var v1 = (bomLabourRule && typeof bomLabourRule.costRate === 'number') ? bomLabourRule.costRate : 0;
+    var v2 = (bomLabourRule && typeof bomLabourRule.sellRate === 'number') ? bomLabourRule.sellRate : 0;
+    rateInputs = '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">Cost $/hr</span>'
+               + '<input type="number" min="0" step="0.01" value="' + v1 + '" onchange="_sqSetLabourDefaultV1(this.value)">'
+               + '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">Sell $/hr</span>'
+               + '<input type="number" min="0" step="0.01" value="' + v2 + '" onchange="_sqSetLabourDefaultV2(this.value)">';
+  }
+  return '<div class="sq-default-rule-strip">'
+       +   '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;">'
+       +     '<input type="checkbox"' + supplyChk + ' onchange="_sqSetLabourSupplyOnly(this.checked)">'
+       +     '<span>Supply only</span>'
+       +   '</label>'
+       +   '<span style="flex:0 0 auto; color:var(--text-muted); padding:0 6px;">|</span>'
+       +   '<label>Default labour</label>'
+       +   '<span class="sq-mode-toggle" style="margin-left:0;">'
+       +     '<button type="button" class="tier-btn' + flatActive   + '" onclick="_sqSetLabourDefaultMode(\'flat\')">Flat</button>'
+       +     '<button type="button" class="tier-btn' + hourlyActive + '" onclick="_sqSetLabourDefaultMode(\'hourly\')">Hourly</button>'
+       +   '</span>'
+       +   rateInputs
+       + '</div>';
+}
+
+// SQ-wizard M3 rework — Section [Flat][Hourly] segmented toggle. Replaces
+// the inline rule-editor pill. Active button reads from the section's
+// resolved mode (section override → project default). When the section
+// has its OWN override (bomLabourSectionRules[sectionId] is set), an ×
+// reset appears beside the toggle that clears the override.
+function _sqRenderSectionLabourToggle(sectionId){
+  var resolved = getLabourMode(sectionId);
+  var hasOverride = !!bomLabourSectionRules[sectionId];
+  var flatActive   = (resolved === 'flat')   ? ' active' : '';
+  var hourlyActive = (resolved === 'hourly') ? ' active' : '';
+  var resetBtn = hasOverride
+    ? '<span class="sq-mode-reset" title="Reset section to project default" onclick="event.stopPropagation();_sqResetLabourSection(\'' + escapeHtml(sectionId) + '\')">&times;</span>'
+    : '';
+  return '<span class="sq-mode-toggle">'
+       +   '<button type="button" class="tier-btn' + flatActive   + '" onclick="_sqSetSectionLabourMode(\'' + escapeHtml(sectionId) + '\',\'flat\')">Flat</button>'
+       +   '<button type="button" class="tier-btn' + hourlyActive + '" onclick="_sqSetSectionLabourMode(\'' + escapeHtml(sectionId) + '\',\'hourly\')">Hourly</button>'
+       + '</span>'
+       + resetBtn;
+}
+
+// SQ-wizard M3 rework — Labour row. Mode-aware. Per-row Cost + Sell
+// are editable inputs that write to bomLabourLineRules[lineKey].
+// Hourly mode adds an editable Hours column + an orange override dot
+// when the row carries a typed .cost or .sell override. Flat mode
+// drops the Hours column. Supply-only zeroes the four extension cells
+// at display time.
+//
+// Cell class preservation: .bom-line-qsell + .bom-line-margin stay on
+// the Ext Sell + Margin $ cells (in BOTH modes). recalcSummaryOnly's
+// labour walk depends on these class names — DO NOT rename.
+function _sqRenderLabourRow(matRow, sectionId, lineKey, isCustom){
+  var sku  = isCustom ? '' : (matRow.sku || matRow.key || '');
+  var desc = matRow.desc || (isCustom && matRow.line && matRow.line.desc) || '';
+  if(isCustom && (!matRow.desc) && matRow.line) desc = matRow.line.desc || '(unnamed)';
+  var matQty = isCustom
+    ? ((matRow.line && typeof matRow.line.qty === 'number') ? matRow.line.qty : 0)
+    : ((typeof matRow.qty === 'number') ? matRow.qty : 0);
+  var r = _sqRowLabour(sectionId, lineKey, matQty);
+  // Supply-only zero-out for displayed extensions.
+  var dispExtCost = bomLabourSupplyOnly ? 0    : r.extCost;
+  var dispExtSell = bomLabourSupplyOnly ? 0    : r.extSell;
+  var dispMargin  = bomLabourSupplyOnly ? 0    : r.margin;
+  var dispGm      = bomLabourSupplyOnly ? null : r.gm;
+  var rowCls = 'bom-row labour-row' + (isCustom ? '' : ' auto-row')
+             + (r.mode === 'flat' ? ' labour-flat-row' : '');
+  var skuCell = sku
+    ? '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
+    : '<div class="bom-cell-sku muted">—</div>';
+  var head = '<div class="' + rowCls + '" data-section="' + sectionId + '" data-line-key="' + escapeHtml(lineKey) + '">'
+           +   skuCell
+           +   '<div class="bom-desc">' + escapeHtml(desc) + '</div>'
+           +   '<input type="number" data-field="cost" value="' + (+r.cost).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)">'
+           +   '<input type="number" data-field="sell" value="' + (+r.sell).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)">';
+  if(r.mode === 'hourly'){
+    head += '<input type="number" data-field="hours" value="' + r.hours + '" step="0.25" min="0" onchange="_sqUpdateLabourField(this)">';
+  }
+  // Qty cell — locked display in both modes. Same M2d span shape so
+  // the existing CSS (.bom-cell-qty.locked) applies but with a
+  // different tooltip (labour Qty is informational, not floor-plan
+  // driven — material qty IS floor-plan driven).
+  head += '<span class="bom-cell bom-cell-qty locked" data-qty="' + matQty + '" title="Material quantity (informational; labour math uses Hours in Hourly, Qty in Flat)">' + matQty + '</span>'
+       +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(dispExtCost) + '</div>'
+       +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(dispExtSell) + '</div>'
+       +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(dispMargin) + '</div>'
+       +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(dispGm) + '</div>';
+  // Trailing cell. Hourly: override dot (visible when line has .cost
+  // or .sell). Flat: empty (no per-row dot in Flat per spec).
+  if(r.mode === 'hourly'){
+    var dot = r.hasLineOverride
+      ? '<span class="sq-override-dot" title="Manually overridden — click to reset" onclick="_sqResetLabourLine(\'' + escapeHtml(lineKey) + '\')"></span>'
+      : '';
+    head += '<div>' + dot + '</div>';
+  }
+  head += '</div>';
+  return head;
+}
+
+// SQ-wizard M3 rework — Labour section subtotal. Mode-aware to align
+// the empty leading cells with the section's column count (11 Hourly,
+// 9 Flat). Same data-subtotal sentinel so recalcSummaryOnly skips it.
+function _sqRenderLabourSectionSubtotal(sectionId, sums, mode){
+  var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
+  // Leading empties before the 4 money cells (Ext Cost · Ext Sell ·
+  // Margin · GM%): Hourly = 5 (SKU + Desc(label) + Cost + Sell + Hours + Qty
+  // → 5 empties because Desc carries "Subtotal" label); Flat = 4 (same
+  // minus Hours). Trailing cell = 1 (dot in Hourly, nothing in Flat —
+  // but Flat row template has 9 cols total, so no trailing div needed).
+  var rowCls = 'bom-row section-subtotal' + (mode === 'flat' ? ' labour-flat-row' : '');
+  var leading = (mode === 'flat')
+    ? '<div></div><div></div><div></div>'                     // SKU · Cost · Sell · Qty → 3 empties after the Desc label
+    : '<div></div><div></div><div></div><div></div>';         // SKU · Cost · Sell · Hours · Qty → 4 empties
+  var trailing = (mode === 'flat') ? '' : '<div></div>';
+  return '<div class="' + rowCls + '" data-subtotal="section" data-section="' + sectionId + '">'
+       +   '<div></div>'
+       +   '<div class="bom-desc">Subtotal</div>'
+       +   leading
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   trailing
+       + '</div>';
+}
+
+// SQ-wizard M3 rework — Static LABOUR SUBTOTAL footer at the end of
+// #sq-labour-body. Mode-agnostic / fixed-width; uses a flex layout
+// (NOT the .bom-row grid) so it doesn't have to match any section's
+// column count. data-subtotal="grand" sentinel still present so
+// recalcSummaryOnly skips it on its DOM walk.
+function _sqRenderLabourFooter(sums){
+  var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
+  return '<div class="bom-row grand-subtotal" data-subtotal="grand" style="display:flex; gap:14px; justify-content:flex-end; align-items:center; grid-template-columns:none;">'
+       +   '<div class="bom-desc" style="margin-right:auto;">Labour Subtotal</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       + '</div>';
+}
+
+// SQ-wizard M3 rework — Default-strip handlers.
+//
+// _sqSetLabourDefaultMode: toggle project default Flat ⇄ Hourly. When
+// switching to Flat the costRate/sellRate stay on bomLabourRule (the
+// strip just hides the inputs) so flipping back to Hourly restores
+// the prior rates without re-typing.
+// _sqSetLabourDefaultV1/V2: only fire while project default mode is
+// Hourly (inputs are hidden otherwise). Defensive: still write the
+// rate fields even if called with mode='flat' so future Hourly
+// toggles see the user's intent.
+// _sqSetLabourSupplyOnly: unchanged.
+function _sqSetLabourDefaultMode(mode){
+  if(mode !== 'flat' && mode !== 'hourly') return;
+  bomLabourRule.mode = mode;
+  // costRate/sellRate retained as-is — see comment.
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+}
+function _sqSetLabourDefaultV1(raw){
+  var v = parseFloat(raw); if(!isFinite(v) || v < 0) v = 0;
+  bomLabourRule.costRate = v;
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+}
+function _sqSetLabourDefaultV2(raw){
+  var v = parseFloat(raw); if(!isFinite(v) || v < 0) v = 0;
+  bomLabourRule.sellRate = v;
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+}
+function _sqSetLabourSupplyOnly(b){
+  bomLabourSupplyOnly = !!b;
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+  _sqRenderSupplyOnlyBadge();
+}
+
+// SQ-wizard M3 rework — Section mode toggle. Writes
+// bomLabourSectionRules[sectionId] = { mode } when the requested mode
+// differs from the project default; deletes the entry if the user
+// toggles back to the default (idempotent — no-op when section was
+// already on this mode).
+function _sqSetSectionLabourMode(sectionId, mode){
+  if(mode !== 'flat' && mode !== 'hourly') return;
+  if(mode === (bomLabourRule.mode || 'hourly')){
+    // Same as project default → drop any section override.
+    if(bomLabourSectionRules[sectionId]){
+      delete bomLabourSectionRules[sectionId];
+      markDirty();
+    }
+  } else {
+    bomLabourSectionRules[sectionId] = { mode: mode };
+    markDirty();
+  }
+  recalcLabour();
+  recalcSummaryOnly();
+}
+
+// SQ-wizard M3 rework — Section reset (× on the toggle). Clears the
+// section's mode override; section reverts to project default. Line
+// overrides in this section are NOT touched (they outlive section
+// changes).
+function _sqResetLabourSection(sectionId){
+  if(bomLabourSectionRules[sectionId]){
+    delete bomLabourSectionRules[sectionId];
+    markDirty();
+  }
+  recalcLabour();
+  recalcSummaryOnly();
+}
+
+// SQ-wizard M3 rework — Line override reset (orange dot click). Clears
+// .cost AND .sell on the line rule entry. Keeps .hours if set. If the
+// entry becomes empty after, delete the key.
+function _sqResetLabourLine(lineKey){
+  var line = bomLabourLineRules[lineKey];
+  if(!line) return;
+  if(typeof line.cost !== 'undefined') delete line.cost;
+  if(typeof line.sell !== 'undefined') delete line.sell;
+  // If only .hours remains, keep the entry. If empty, drop the key.
+  if(typeof line.hours === 'undefined'){
+    delete bomLabourLineRules[lineKey];
+  }
+  markDirty();
+  recalcLabour();
+  recalcSummaryOnly();
+}
+
+// SQ-wizard M3 rework — Per-row field edit. data-field on the input
+// is 'cost', 'sell', or 'hours'. Writes to bomLabourLineRules[lineKey]
+// + markDirty + in-row recompute + summary refresh.
+function _sqUpdateLabourField(input){
+  var row = input.closest('.bom-row');
+  if(!row) return;
+  var lineKey   = row.dataset.lineKey || '';
+  var sectionId = row.dataset.section || '';
+  var field     = input.dataset.field;
+  if(!lineKey || !field) return;
+  var v = parseFloat(input.value);
+  if(!isFinite(v) || v < 0) v = 0;
+  if(!bomLabourLineRules[lineKey]) bomLabourLineRules[lineKey] = {};
+  bomLabourLineRules[lineKey][field] = v;
+  markDirty();
+  _sqRecalcLabourRowCells(row, sectionId, lineKey);
+  recalcSummaryOnly();
+}
+
+// SQ-wizard M3 rework — In-row recompute. Reads the row's editable
+// inputs (Cost, Sell, Hours) + the locked matRow Qty span, recomputes
+// the 4 money cells, and toggles the override-dot's visibility for
+// Hourly rows. Used by _sqUpdateLabourField so the user sees the row's
+// totals update without a full DOM rebuild. The section subtotal stays
+// stale until next recalcLabour (mirrors MATERIALS' per-row edit path).
+function _sqRecalcLabourRowCells(row, sectionId, lineKey){
+  if(!row) return;
+  var mode = getLabourMode(sectionId);
+  var matQtySpan = row.querySelector('.bom-cell-qty.locked');
+  var matQty = matQtySpan ? (parseFloat(matQtySpan.dataset.qty || matQtySpan.textContent) || 0) : 0;
+  var r = _sqRowLabour(sectionId, lineKey, matQty);
+  // Read latest input values for the override-aware path (the user just
+  // typed; bomLabourLineRules already updated via _sqUpdateLabourField).
+  var dispExtCost = bomLabourSupplyOnly ? 0    : r.extCost;
+  var dispExtSell = bomLabourSupplyOnly ? 0    : r.extSell;
+  var dispMargin  = bomLabourSupplyOnly ? 0    : r.margin;
+  var dispGm      = bomLabourSupplyOnly ? null : r.gm;
+  var qcEl = row.querySelector('.bom-line-qcost');
+  var qsEl = row.querySelector('.bom-line-qsell');
+  var mEl  = row.querySelector('.bom-line-margin');
+  var gmEl = row.querySelector('.bom-line-gm');
+  if(qcEl) qcEl.textContent = _sqFmtMoney(dispExtCost);
+  if(qsEl) qsEl.textContent = _sqFmtMoney(dispExtSell);
+  if(mEl)  mEl.textContent  = _sqFmtMoney(dispMargin);
+  if(gmEl) gmEl.textContent = _sqFmtPct(dispGm);
+}
+
+// Render the supply-only badge inside #sq-step-summary. Shown only
+// when bomLabourSupplyOnly === true. Placed inline above the counts
+// grid; reuses the existing dhw warn palette via inline style (no new
+// CSS class for M3 — M4 polish can extract).
+function _sqRenderSupplyOnlyBadge(){
+  var host = document.getElementById('sq-summary-supply-only-badge');
+  if(!host) return;
+  host.innerHTML = bomLabourSupplyOnly
+    ? '<span style="display:inline-block; margin:10px 16px; padding:5px 12px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:4px; font:700 11px var(--font-ui); color:#92400e; letter-spacing:.04em; text-transform:uppercase;">Supply Only &mdash; labour excluded from totals</span>'
+    : '';
+}
+
+// Top-level labour recompute. Walks computeBomTree() the same way
+// recalcBom does (BOM_TEMPLATE.tiers → subs → b.auto + b.custom). One
+// labour row per visited material row. Skips warn rows. Emits the
+// default rule strip at top + section blocks (header with rule pill,
+// rows, section subtotal) + footer subtotal. Empty sections hide
+// (mirrors MATERIALS).
+// SQ-wizard M3 rework — recalcLabour. Walks computeBomTree() the same
+// way recalcBom does. Per section: resolve mode, emit a mode-aware
+// column header (11 cols Hourly, 9 cols Flat), iterate rows, emit a
+// mode-aware section subtotal. Empty sections (no real auto rows AND
+// no custom rows) hide. Warn rows (CMVR No-CMVR-Present etc.) get NO
+// labour row.
+function recalcLabour(){
+  var body = document.getElementById('sq-labour-body');
+  if(!body) return;
+  var buckets = computeBomTree();
+  var html = '';
+  html += _sqRenderLabourDefaultStrip();
+  html += '<div class="dhw-step-content">';
+  var grandQCost = 0, grandQSell = 0, grandMargin = 0;
+  BOM_TEMPLATE.tiers.forEach(function(tier){
+    var anyRows = tier.subs.some(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return false;
+      var realAuto = b.auto.filter(function(r){return !r.warn;}).length;
+      return (realAuto > 0 || b.custom.length > 0);
+    });
+    if(!anyRows) return;
+    html += '<div class="bom-tier1">';
+    html += '<div class="bom-tier1-hdr">' + escapeHtml(tier.title) + '</div>';
+    tier.subs.forEach(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return;
+      var realAuto = b.auto.filter(function(r){return !r.warn;});
+      if(realAuto.length === 0 && b.custom.length === 0) return;
+      var sectionMode = getLabourMode(sub.id);
+      html += '<div class="bom-section">';
+      html += '<div class="bom-sec-hdr">'
+            +   '<span>' + escapeHtml(sub.title) + '</span>'
+            +   _sqRenderSectionLabourToggle(sub.id)
+            + '</div>';
+      // Mode-aware column header. Hourly = 11 cols (SKU · Desc · Cost ·
+      // Sell · Hours · Qty · Ext Cost · Ext Sell · Margin $ · GM% · dot).
+      // Flat = 9 cols (drops Hours + dot).
+      var colHdrCls = 'bom-row col-hdr labour-col-hdr' + (sectionMode === 'flat' ? ' labour-flat-col-hdr' : '');
+      var colHdr = '<div class="' + colHdrCls + '">'
+                 +   '<div>SKU</div>'
+                 +   '<div>Description</div>'
+                 +   '<div style="text-align:right">Cost</div>'
+                 +   '<div style="text-align:right">Sell</div>';
+      if(sectionMode === 'hourly'){
+        colHdr += '<div style="text-align:right">Hours</div>';
+      }
+      colHdr += '<div style="text-align:right">Qty</div>'
+              +   '<div style="text-align:right">Ext Cost</div>'
+              +   '<div style="text-align:right">Ext Sell</div>'
+              +   '<div style="text-align:right">Margin $</div>'
+              +   '<div style="text-align:right">GM %</div>';
+      if(sectionMode === 'hourly'){
+        colHdr += '<div></div>';
+      }
+      colHdr += '</div>';
+      html += colHdr;
+      var secQCost = 0, secQSell = 0, secMargin = 0;
+      function _accum(matQty, lineKey){
+        var r = _sqRowLabour(sub.id, lineKey, matQty);
+        if(!bomLabourSupplyOnly){
+          secQCost  += r.extCost;
+          secQSell  += r.extSell;
+          secMargin += r.margin;
+        }
+      }
+      realAuto.forEach(function(r){
+        var lineKey = r.key || '';
+        var matQty  = (typeof r.qty === 'number') ? r.qty : 0;
+        _accum(matQty, lineKey);
+        html += _sqRenderLabourRow(r, sub.id, lineKey, false);
+      });
+      b.custom.forEach(function(cust){
+        var lineKey = (cust.line && cust.line.id) || '';
+        var matQty  = (cust.line && typeof cust.line.qty === 'number') ? cust.line.qty : 0;
+        _accum(matQty, lineKey);
+        html += _sqRenderLabourRow(cust, sub.id, lineKey, true);
+      });
+      html += _sqRenderLabourSectionSubtotal(sub.id, {
+        sumQCost:  secQCost,
+        sumQSell:  secQSell,
+        sumMargin: secMargin
+      }, sectionMode);
+      grandQCost  += secQCost;
+      grandQSell  += secQSell;
+      grandMargin += secMargin;
+      html += '</div>'; // .bom-section
+    });
+    html += '</div>'; // .bom-tier1
+  });
+  html += '</div>'; // .dhw-step-content
+  html += _sqRenderLabourFooter({
+    sumQCost:  grandQCost,
+    sumQSell:  grandQSell,
+    sumMargin: grandMargin
+  });
+  body.innerHTML = html;
+}
+
 function updateAutoRow(input){
   var row = input.closest('.bom-row');
   // Pricing M4 (Fix 2): normalize the override key so a user-set price on
@@ -19220,7 +19897,12 @@ computeAutoRows = function(){
 };
 
 function addBomLine(section){
-  bomCustomLines[section].push({ desc:'', qty:1, unit:0 });
+  // SQ-wizard M3: mint stable id at creation. Used as the line key for
+  // per-line labour overrides (bomLabourLineRules) and any future
+  // labour line-rule overrides. autos key by r.key; customs key by id.
+  // Survives reorder/delete since id is the field of truth (not idx).
+  var id = 'cust-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+  bomCustomLines[section].push({ id: id, desc:'', qty:1, unit:0 });
   markDirty();
   recalcBom();
 }
@@ -19374,23 +20056,31 @@ function recalcSummaryOnly(){
   // Margin tile is hidden in the wizard. Tax + Grand still derive at
   // the totals layer. Skips per-row subtotal + grand-subtotal sentinel
   // rows (they're cell-only, not source-of-truth).
-  var subtotal = 0;
-  var marginSum = 0;
-  document.querySelectorAll('#bom-body .bom-row').forEach(function(rowEl){
-    // Skip the section-subtotal + grand-subtotal sentinel rows so we
-    // don't double-count their summed cells.
-    if(rowEl.dataset.subtotal) return;
-    var qsEl = rowEl.querySelector('.bom-line-qsell');
-    if(qsEl){
-      var qsVal = parseFloat(qsEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
-      subtotal += qsVal;
-    }
-    var mEl = rowEl.querySelector('.bom-line-margin');
-    if(mEl){
-      var mVal = parseFloat(mEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
-      marginSum += mVal;
-    }
-  });
+  //
+  // SQ-wizard M3: Sub-Total now combines materials Sell + labour Sell.
+  // Labour walks #sq-labour-body the same way materials walks #bom-body.
+  // Supply-only short-circuits the labour walk (already zeroed at row
+  // level in recalcLabour, but a guard here makes the intent explicit).
+  function _sumQsellAndMargin(scopeSel){
+    var subRes = { qsell: 0, margin: 0 };
+    document.querySelectorAll(scopeSel + ' .bom-row').forEach(function(rowEl){
+      if(rowEl.dataset.subtotal) return;
+      var qsEl = rowEl.querySelector('.bom-line-qsell');
+      if(qsEl){
+        var qsVal = parseFloat(qsEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+        subRes.qsell += qsVal;
+      }
+      var mEl = rowEl.querySelector('.bom-line-margin');
+      if(mEl){
+        var mVal = parseFloat(mEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+        subRes.margin += mVal;
+      }
+    });
+    return subRes;
+  }
+  var mat = _sumQsellAndMargin('#bom-body');
+  var lab = bomLabourSupplyOnly ? { qsell: 0, margin: 0 } : _sumQsellAndMargin('#sq-labour-body');
+  var subtotal = mat.qsell + lab.qsell;
   var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
   var taxAmt = subtotal * taxPct / 100;
   var grand = subtotal + taxAmt;
