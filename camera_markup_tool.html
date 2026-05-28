@@ -441,6 +441,56 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
 /* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
    shows the full 11-col grid via horizontal scroll instead of clipping. */
 #bom-body { overflow-x:auto; }
+/* SQ-wizard M2c: Tier Filter standalone block — sits at top of Materials
+   step (extracted from the old #bom-summary container). Light surface +
+   bottom rule so it reads as a control band above the rule strip. */
+#sq-tier-filter-host {
+  display:flex; align-items:center; gap:14px;
+  padding:10px 16px; background:#f9fafb;
+  border-bottom:1px solid var(--border); font:11px var(--font-ui);
+}
+#sq-tier-filter-host .lbl {
+  color:#6b7280; font-size:10px; text-transform:uppercase;
+  letter-spacing:.05em; font-weight:700;
+}
+/* SQ-wizard M2c: vertical totals block at the end of the Summary step.
+   Sub-Total + Tax + Grand-Total stack as labeled rows (NOT sibling tiles).
+   Reuses the existing summary ids inside. Tax row carries the inline
+   #bom-tax-pct input. */
+#sq-summary-totals {
+  margin:18px 16px 4px;
+  padding:14px 18px;
+  border-top:2px solid var(--primary);
+  background:var(--surface-soft);
+  border-radius:0 0 4px 4px;
+}
+.sq-summary-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  padding:6px 0;
+  font:600 13px var(--font-ui); color:var(--text);
+}
+.sq-summary-row .sq-summary-label {
+  display:flex; align-items:center; gap:8px;
+}
+.sq-summary-row .sq-summary-label input[type=number] {
+  width:60px; padding:3px 6px;
+  border:1px solid var(--border); border-radius:3px;
+  font:600 12px var(--font-mono); background:#fff; text-align:right;
+}
+.sq-summary-row .sq-summary-value {
+  font:700 16px var(--font-mono); color:#111;
+}
+.sq-summary-row.sq-summary-grand {
+  border-top:1px solid var(--border);
+  margin-top:4px; padding-top:10px;
+}
+.sq-summary-row.sq-summary-grand .sq-summary-label {
+  font-weight:800; text-transform:uppercase; letter-spacing:.06em;
+  color:#111; font-size:11px;
+}
+.sq-summary-row.sq-summary-grand .sq-summary-value {
+  font-size:20px; color:var(--primary);
+}
 /* Phase 2a F3: inline BOM warning row (e.g. "No CMVR Present"). Amber
    text + bold, no inputs, no line-total — purely informational. Matches
    the palette of .dhw-warn / .bom-sec-hdr.warn so the severity reads
@@ -2939,50 +2989,29 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
        state across step nav (no innerHTML rebuild). -->
   <div class="dhw-step-content">
   <div id="sq-step-materials" data-step="1" style="display:block">
-  <div id="bom-summary">
-    <div class="bom-stat"><span class="lbl">Camera Count</span><span class="val" id="bom-cam-count">0</span></div>
-    <div class="bom-stat"><span class="lbl">Subtotal</span><span class="val" id="bom-subtotal">$0.00</span></div>
-    <!-- Pass N M5: AC counts mirror the cover summary's AC READERS /
-         AC CONTROLLERS lines. Hidden when zero; recalcBom toggles
-         display and value via coverModel.readerCount / controllerCount. -->
-    <div class="bom-stat" id="bom-ac-readers-stat" style="display:none"><span class="lbl">AC Readers</span><span class="val" id="bom-ac-readers">0</span></div>
-    <div class="bom-stat" id="bom-ac-controllers-stat" style="display:none"><span class="lbl">AC Controllers</span><span class="val" id="bom-ac-controllers">0</span></div>
-    <!-- Pass N+1 M9: smart-apartment header tiles mirror the cover summary
-         INTERCOMS / PARCEL LOCKERS / MAILBOX BANKS lines. Hidden when
-         their count is 0; recalcBom toggles display and value. -->
-    <div class="bom-stat" id="bom-intercom-stat"     style="display:none"><span class="lbl">Intercoms</span><span class="val" id="bom-intercom-count">0</span></div>
-    <div class="bom-stat" id="bom-parcel-stat"       style="display:none"><span class="lbl">Parcel Lockers</span><span class="val" id="bom-parcel-count">0</span></div>
-    <div class="bom-stat" id="bom-mailbox-stat"      style="display:none"><span class="lbl">Mailbox Banks</span><span class="val" id="bom-mailbox-count">0</span></div>
-    <!-- Pass N+1 M9: per-unit-type tile container — populated by recalcBom
-         from projectInfo.unitTypes + coverModel.suiteCountsByUnitType.
-         Each tile shares the .bom-stat class. Tiles for zero-suite types
-         are omitted entirely. Order follows declared unit-type sequence. -->
-    <div id="bom-suite-types-container" style="display:contents"></div>
-    <div class="bom-stat"><span class="lbl">Margin (<span id="bom-margin-pct-disp">0</span>%)</span><span class="val" id="bom-margin-amt">$0.00</span></div>
-    <div class="bom-stat"><span class="lbl">Tax (<span id="bom-tax-pct-disp">0</span>%)</span><span class="val" id="bom-tax-amt">$0.00</span></div>
-    <div class="bom-stat total" style="grid-column:1 / -1; border-top:1px solid #e5e7eb; padding-top:6px; margin-top:2px;"><span class="lbl">Grand Total</span><span class="val" id="bom-grand-total">$0.00</span></div>
-    <div class="bom-stat" style="grid-column:1 / -1; padding-top:8px; margin-top:4px; border-top:1px solid #e5e7eb;">
-      <span class="lbl">Tier Filter</span>
-      <span id="tier-filter-row" style="display:flex;gap:4px;">
-        <button class="tier-btn active" data-tier="all"         onclick="setTierFilter('all')">All</button>
-        <button class="tier-btn"        data-tier="essential"   onclick="setTierFilter('essential')">Essential</button>
-        <button class="tier-btn"        data-tier="recommended" onclick="setTierFilter('recommended')">Recommended</button>
-        <button class="tier-btn"        data-tier="premium"     onclick="setTierFilter('premium')">Premium</button>
-      </span>
-    </div>
+  <!-- SQ-wizard M2c: Tier Filter relocated to its own host (was inside
+       #bom-summary). Stays in Materials — filters camera rows only. -->
+  <div id="sq-tier-filter-host">
+    <span class="lbl">Tier Filter</span>
+    <span id="tier-filter-row" style="display:flex;gap:4px;">
+      <button class="tier-btn active" data-tier="all"         onclick="setTierFilter('all')">All</button>
+      <button class="tier-btn"        data-tier="essential"   onclick="setTierFilter('essential')">Essential</button>
+      <button class="tier-btn"        data-tier="recommended" onclick="setTierFilter('recommended')">Recommended</button>
+      <button class="tier-btn"        data-tier="premium"     onclick="setTierFilter('premium')">Premium</button>
+    </span>
   </div>
 
   <!-- BOM Restructure follow-up: Labor Rate and Default Hrs/Cam inputs
        removed. Labor lives on the Take-Off page now (LABOR_RATES constant
-       drives hours; pricing layers in on Quote page later). -->
+       drives hours; pricing layers in on Quote page later).
+       SQ-wizard M2c: Tax% input relocated to Summary. Margin% input stays
+       here (hidden via the existing :has() CSS rule) so the legacy
+       save/PDF/CSV pipeline keeps round-tripping marginPct. M4/M5 fully
+       removes margin. -->
   <div id="bom-config">
     <div class="bom-cfg">
       <label>Margin %</label>
       <input type="number" id="bom-margin-pct" value="0" step="1" min="0" max="100" oninput="bomConfigChanged()">
-    </div>
-    <div class="bom-cfg">
-      <label>Tax %</label>
-      <input type="number" id="bom-tax-pct" value="0" step="0.5" min="0" max="50" oninput="bomConfigChanged()">
     </div>
   </div>
 
@@ -3027,7 +3056,54 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
     <div class="dhw-step-placeholder">Labour breakdown — coming in M2.</div>
   </div>
   <div id="sq-step-summary" data-step="3" style="display:none">
-    <div class="dhw-step-placeholder">Quote summary — coming in M2.</div>
+    <!-- SQ-wizard M2c: Counts grid relocated from Materials. Same .bom-stat
+         tiles + same ids — recalcBom writes to them unchanged. Subtotal /
+         Margin / Tax / Grand-Total tiles + Tier Filter were extracted (the
+         first three live in the vertical totals block at the end of this
+         step; Tier Filter stays in Materials). -->
+    <div id="bom-summary">
+      <div class="bom-stat"><span class="lbl">Camera Count</span><span class="val" id="bom-cam-count">0</span></div>
+      <div class="bom-stat" id="bom-ac-readers-stat" style="display:none"><span class="lbl">AC Readers</span><span class="val" id="bom-ac-readers">0</span></div>
+      <div class="bom-stat" id="bom-ac-controllers-stat" style="display:none"><span class="lbl">AC Controllers</span><span class="val" id="bom-ac-controllers">0</span></div>
+      <div class="bom-stat" id="bom-intercom-stat"     style="display:none"><span class="lbl">Intercoms</span><span class="val" id="bom-intercom-count">0</span></div>
+      <div class="bom-stat" id="bom-parcel-stat"       style="display:none"><span class="lbl">Parcel Lockers</span><span class="val" id="bom-parcel-count">0</span></div>
+      <div class="bom-stat" id="bom-mailbox-stat"      style="display:none"><span class="lbl">Mailbox Banks</span><span class="val" id="bom-mailbox-count">0</span></div>
+      <div id="bom-suite-types-container" style="display:contents"></div>
+    </div>
+
+    <!-- SQ-wizard M2c: future M4 xlsx-table host. Empty for now; M4 fills
+         it with the rolled-up quote table. The totals block below sits
+         AT THE END of the Summary body so the xlsx renders above it. -->
+    <div id="sq-summary-xlsx-host"></div>
+
+    <!-- SQ-wizard M2c: vertical totals block at the END of the Summary
+         body. Sub-Total stacks above Tax (with its input + % disp); Grand
+         Total below. Reuses the existing #bom-subtotal / #bom-tax-pct /
+         #bom-tax-pct-disp / #bom-tax-amt / #bom-grand-total ids so
+         recalcBom + recalcSummaryOnly write here without code changes. -->
+    <div id="sq-summary-totals">
+      <div class="sq-summary-row">
+        <span class="sq-summary-label">Sub-Total</span>
+        <span class="sq-summary-value" id="bom-subtotal">$0.00</span>
+      </div>
+      <div class="sq-summary-row">
+        <span class="sq-summary-label">
+          Tax (<span id="bom-tax-pct-disp">0</span>%)
+          <input type="number" id="bom-tax-pct" value="0" step="0.5" min="0" max="50" oninput="bomConfigChanged()">
+        </span>
+        <span class="sq-summary-value" id="bom-tax-amt">$0.00</span>
+      </div>
+      <div class="sq-summary-row sq-summary-grand">
+        <span class="sq-summary-label">Grand Total</span>
+        <span class="sq-summary-value" id="bom-grand-total">$0.00</span>
+      </div>
+    </div>
+
+    <!-- SQ-wizard M2c: legacy hidden margin spans live here so recalcBom's
+         (now no-op) writes to #bom-margin-amt + #bom-margin-pct-disp
+         resolve. CSS hides them; M4/M5 removes both spans + the writes. -->
+    <span id="bom-margin-pct-disp" style="display:none">0</span>
+    <span id="bom-margin-amt"      style="display:none">$0.00</span>
   </div>
   </div><!-- /.dhw-step-content -->
   <!-- SQ-wizard M1: wizard nav row. Populated imperatively by
@@ -18607,12 +18683,13 @@ function recalcBom(){
     html += '</div>'; // .bom-tier1
   });
 
-  // SQ-wizard M2b: grand subtotal row below all sections.
-  html += _sqRenderGrandSubtotal({
-    sumQCost:  grandQCost,
-    sumQSell:  grandQSell,
-    sumMargin: grandMargin
-  });
+  // SQ-wizard M2c: grand-subtotal row removed from Materials body. The
+  // cross-section roll-up (Sub-Total) is now rendered in the Summary
+  // step's vertical totals block (#sq-summary-totals). recalcBom still
+  // writes the values to #bom-subtotal + #bom-grand-total spans, which
+  // now live inside that block. _sqRenderGrandSubtotal is intentionally
+  // left defined for an external diagnostic console call but unused by
+  // the live render path.
 
   document.getElementById('bom-body').innerHTML = html;
 
@@ -18949,12 +19026,16 @@ function _sqRenderSectionSubtotal(sectionId, sums){
 }
 
 // SQ-wizard M2b — Grand subtotal row. Emitted after all sections.
-// Same column set as section subtotal but accent-styled.
+// Same column set as section subtotal but accent-styled. SQ-wizard M2c:
+// label renamed "Grand Subtotal" → "Sub-Total". The fn is no longer
+// called from the Materials body (the cross-section roll-up lives in
+// the Summary step's vertical totals block), but is kept defined for
+// any external/diagnostic console caller.
 function _sqRenderGrandSubtotal(sums){
   var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
   return '<div class="bom-row grand-subtotal" data-subtotal="grand">'
        +   '<div></div>'
-       +   '<div class="bom-desc">Grand Subtotal</div>'
+       +   '<div class="bom-desc">Sub-Total</div>'
        +   '<div></div><div></div><div></div><div></div>'
        +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
        +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
