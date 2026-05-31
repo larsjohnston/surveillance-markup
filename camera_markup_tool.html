@@ -270,18 +270,17 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
        input[type="number"]:not([readonly]):not([disabled]),
        select:not([disabled]),
        textarea:not([readonly]):not([disabled])) {
-  border: 1px solid var(--border);
-  background: var(--surface-soft);
+  border: 1px solid var(--primary);
+  background: var(--surface);
   border-radius: 4px;
-  transition: border-color .12s, background .12s;
+  transition: border-color .12s, background .12s, outline-color .12s;
 }
 :where(input[type="text"]:not([readonly]):not([disabled]),
        input[type="number"]:not([readonly]):not([disabled]),
        select:not([disabled]),
        textarea:not([readonly]):not([disabled])):focus {
-  border-color: var(--primary);
-  background: var(--surface);
-  outline: none;
+  outline: 2px solid var(--primary-soft);
+  outline-offset: 0;
 }
 /* Native spinner-arrow removal for number inputs — applies everywhere.
    The arrows interfere with the visual editable-field cue, and the
@@ -414,6 +413,18 @@ input[type="number"]::-webkit-outer-spin-button {
 .bom-row .bom-cell.muted { color:#9ca3af; font-weight:500; }
 .bom-row .bom-cell-sku { font:600 10px var(--font-mono); color:#374151; text-align:left; padding-left:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .bom-row .bom-cell-sell { background:var(--surface-soft); border-radius:2px; }
+/* SQ polish: Materials Cost column "$" prefix. The Cost cell is an
+   editable <input>; inputs can't host ::before, so the renderer wraps
+   the input in a .bom-cell-cost div. The wrapper is the grid item and
+   carries the $ glyph absolutely positioned at the left edge; the input
+   inside fills the wrapper with extra left padding to clear the glyph.
+   Applies to BOTH auto + custom rows (shared wrapper class). */
+.bom-row .bom-cell-cost { position:relative; }
+.bom-row .bom-cell-cost::before {
+  content:'$'; position:absolute; left:5px; top:50%; transform:translateY(-50%);
+  font:700 11px var(--font-mono); color:#9ca3af; pointer-events:none; z-index:1;
+}
+.bom-row .bom-cell-cost input { padding-left:14px; width:100%; box-sizing:border-box; }
 /* SQ-wizard M2b: section subtotal + grand subtotal rows. Heavy top border,
    bold text. Grand has an extra accent. */
 .bom-row.section-subtotal { background:#f3f4f6; border-top:1px solid #d1d5db; font-weight:700; }
@@ -480,6 +491,14 @@ input[type="number"]::-webkit-outer-spin-button {
 #bom-margin-amt, #bom-margin-pct-disp { display:none; }
 #bom-summary .bom-stat:has(#bom-margin-amt) { display:none; }
 #bom-config .bom-cfg:has(#bom-margin-pct)   { display:none; }
+/* SQ polish: hide the margin-config band from the Materials step.
+   Markup + handlers preserved so save/load still touches
+   #bom-margin-pct's value. CSS-only hide; no DOM removal.
+   (Tier-filter band hide lives at the canonical #sq-tier-filter-host
+   rule further down — collapsed into a single display:none site to
+   avoid the cascade-order tie that hid the chip span but left the
+   surrounding band visible.) */
+#bom-config             { display:none; }
 /* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
    shows the full 11-col grid via horizontal scroll instead of clipping. */
 #bom-body { overflow-x:auto; }
@@ -529,6 +548,17 @@ input[type="number"]::-webkit-outer-spin-button {
   grid-template-columns: 75px minmax(140px, 1fr) 65px 65px 45px 70px 70px 70px 55px;
 }
 
+/* SQ-wizard M4: Summary step xlsx table. 11-col track (SKU · Desc · Qty
+   · HW Ext Cost · HW Ext Sell · Lab Ext Cost · Lab Ext Sell · Combined
+   Cost · Combined Sell · Margin $ · GM %). Scoped via the
+   .sq-summary-xlsx-table parent class so the Materials (line 388) and
+   Labour (line 529) .bom-row tracks are untouched. Wrap allows horizontal
+   scroll without pushing the wizard stepper sideways at narrow modal
+   widths. */
+.sq-summary-xlsx-wrap { overflow-x:auto; margin-top:8px; }
+.sq-summary-xlsx-table .bom-row {
+  grid-template-columns: 75px minmax(160px, 1fr) 45px 65px 65px 65px 65px 70px 70px 70px 55px;
+}
 /* SQ-wizard M2d: locked Qty cell on auto rows. Visually distinct from
    the editable Cost input above (dotted underline + help cursor) and
    distinct from the muted derived cells. Click pops the notice modal. */
@@ -555,18 +585,14 @@ input[type="number"]::-webkit-outer-spin-button {
    stacking context — common gotcha). */
 :root { --z-notice-modal: 80; }
 #sq-qty-lock-modal { z-index: var(--z-notice-modal); }
-/* SQ-wizard M2c: Tier Filter standalone block — sits at top of Materials
-   step (extracted from the old #bom-summary container). Light surface +
-   bottom rule so it reads as a control band above the rule strip. */
-#sq-tier-filter-host {
-  display:flex; align-items:center; gap:14px;
-  padding:10px 16px; background:#f9fafb;
-  border-bottom:1px solid var(--border); font:11px var(--font-ui);
-}
-#sq-tier-filter-host .lbl {
-  color:#6b7280; font-size:10px; text-transform:uppercase;
-  letter-spacing:.05em; font-weight:700;
-}
+/* SQ polish: Tier Filter band hidden — the chip filter was retired in
+   M5. Markup at #sq-tier-filter-host stays so setTierFilter() still
+   resolves if invoked from a future re-introduction; the layout
+   properties (padding/background/border-bottom + the .lbl typography)
+   were dropped along with the chips' visibility. Canonical single
+   site — was previously split across two rules whose source-order
+   cascade left this band visible. */
+#sq-tier-filter-host { display:none; }
 /* SQ-wizard M2c: vertical totals block at the end of the Summary step.
    Sub-Total + Tax + Grand-Total stack as labeled rows (NOT sibling tiles).
    Reuses the existing summary ids inside. Tax row carries the inline
@@ -590,6 +616,13 @@ input[type="number"]::-webkit-outer-spin-button {
   width:60px; padding:3px 6px;
   border:1px solid var(--border); border-radius:3px;
   font:600 12px var(--font-mono); background:#fff; text-align:right;
+}
+/* SQ Summary M5: editable Tax label (default "GST"). Renders inline
+   inside the label cell of the Tax row — no border by default so it
+   reads as static text; focus picks up the global :where outline. */
+#bom-tax-label {
+  border:none; background:transparent; padding:0 2px;
+  font:inherit; color:inherit; width:auto; min-width:30px; text-align:left;
 }
 .sq-summary-row .sq-summary-value {
   font:700 16px var(--font-mono); color:#111;
@@ -3234,11 +3267,13 @@ input[type="number"]::-webkit-outer-spin-button {
       <div class="bom-stat" id="bom-intercom-stat"     style="display:none"><span class="lbl">Intercoms</span><span class="val" id="bom-intercom-count">0</span></div>
       <div class="bom-stat" id="bom-parcel-stat"       style="display:none"><span class="lbl">Parcel Lockers</span><span class="val" id="bom-parcel-count">0</span></div>
       <div class="bom-stat" id="bom-mailbox-stat"      style="display:none"><span class="lbl">Mailbox Banks</span><span class="val" id="bom-mailbox-count">0</span></div>
-      <div id="bom-suite-types-container" style="display:contents"></div>
+      <!-- SQ Summary M5: per-unit-type tiles collapsed to a single
+           Total Units roll-up. Hidden when zero suites placed. -->
+      <div class="bom-stat" id="bom-total-units-stat" style="display:none"><span class="lbl">Total Units</span><span class="val" id="bom-total-units">0</span></div>
     </div>
 
-    <!-- SQ-wizard M2c: future M4 xlsx-table host. Empty for now; M4 fills
-         it with the rolled-up quote table. The totals block below sits
+    <!-- SQ-wizard M2c: M4 xlsx-table host (11-col HW + Labour roll-up).
+         Populated by recalcSummaryXlsx(). The totals block below sits
          AT THE END of the Summary body so the xlsx renders above it. -->
     <div id="sq-summary-xlsx-host"></div>
 
@@ -3254,7 +3289,7 @@ input[type="number"]::-webkit-outer-spin-button {
       </div>
       <div class="sq-summary-row">
         <span class="sq-summary-label">
-          Tax (<span id="bom-tax-pct-disp">0</span>%)
+          <input type="text" id="bom-tax-label" value="GST" maxlength="12" oninput="markDirty()"> (<span id="bom-tax-pct-disp">0</span>%)
           <input type="number" id="bom-tax-pct" value="0" step="0.5" min="0" max="50" oninput="bomConfigChanged()">
         </span>
         <span class="sq-summary-value" id="bom-tax-amt">$0.00</span>
@@ -14351,9 +14386,11 @@ function updateSaveIndicator(){
 function buildLiteSaveData(){
   // BOM Restructure follow-up: laborRate / laborHrs no longer persisted —
   // the inputs were removed and the labor compute lives in computeNonBomRows().
+  // SQ Summary M5: taxLabel persists the editable Tax row label (default "GST").
   var bomConfig = {
     marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
     taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
+    taxLabel:  _bomTaxLabel(),
     storDays:  parseFloat(document.getElementById('stor-days').value)||30,
     storFps:   parseFloat(document.getElementById('stor-fps').value)||15,
     storCodec: document.getElementById('stor-codec').value,
@@ -14589,9 +14626,11 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   // BOM Restructure follow-up: laborRate / laborHrs no longer persisted.
+  // SQ Summary M5: taxLabel persists the editable Tax row label.
   var bomConfig = {
     marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
     taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
+    taxLabel:  _bomTaxLabel(),
     storDays:  parseFloat(document.getElementById('stor-days').value)||30,
     storFps:   parseFloat(document.getElementById('stor-fps').value)||15,
     storCodec: document.getElementById('stor-codec').value,
@@ -15039,6 +15078,11 @@ function applyProjectState(data){
       // saves are silently ignored on load — the inputs they fed are gone.
       if(data.bom.config.marginPct !== undefined) document.getElementById('bom-margin-pct').value = data.bom.config.marginPct;
       if(data.bom.config.taxPct    !== undefined) document.getElementById('bom-tax-pct').value    = data.bom.config.taxPct;
+      // SQ Summary M5: taxLabel defaults to 'GST' for projects saved
+      // before this field existed. Falsy → default.
+      var __tl = (data.bom.config.taxLabel != null && String(data.bom.config.taxLabel).trim()) ? String(data.bom.config.taxLabel) : 'GST';
+      var __tlEl = document.getElementById('bom-tax-label');
+      if(__tlEl) __tlEl.value = __tl;
       if(data.bom.config.storDays  !== undefined) document.getElementById('stor-days').value      = data.bom.config.storDays;
       if(data.bom.config.storFps   !== undefined) document.getElementById('stor-fps').value       = data.bom.config.storFps;
       if(data.bom.config.storCodec !== undefined) document.getElementById('stor-codec').value     = data.bom.config.storCodec;
@@ -17692,6 +17736,11 @@ function _sqGoToStep(n){
   if(sum) sum.style.display = (n === 3) ? 'block' : 'none';
   _sqRenderStepper();
   _sqRenderWizardNav();
+  // SQ-wizard M4: paint the xlsx on first nav into Summary. recalcBom
+  // already populates it on drawer open, but if the user opens the
+  // wizard and goes straight to Summary before any edit fires another
+  // recalcBom, this ensures the table is current. Cheap; safe to repeat.
+  if(n === 3 && typeof recalcSummaryXlsx === 'function') recalcSummaryXlsx();
 }
 function _sqStepBack(){ if(_sqCurrentStep > 1) _sqGoToStep(_sqCurrentStep - 1); }
 function _sqStepNext(){ if(_sqCurrentStep < 3) _sqGoToStep(_sqCurrentStep + 1); }
@@ -18907,6 +18956,10 @@ function recalcBom(){
   // section + footer. Supply-only badge in Summary also re-syncs.
   if(typeof recalcLabour === 'function') recalcLabour();
   if(typeof _sqRenderSupplyOnlyBadge === 'function') _sqRenderSupplyOnlyBadge();
+  // SQ-wizard M4: SUMMARY xlsx table repaint. Reads via deriveSell +
+  // _sqRowLabour pure helpers, same inputs as recalcBom/recalcLabour
+  // so the grand Combined Sell stays consistent with #bom-subtotal.
+  if(typeof recalcSummaryXlsx === 'function') recalcSummaryXlsx();
 
   // Summary tiles. SQ-wizard M2b: global Margin is hidden in the
   // wizard UI but its computation lives on for PDF/CSV/cover until M4/M5
@@ -18920,26 +18973,31 @@ function recalcBom(){
   // sums materials + labour. For the initial paint we compute the
   // labour Sell off the same buckets so the tiles render correctly
   // without waiting for a DOM walk.
+  //
+  // recalcBom fix: the original M3 tally referenced three identifiers
+  // that were never defined (_sqLabourUnit, getLabourRule,
+  // bomLabourLineQty) — every recalcBom call on a non-empty project
+  // with bomLabourSupplyOnly off ReferenceError'd here, skipping every
+  // downstream tile write (counts, subtotal, tax-amt, grand-total).
+  // Replaced with the same _sqRowLabour-based walk recalcLabour's
+  // _accum uses — single source of truth, no undefined refs.
   var labourSell = 0;
   if(!bomLabourSupplyOnly){
     BOM_TEMPLATE.tiers.forEach(function(tier){
       tier.subs.forEach(function(sub){
-        var b = buckets[sub.id];
-        if(!b) return;
-        b.auto.forEach(function(r){
-          if(r.warn) return;
+        var b = buckets[sub.id]; if(!b) return;
+        var realAuto = b.auto.filter(function(r){ return !r.warn; });
+        realAuto.forEach(function(r){
           var lineKey = r.key || '';
-          var u = _sqLabourUnit(getLabourRule(sub.id, lineKey));
           var matQty = (typeof r.qty === 'number') ? r.qty : 0;
-          var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
-          labourSell += qty * u.sell;
+          var lab = _sqRowLabour(sub.id, lineKey, matQty);
+          labourSell += lab.extSell;
         });
         b.custom.forEach(function(cust){
           var lineKey = (cust.line && cust.line.id) || '';
-          var u = _sqLabourUnit(getLabourRule(sub.id, lineKey));
           var matQty = (cust.line && typeof cust.line.qty === 'number') ? cust.line.qty : 0;
-          var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
-          labourSell += qty * u.sell;
+          var lab = _sqRowLabour(sub.id, lineKey, matQty);
+          labourSell += lab.extSell;
         });
       });
     });
@@ -18992,22 +19050,17 @@ function recalcBom(){
     mEl.style.display = bomModel.mailboxCount > 0 ? '' : 'none';
     document.getElementById('bom-mailbox-count').textContent = String(bomModel.mailboxCount);
   }
-  // Pass N+1 M9: per-unit-type tiles. Container is repainted each recalc
-  // since unit types are project-level state that changes via Modal #1.
-  // Tiles for zero-suite types are omitted; order follows declared
-  // projectInfo.unitTypes sequence so cover, drawer, and brief stay in sync.
-  var sttContainer = document.getElementById('bom-suite-types-container');
-  if(sttContainer){
-    var typeHtml = '';
-    (projectInfo.unitTypes || []).forEach(function(ut){
-      var cnt = bomModel.suiteCountsByUnitType[ut.id] || 0;
-      if(cnt > 0){
-        typeHtml += '<div class="bom-stat"><span class="lbl">'
-                 + escapeHtml(ut.label || '(unlabeled)')
-                 + '</span><span class="val">' + cnt + '</span></div>';
-      }
-    });
-    sttContainer.innerHTML = typeHtml;
+  // SQ Summary M5: Total Units roll-up. Replaces the per-unit-type tile
+  // breakdown — sum every suiteCountsByUnitType value (already multiplied
+  // by pageMultiplier in computeRiserModel). Hide tile when zero so the
+  // counts grid collapses cleanly on no-suites projects.
+  var totalUnits = 0;
+  var sc = bomModel.suiteCountsByUnitType || {};
+  Object.keys(sc).forEach(function(k){ totalUnits += (sc[k] || 0); });
+  var tuStat = document.getElementById('bom-total-units-stat');
+  if(tuStat){
+    tuStat.style.display = totalUnits > 0 ? '' : 'none';
+    document.getElementById('bom-total-units').textContent = String(totalUnits);
   }
 
   // Persist current auto-row unit prices keyed for next render
@@ -19323,7 +19376,7 @@ function _sqRenderAutoRow(row, sectionId, rule){
        +   skuCellHtml
        +   '<div class="bom-desc" title="Auto-generated from your placements">' + escapeHtml(row.desc || '') + '</div>'
        +   listCell
-       +   '<input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)">'
+       +   '<div class="bom-cell-cost"><input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)"></div>'
        +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
        +   '<span class="bom-cell bom-cell-qty locked" data-field="qty" data-qty="' + qty + '" title="Quantity is set by the floor plan — click for details" onclick="_sqShowQtyLockNotice()">' + qty + '</span>'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
@@ -19364,7 +19417,7 @@ function _sqRenderCustomRow(cust, rule){
        +   '<div class="bom-cell-sku"></div>'
        +   '<input type="text" class="bom-desc" value="' + escapeHtml(line.desc || '') + '" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">'
        +   '<div class="bom-cell muted bom-cell-list">—</div>'
-       +   '<input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" oninput="updateCustomRow(this)">'
+       +   '<div class="bom-cell-cost"><input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" oninput="updateCustomRow(this)"></div>'
        +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
        +   '<input type="number" data-field="qty" value="' + qty + '" step="0.25" min="0" oninput="updateCustomRow(this)">'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
@@ -19527,7 +19580,11 @@ function _sqRenderLabourRow(matRow, sectionId, lineKey, isCustom){
   // the existing CSS (.bom-cell-qty.locked) applies but with a
   // different tooltip (labour Qty is informational, not floor-plan
   // driven — material qty IS floor-plan driven).
-  head += '<span class="bom-cell bom-cell-qty locked" data-qty="' + matQty + '" title="Material quantity (informational; labour math uses Hours in Hourly, Qty in Flat)">' + matQty + '</span>'
+  // SQ polish: auto rows get the click-to-explain lock-notice handler
+  // (mirrors the Materials side). Custom labour rows are user-typed
+  // material lines; their qty isn't canvas-derived, so no notice.
+  var qtyClick = isCustom ? '' : ' onclick="_sqShowQtyLockNotice()"';
+  head += '<span class="bom-cell bom-cell-qty locked" data-qty="' + matQty + '" title="Material quantity (informational; labour math uses Hours in Hourly, Qty in Flat)"' + qtyClick + '>' + matQty + '</span>'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(dispExtCost) + '</div>'
        +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(dispExtSell) + '</div>'
        +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(dispMargin) + '</div>'
@@ -19563,10 +19620,10 @@ function _sqRenderLabourSectionSubtotal(sectionId, sums, mode){
        +   '<div></div>'
        +   '<div class="bom-desc">Subtotal</div>'
        +   leading
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   '<div class="bom-cell bom-labour-sec-qcost">'  + _sqFmtMoney(sums.sumQCost)  + '</div>'
+       +   '<div class="bom-cell bom-labour-sec-qsell">'  + _sqFmtMoney(sums.sumQSell)  + '</div>'
+       +   '<div class="bom-cell bom-labour-sec-margin">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell bom-labour-sec-gm">'     + _sqFmtPct(gm)               + '</div>'
        +   trailing
        + '</div>';
 }
@@ -19578,12 +19635,12 @@ function _sqRenderLabourSectionSubtotal(sectionId, sums, mode){
 // recalcSummaryOnly skips it on its DOM walk.
 function _sqRenderLabourFooter(sums){
   var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
-  return '<div class="bom-row grand-subtotal" data-subtotal="grand" style="display:flex; gap:14px; justify-content:flex-end; align-items:center; grid-template-columns:none;">'
+  return '<div class="bom-row grand-subtotal" data-subtotal="grand" data-labour-footer="1" style="display:flex; gap:14px; justify-content:flex-end; align-items:center; grid-template-columns:none;">'
        +   '<div class="bom-desc" style="margin-right:auto;">Labour Subtotal</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   '<div class="bom-cell bom-labour-foot-qcost">'  + _sqFmtMoney(sums.sumQCost)  + '</div>'
+       +   '<div class="bom-cell bom-labour-foot-qsell">'  + _sqFmtMoney(sums.sumQSell)  + '</div>'
+       +   '<div class="bom-cell bom-labour-foot-margin">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell bom-labour-foot-gm">'     + _sqFmtPct(gm)               + '</div>'
        + '</div>';
 }
 
@@ -19695,15 +19752,92 @@ function _sqUpdateLabourField(input){
   bomLabourLineRules[lineKey][field] = v;
   markDirty();
   _sqRecalcLabourRowCells(row, sectionId, lineKey);
+  // SQ labour subtotal fix: also repaint the section subtotal row and
+  // footer in-place so they track the row edit. Both helpers re-sum from
+  // current state via _sqRowLabour — no full recalcLabour rebuild.
+  _sqRecalcLabourSectionSubtotal(sectionId);
+  _sqRecalcLabourFooter();
   recalcSummaryOnly();
+}
+
+// SQ labour subtotal fix: walk the section's labour rows in #sq-labour-
+// body, accumulate sums via _sqRowLabour (same pure helper recalcLabour
+// uses), and rewrite the section subtotal row's 4 money cells in place.
+// Per-row cells were already repainted by _sqRecalcLabourRowCells; this
+// keeps the section subtotal in lockstep without a full body rebuild.
+// Selector targets the data labour rows (.labour-row) for the section
+// and the subtotal row via .section-subtotal[data-section]. Supply-only
+// zeroes the per-row contributions (mirrors _accum semantics).
+function _sqRecalcLabourSectionSubtotal(sectionId){
+  if(!sectionId) return;
+  var body = document.getElementById('sq-labour-body');
+  if(!body) return;
+  var rowSel = '.bom-row.labour-row[data-section="' + sectionId + '"]';
+  var rows = body.querySelectorAll(rowSel);
+  var sumQCost = 0, sumQSell = 0, sumMargin = 0;
+  rows.forEach(function(rowEl){
+    var lineKey = rowEl.dataset.lineKey || '';
+    var qtyEl = rowEl.querySelector('.bom-cell-qty.locked');
+    var matQty = qtyEl ? (parseFloat(qtyEl.dataset.qty || qtyEl.textContent) || 0) : 0;
+    var r = _sqRowLabour(sectionId, lineKey, matQty);
+    if(!bomLabourSupplyOnly){
+      sumQCost  += r.extCost;
+      sumQSell  += r.extSell;
+      sumMargin += r.margin;
+    }
+  });
+  var gm = sumQSell > 0 ? (sumMargin / sumQSell) * 100 : null;
+  var subSel = '.bom-row.section-subtotal[data-section="' + sectionId + '"]';
+  var subRow = body.querySelector(subSel);
+  if(!subRow) return;
+  var qcEl = subRow.querySelector('.bom-labour-sec-qcost');
+  var qsEl = subRow.querySelector('.bom-labour-sec-qsell');
+  var mEl  = subRow.querySelector('.bom-labour-sec-margin');
+  var gmEl = subRow.querySelector('.bom-labour-sec-gm');
+  if(qcEl) qcEl.textContent = _sqFmtMoney(sumQCost);
+  if(qsEl) qsEl.textContent = _sqFmtMoney(sumQSell);
+  if(mEl)  mEl.textContent  = _sqFmtMoney(sumMargin);
+  if(gmEl) gmEl.textContent = _sqFmtPct(gm);
+}
+
+// SQ labour subtotal fix: walk every section subtotal row in
+// #sq-labour-body, parse its 4 cell texts back to numbers, accumulate,
+// and rewrite the footer "Labour Subtotal" row's 4 money cells in place.
+// Reads the section subtotals (which the helper above keeps current)
+// rather than re-walking every row — same answer, less work.
+function _sqRecalcLabourFooter(){
+  var body = document.getElementById('sq-labour-body');
+  if(!body) return;
+  var footer = body.querySelector('.bom-row.grand-subtotal[data-labour-footer="1"]');
+  if(!footer) return;
+  var sumQCost = 0, sumQSell = 0, sumMargin = 0;
+  function _parseMoney(s){ return parseFloat(String(s||'').replace(/[^0-9.\-]/g, '')) || 0; }
+  body.querySelectorAll('.bom-row.section-subtotal').forEach(function(secRow){
+    var qcEl = secRow.querySelector('.bom-labour-sec-qcost');
+    var qsEl = secRow.querySelector('.bom-labour-sec-qsell');
+    var mEl  = secRow.querySelector('.bom-labour-sec-margin');
+    if(qcEl) sumQCost  += _parseMoney(qcEl.textContent);
+    if(qsEl) sumQSell  += _parseMoney(qsEl.textContent);
+    if(mEl)  sumMargin += _parseMoney(mEl.textContent);
+  });
+  var gm = sumQSell > 0 ? (sumMargin / sumQSell) * 100 : null;
+  var qcF = footer.querySelector('.bom-labour-foot-qcost');
+  var qsF = footer.querySelector('.bom-labour-foot-qsell');
+  var mF  = footer.querySelector('.bom-labour-foot-margin');
+  var gmF = footer.querySelector('.bom-labour-foot-gm');
+  if(qcF) qcF.textContent = _sqFmtMoney(sumQCost);
+  if(qsF) qsF.textContent = _sqFmtMoney(sumQSell);
+  if(mF)  mF.textContent  = _sqFmtMoney(sumMargin);
+  if(gmF) gmF.textContent = _sqFmtPct(gm);
 }
 
 // SQ-wizard M3 rework — In-row recompute. Reads the row's editable
 // inputs (Cost, Sell, Hours) + the locked matRow Qty span, recomputes
 // the 4 money cells, and toggles the override-dot's visibility for
 // Hourly rows. Used by _sqUpdateLabourField so the user sees the row's
-// totals update without a full DOM rebuild. The section subtotal stays
-// stale until next recalcLabour (mirrors MATERIALS' per-row edit path).
+// totals update without a full DOM rebuild. The section subtotal +
+// footer are kept in lockstep via _sqRecalcLabourSectionSubtotal +
+// _sqRecalcLabourFooter (no full body rebuild on every keystroke).
 function _sqRecalcLabourRowCells(row, sectionId, lineKey){
   if(!row) return;
   var mode = getLabourMode(sectionId);
@@ -19841,6 +19975,257 @@ function recalcLabour(){
     sumMargin: grandMargin
   });
   body.innerHTML = html;
+  // SQ-wizard M4: a labour rule / mode / cost / sell / hours / supply-
+  // only edit can move xlsx Combined cells without going through
+  // recalcBom. Repaint here so the SUMMARY xlsx stays in lockstep with
+  // the labour body the user just edited.
+  if(typeof recalcSummaryXlsx === 'function') recalcSummaryXlsx();
+}
+
+// ─── SQ-wizard M4 — SUMMARY xlsx render ──────────────────────────────────────
+// Standalone walk of computeBomTree() that mirrors the math in recalcBom
+// (materials Sell via deriveSell) + recalcLabour (labour via _sqRowLabour).
+// Both math layers are already pure helpers — this renderer just composes
+// them into the per-row Combined Cost / Combined Sell / Margin $ / GM %
+// shape the xlsx Summary tab needs. Pure render — no state writes, no
+// markDirty, no DOM walk-back. Writes only into #sq-summary-xlsx-host so
+// recalcSummaryOnly's separate cell-text walk of #bom-body + #sq-labour-
+// body is unaffected. Grand Combined Sell here MUST equal #bom-subtotal
+// because both derive from the same pure helpers fed the same inputs.
+
+// 11-col xlsx auto row. Cols: SKU · Desc · Qty · HW Ext Cost · HW Ext
+// Sell · Lab Ext Cost · Lab Ext Sell · Combined Cost · Combined Sell ·
+// Margin $ · GM %. Qty is read-only (canvas-derived); no inputs anywhere
+// in the xlsx — this is a roll-up readout, not an editor.
+function _sqRenderSummaryXlsxAutoRow(matRow, sectionId, sectionRule){
+  var sku  = (typeof matRow.sku === 'string') ? matRow.sku.trim() : '';
+  var skuCellHtml = sku
+    ? '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
+    : '<div class="bom-cell-sku muted">—</div>';
+  var cost = (typeof matRow.cost === 'number') ? matRow.cost : 0;
+  var list = (typeof matRow.list === 'number' && isFinite(matRow.list)) ? matRow.list : null;
+  var qty  = (typeof matRow.qty  === 'number') ? matRow.qty  : 0;
+  var sell = deriveSell(cost, list, sectionRule);
+  var hwExtCost = qty * cost;
+  var hwExtSell = qty * sell;
+  var lineKey = matRow.key || '';
+  var lab = _sqRowLabour(sectionId, lineKey, qty);
+  var labExtCost = bomLabourSupplyOnly ? 0 : lab.extCost;
+  var labExtSell = bomLabourSupplyOnly ? 0 : lab.extSell;
+  var combCost = hwExtCost + labExtCost;
+  var combSell = hwExtSell + labExtSell;
+  var margin = combSell - combCost;
+  var gm = combSell > 0 ? (margin / combSell) * 100 : null;
+  return '<div class="bom-row auto-row" data-section="' + sectionId + '" data-key="' + escapeHtml(lineKey) + '">'
+       +   skuCellHtml
+       +   '<div class="bom-desc">' + escapeHtml(matRow.desc || '') + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + qty + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(hwExtCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(hwExtSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(labExtCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(labExtSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(combCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(combSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(margin) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtPct(gm) + '</div>'
+       + '</div>';
+}
+
+// Custom row variant. cust shape is { section, idx, line:{desc,unit,qty,id?} }
+// produced by computeBomTree's _routeCustom wrapper. Sell uses the list-
+// null fallback already baked into deriveSell.
+function _sqRenderSummaryXlsxCustomRow(cust, sectionId, sectionRule){
+  var line = cust.line || {};
+  var desc = line.desc || '';
+  var cost = (typeof line.unit === 'number') ? line.unit : 0;
+  var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
+  var sell = deriveSell(cost, null, sectionRule);
+  var hwExtCost = qty * cost;
+  var hwExtSell = qty * sell;
+  var lineKey = line.id || '';
+  var lab = _sqRowLabour(sectionId, lineKey, qty);
+  var labExtCost = bomLabourSupplyOnly ? 0 : lab.extCost;
+  var labExtSell = bomLabourSupplyOnly ? 0 : lab.extSell;
+  var combCost = hwExtCost + labExtCost;
+  var combSell = hwExtSell + labExtSell;
+  var margin = combSell - combCost;
+  var gm = combSell > 0 ? (margin / combSell) * 100 : null;
+  return '<div class="bom-row" data-section="' + sectionId + '" data-idx="' + cust.idx + '">'
+       +   '<div class="bom-cell-sku muted">—</div>'
+       +   '<div class="bom-desc">' + escapeHtml(desc) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + qty + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(hwExtCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(hwExtSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(labExtCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(labExtSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(combCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(combSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(margin) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtPct(gm) + '</div>'
+       + '</div>';
+}
+
+// Warn-row variant — single amber line spanning the Description column.
+// No ext math, no contribution to subtotals (caller skips before calling
+// this). Mirrors the Materials _sqRenderWarnRow pattern but with the
+// xlsx's 11-col cell count.
+function _sqRenderSummaryXlsxWarnRow(row){
+  return '<div class="bom-row warn-row" data-key="' + escapeHtml(row.key || '') + '">'
+       +   '<div></div>'                                        // SKU
+       +   '<div class="bom-desc">' + escapeHtml(row.desc || '') + '</div>'
+       +   '<div></div><div></div><div></div><div></div>'       // Qty · HWc · HWs · LBc
+       +   '<div></div><div></div><div></div><div></div>'       // LBs · CC · CS · M
+       +   '<div></div>'                                        // GM%
+       + '</div>';
+}
+
+// Section subtotal row. Sums all four ext cols + combined + margin; GM
+// recomputes blended at this aggregation level.
+function _sqRenderSummaryXlsxSectionSubtotal(sectionId, sums){
+  var gm = sums.combSell > 0 ? (sums.margin / sums.combSell) * 100 : null;
+  return '<div class="bom-row section-subtotal" data-subtotal="section" data-section="' + sectionId + '">'
+       +   '<div></div>'
+       +   '<div class="bom-desc">Subtotal</div>'
+       +   '<div></div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.hwExtCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.hwExtSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.labExtCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.labExtSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.combCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.combSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.margin) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtPct(gm) + '</div>'
+       + '</div>';
+}
+
+// Grand subtotal — same shape, accent-styled via .grand-subtotal class.
+// The Combined Sell number here is the contract that must equal
+// #bom-subtotal post-recalcSummaryOnly (both derive from deriveSell ×
+// qty + _sqRowLabour.extSell, gated on supply-only the same way).
+function _sqRenderSummaryXlsxGrandSubtotal(sums){
+  var gm = sums.combSell > 0 ? (sums.margin / sums.combSell) * 100 : null;
+  return '<div class="bom-row grand-subtotal" data-subtotal="grand">'
+       +   '<div></div>'
+       +   '<div class="bom-desc">Sub-Total</div>'
+       +   '<div></div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.hwExtCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.hwExtSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.labExtCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.labExtSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.combCost) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.combSell) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.margin) + '</div>'
+       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtPct(gm) + '</div>'
+       + '</div>';
+}
+
+// Orchestrator — walks BOM_TEMPLATE.tiers + buckets the same way as
+// recalcBom and recalcLabour. Section visibility uses recalcLabour's
+// anyRows guard (realAuto excludes warn rows so a section with only a
+// "No CMVR Present" line still renders the warn marker in its block).
+function _sqRenderSummaryXlsx(){
+  var buckets = computeBomTree();
+  var grand = { hwExtCost:0, hwExtSell:0, labExtCost:0, labExtSell:0, combCost:0, combSell:0, margin:0 };
+  // Column header. 11 cells. SKU/Desc left-aligned per .bom-row default;
+  // numeric columns right-aligned via inline style to match the data rows.
+  var colHdrHtml = '<div class="bom-row col-hdr">'
+                 +   '<div>SKU</div>'
+                 +   '<div>Description</div>'
+                 +   '<div style="text-align:right">Qty</div>'
+                 +   '<div style="text-align:right">HW Ext Cost</div>'
+                 +   '<div style="text-align:right">HW Ext Sell</div>'
+                 +   '<div style="text-align:right">Labour Ext Cost</div>'
+                 +   '<div style="text-align:right">Labour Ext Sell</div>'
+                 +   '<div style="text-align:right">Combined Cost</div>'
+                 +   '<div style="text-align:right">Combined Sell</div>'
+                 +   '<div style="text-align:right">Margin $</div>'
+                 +   '<div style="text-align:right">GM %</div>'
+                 + '</div>';
+  var html = '<div class="sq-summary-xlsx-wrap"><div class="sq-summary-xlsx-table">';
+  BOM_TEMPLATE.tiers.forEach(function(tier){
+    var anyRows = tier.subs.some(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return false;
+      var realAuto = b.auto.filter(function(r){return !r.warn;}).length;
+      var anyWarn  = b.auto.some(function(r){return r.warn;});
+      return (realAuto > 0 || b.custom.length > 0 || anyWarn);
+    });
+    if(!anyRows) return;
+    html += '<div class="bom-tier1">';
+    html += '<div class="bom-tier1-hdr">' + escapeHtml(tier.title) + '</div>';
+    tier.subs.forEach(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return;
+      var realAuto = b.auto.filter(function(r){return !r.warn;});
+      var warnAuto = b.auto.filter(function(r){return  r.warn;});
+      if(realAuto.length === 0 && b.custom.length === 0 && warnAuto.length === 0) return;
+      var sectionRule = getSectionRule(sub.id);
+      html += '<div class="bom-section">';
+      html += '<div class="bom-sec-hdr"><span>' + escapeHtml(sub.title) + '</span></div>';
+      html += colHdrHtml;
+      var sec = { hwExtCost:0, hwExtSell:0, labExtCost:0, labExtSell:0, combCost:0, combSell:0, margin:0 };
+      warnAuto.forEach(function(r){
+        html += _sqRenderSummaryXlsxWarnRow(r);
+      });
+      realAuto.forEach(function(r){
+        var cost = (typeof r.cost === 'number') ? r.cost : 0;
+        var list = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : null;
+        var qty  = (typeof r.qty  === 'number') ? r.qty  : 0;
+        var sell = deriveSell(cost, list, sectionRule);
+        var hwc = qty * cost;
+        var hws = qty * sell;
+        var lab = _sqRowLabour(sub.id, r.key || '', qty);
+        var lbc = bomLabourSupplyOnly ? 0 : lab.extCost;
+        var lbs = bomLabourSupplyOnly ? 0 : lab.extSell;
+        var cc = hwc + lbc; var cs = hws + lbs;
+        sec.hwExtCost  += hwc; sec.hwExtSell  += hws;
+        sec.labExtCost += lbc; sec.labExtSell += lbs;
+        sec.combCost   += cc;  sec.combSell   += cs;
+        sec.margin     += (cs - cc);
+        html += _sqRenderSummaryXlsxAutoRow(r, sub.id, sectionRule);
+      });
+      b.custom.forEach(function(cust){
+        var line = cust.line || {};
+        var cost = (typeof line.unit === 'number') ? line.unit : 0;
+        var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
+        var sell = deriveSell(cost, null, sectionRule);
+        var hwc = qty * cost;
+        var hws = qty * sell;
+        var lab = _sqRowLabour(sub.id, line.id || '', qty);
+        var lbc = bomLabourSupplyOnly ? 0 : lab.extCost;
+        var lbs = bomLabourSupplyOnly ? 0 : lab.extSell;
+        var cc = hwc + lbc; var cs = hws + lbs;
+        sec.hwExtCost  += hwc; sec.hwExtSell  += hws;
+        sec.labExtCost += lbc; sec.labExtSell += lbs;
+        sec.combCost   += cc;  sec.combSell   += cs;
+        sec.margin     += (cs - cc);
+        html += _sqRenderSummaryXlsxCustomRow(cust, sub.id, sectionRule);
+      });
+      html += _sqRenderSummaryXlsxSectionSubtotal(sub.id, sec);
+      grand.hwExtCost  += sec.hwExtCost;
+      grand.hwExtSell  += sec.hwExtSell;
+      grand.labExtCost += sec.labExtCost;
+      grand.labExtSell += sec.labExtSell;
+      grand.combCost   += sec.combCost;
+      grand.combSell   += sec.combSell;
+      grand.margin     += sec.margin;
+      html += '</div>'; // .bom-section
+    });
+    html += '</div>'; // .bom-tier1
+  });
+  html += _sqRenderSummaryXlsxGrandSubtotal(grand);
+  html += '</div></div>'; // .sq-summary-xlsx-table + .sq-summary-xlsx-wrap
+  return html;
+}
+
+// Host-write. Idempotent — repaints whole table; cheap (handful of rows
+// at typical project size). Guarded so the function is safe to call from
+// recalcBom/recalcLabour even before the Summary DOM exists (defensive,
+// shouldn't fire in practice — the host markup is in the static HTML).
+function recalcSummaryXlsx(){
+  var host = document.getElementById('sq-summary-xlsx-host');
+  if(!host) return;
+  host.innerHTML = _sqRenderSummaryXlsx();
 }
 
 function updateAutoRow(input){
@@ -20130,6 +20515,15 @@ function formatMoney(n){
   return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+// SQ Summary M5: read the current Tax row label (default "GST"). Single
+// source for save/load/export consumers so they don't each re-read the
+// input's value with their own falsy guards.
+function _bomTaxLabel(){
+  var el = document.getElementById('bom-tax-label');
+  var v = el ? String(el.value || '').trim() : '';
+  return v || 'GST';
+}
+
 // Pass N M4-fix: customer-facing BOM description (PDF + CSV). Strips the
 // " — SKU" suffix from auto-generated AC rows so the customer sees
 // "Brivo Reader Mullion Mount Dual-Technology (black)" rather than the
@@ -20225,7 +20619,7 @@ function exportBomCSV(){
   rows.push('');
   rows.push(',,Subtotal,,,'+subtotal.toFixed(2));
   rows.push(',,Margin ('+marginPct+'%),,,'+marginAmt.toFixed(2));
-  rows.push(',,Tax ('+taxPct+'%),,,'+taxAmt.toFixed(2));
+  rows.push(',,'+_bomTaxLabel()+' ('+taxPct+'%),,,'+taxAmt.toFixed(2));
   rows.push(',,Grand Total,,,'+grand.toFixed(2));
 
   var a=document.createElement('a');
