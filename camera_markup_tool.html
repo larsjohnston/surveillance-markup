@@ -1625,6 +1625,26 @@ input[type="number"]::-webkit-outer-spin-button {
 [data-mode-section="intercom"] .smart-apt-tile:hover { border-color:var(--mode-intercom); background:var(--mode-intercom-soft); }
 [data-mode-section="parcel"]   .smart-apt-tile:hover { border-color:var(--mode-parcel);   background:var(--mode-parcel-soft); }
 [data-mode-section="mailbox"]  .smart-apt-tile:hover { border-color:var(--mode-mailbox);  background:var(--mode-mailbox-soft); }
+/* M2d cleanup: shared Tier 1 tile compactor. Composes onto .brand-tile
+   (cameras + AC) and .smart-apt-tile (intercom/parcel/mailbox brand
+   row only — SKU tiles in those modules stay full-size .smart-apt-tile).
+   Halves the 76px Tier 2 footprint to ~38px so manufacturer/brand
+   selection reads as a lighter row that doesn't compete with the
+   armable Tier 2 below it.
+   Specificity: .tier1-tile alone is (0,1,0) — same as .brand-tile and
+   .smart-apt-tile — but PLACED LATER in source order so the cascade
+   resolves to .tier1-tile's compact values. Per-mode active variants
+   on the base classes (e.g. .brand-tile.active, .smart-apt-tile.active-
+   intercom) keep their color logic; only the box dimensions shrink. */
+.tier1-tile {
+  min-height:38px;
+  padding:4px 4px 3px;
+  gap:2px;
+  font-size:8px;
+}
+.tier1-tile svg, .tier1-tile img { width:16px; height:16px; }
+.tier1-tile .brand-logo { width:22px; height:22px; font-size:8px; }
+.tier1-tile .sa-icon { width:16px; height:16px; }
 /* Catalog-Tier1: right-panel mailbox cols×rows row. Two compact number
    inputs flanking a × glyph plus a unit hint string. */
 .rp-mailbox-size-row { display:flex; align-items:center; gap:6px; }
@@ -2069,15 +2089,15 @@ input[type="number"]::-webkit-outer-spin-button {
            drill-down. "Other" Tier 1 single-clicks to a generic-camera
            placement (no Tier 2/3 expansion) per brief acceptance #8. -->
       <div id="brand-grid">
-        <div class="brand-tile" data-brand="een" onclick="lpPickCamerasBrand('een')">
+        <div class="brand-tile tier1-tile" data-brand="een" onclick="lpPickCamerasBrand('een')">
           <div class="brand-logo brand-een">EE</div>
           <div class="brand-name">Eagle Eye</div>
         </div>
-        <div class="brand-tile" data-brand="hwa" onclick="lpPickCamerasBrand('hwa')">
+        <div class="brand-tile tier1-tile" data-brand="hwa" onclick="lpPickCamerasBrand('hwa')">
           <div class="brand-logo brand-hwa">HW</div>
           <div class="brand-name">Hanwha</div>
         </div>
-        <div class="brand-tile" data-brand="other" onclick="lpPickCamerasBrand('other')">
+        <div class="brand-tile tier1-tile" data-brand="other" onclick="lpPickCamerasBrand('other')">
           <div class="brand-logo brand-custom">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 4v16M4 12h16"/></svg>
           </div>
@@ -2200,6 +2220,47 @@ input[type="number"]::-webkit-outer-spin-button {
         <span class="t2-label">Accessories</span>
       </div>
     </div>
+    <!-- M2d cleanup: Storage Calculator relocated from SQ Materials.
+         Sits between Tier 2 (CMVR/Network/Accessories) and Tier 3
+         (CMVR Models grid) so storage sizing reads next to where users
+         pick a recorder. IDs unchanged (stor-days/-fps/-codec/-mode,
+         storage-result) — bomConfigChanged + recalcStorage round-trip
+         is preserved; save shape is DOM-id driven and unaffected.
+         Collapsible <details>; the toggle event listener (attached at
+         init) re-runs recalcStorage so opening the disclosure shows
+         current numbers without requiring a config edit. -->
+    <details id="bom-storage">
+      <summary>&#128190; Storage Calculator</summary>
+      <div class="storage-grid">
+        <div class="bom-cfg">
+          <label>Retention</label>
+          <input type="number" id="stor-days" value="30" step="1" min="1" max="365" oninput="bomConfigChanged()">
+          <span style="color:#1e3a8a">days</span>
+        </div>
+        <div class="bom-cfg">
+          <label>Frame Rate</label>
+          <input type="number" id="stor-fps" value="15" step="1" min="1" max="60" oninput="bomConfigChanged()">
+          <span style="color:#1e3a8a">fps</span>
+        </div>
+        <div class="bom-cfg">
+          <label>Codec</label>
+          <select id="stor-codec" onchange="bomConfigChanged()">
+            <option value="h265">H.265 (efficient)</option>
+            <option value="h264">H.264</option>
+          </select>
+        </div>
+        <div class="bom-cfg">
+          <label>Recording</label>
+          <select id="stor-mode" onchange="bomConfigChanged()">
+            <option value="continuous">Continuous 24/7</option>
+            <option value="motion">Motion only (~30%)</option>
+            <option value="business">Business hours (12h)</option>
+          </select>
+        </div>
+      </div>
+      <div id="storage-result">Storage estimate appears once cameras are placed.</div>
+    </details>
+
     <!-- Shared accessories tier-3 container. Hidden by default; a
          #lp-cmvr-row tile click opens it and populates from the chosen
          tier-2 (CMVR catalog rows, or a "coming soon" stub for Network /
@@ -2224,11 +2285,11 @@ input[type="number"]::-webkit-outer-spin-button {
              setActiveBrandTile is scoped to #brand-grid so it does not
              touch these AC tiles. -->
         <div id="ac-brand-grid">
-          <div class="brand-tile" data-brand="brivo" onclick="lpPickAcBrand('brivo')">
+          <div class="brand-tile tier1-tile" data-brand="brivo" onclick="lpPickAcBrand('brivo')">
             <div class="brand-logo brand-hwa" style="background:linear-gradient(135deg,#0e7490 0%,#0c4a6e 100%);">BR</div>
             <div class="brand-name">Brivo</div>
           </div>
-          <div class="brand-tile" data-brand="other" onclick="lpPickAcBrand('other')">
+          <div class="brand-tile tier1-tile" data-brand="other" onclick="lpPickAcBrand('other')">
             <div class="brand-logo brand-custom">
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 4v16M4 12h16"/></svg>
             </div>
@@ -3142,39 +3203,6 @@ input[type="number"]::-webkit-outer-spin-button {
       <input type="number" id="bom-margin-pct" value="0" step="1" min="0" max="100" oninput="bomConfigChanged()">
     </div>
   </div>
-
-  <!-- Storage Calculator — M4-fix3 #1: collapsible disclosure (closed by default). -->
-  <details id="bom-storage">
-    <summary>&#128190; Storage Calculator</summary>
-    <div class="storage-grid">
-      <div class="bom-cfg">
-        <label>Retention</label>
-        <input type="number" id="stor-days" value="30" step="1" min="1" max="365" oninput="bomConfigChanged()">
-        <span style="color:#1e3a8a">days</span>
-      </div>
-      <div class="bom-cfg">
-        <label>Frame Rate</label>
-        <input type="number" id="stor-fps" value="15" step="1" min="1" max="60" oninput="bomConfigChanged()">
-        <span style="color:#1e3a8a">fps</span>
-      </div>
-      <div class="bom-cfg">
-        <label>Codec</label>
-        <select id="stor-codec" onchange="bomConfigChanged()">
-          <option value="h265">H.265 (efficient)</option>
-          <option value="h264">H.264</option>
-        </select>
-      </div>
-      <div class="bom-cfg">
-        <label>Recording</label>
-        <select id="stor-mode" onchange="bomConfigChanged()">
-          <option value="continuous">Continuous 24/7</option>
-          <option value="motion">Motion only (~30%)</option>
-          <option value="business">Business hours (12h)</option>
-        </select>
-      </div>
-    </div>
-    <div id="storage-result">Storage estimate appears once cameras are placed.</div>
-  </details>
 
   <div id="bom-body">
     <!-- populated dynamically -->
@@ -8055,6 +8083,11 @@ function pickAccessoryTier2(t){
   _renderAccessoryTier2Active();
   _renderAccessoryTier3();
   _syncDrilldownVisibility();
+  // M2d cleanup: storage calculator now lives in this drill-down (between
+  // Tier 2 and Tier 3). Refresh its readout when CMVR is the active Tier 2
+  // so the band shows the current estimate without requiring a config
+  // input edit. No markDirty — read-only nav.
+  if(t === 'cmvr') recalcStorage();
 }
 
 // Sync the .active-accessory class on the 3 tier-2 tiles to
@@ -11981,7 +12014,7 @@ function _renderSmartAptBrandTier1(opts){
     // Brand-level icon swap: intercom brand uses the door-station glyph
     // (representative of the brand category, not a specific SKU); parcel
     // uses the gift-box; mailbox uses the envelope.
-    html += '<div class="smart-apt-tile'+brandActiveCls+'"'+styleAttr+
+    html += '<div class="smart-apt-tile tier1-tile'+brandActiveCls+'"'+styleAttr+
               ' onclick="' + opts.armBrandFn + '(\'' + brand + '\')" title="' + escapeHtml(brand) + '">' +
               opts.brandIcon +
               '<div class="sa-brand">'+escapeHtml(brand)+'</div>' +
@@ -20329,6 +20362,20 @@ window.addEventListener('resize',function(){
   setType('dome', true);
   renderLeftPaneDrillDown('cameras');
   _syncDrilldownVisibility();
+})();
+
+// ─── M2d cleanup: Storage Calculator toggle listener ────────────────────────
+// Storage Calculator <details> now lives in the Camera Accessories drill-down
+// between Tier 2 and Tier 3. Refresh the readout on open so the band shows a
+// current estimate without waiting on a config input edit. No markDirty —
+// disclosure toggle is read-only nav. Read-only nav also means we don't fire
+// on close (no work to do; the panel is hidden).
+(function _initBomStorageToggle(){
+  var el = document.getElementById('bom-storage');
+  if(!el) return;
+  el.addEventListener('toggle', function(){
+    if(el.open) recalcStorage();
+  });
 })();
 </script>
 <script>
