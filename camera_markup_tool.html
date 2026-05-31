@@ -561,13 +561,6 @@ input[type="number"]::-webkit-outer-spin-button {
 .sq-summary-xlsx-table .bom-row {
   grid-template-columns: 75px minmax(160px, 1fr) 45px 65px 65px 65px 65px 70px 70px 70px 55px;
 }
-/* SQ Summary M5: 3-col Device Manifest. Sits above the 11-col xlsx
-   table. Same .bom-row chrome, just a different track. SKU 90, Desc
-   1fr min 200, Qty 60 right-aligned. */
-.sq-summary-manifest-table { margin-bottom:12px; }
-.sq-summary-manifest-table .bom-row {
-  grid-template-columns: 90px minmax(200px, 1fr) 60px;
-}
 /* SQ-wizard M2d: locked Qty cell on auto rows. Visually distinct from
    the editable Cost input above (dotted underline + help cursor) and
    distinct from the muted derived cells. Click pops the notice modal. */
@@ -3277,12 +3270,6 @@ input[type="number"]::-webkit-outer-spin-button {
            Total Units roll-up. Hidden when zero suites placed. -->
       <div class="bom-stat" id="bom-total-units-stat" style="display:none"><span class="lbl">Total Units</span><span class="val" id="bom-total-units">0</span></div>
     </div>
-
-    <!-- SQ Summary M5: 3-col Device Manifest. Customer-facing flat
-         device list grouped by section (SKU · Description · Qty). No
-         money — pricing lives in the xlsx + totals below. Populated
-         imperatively by recalcSummaryManifest(). -->
-    <div id="sq-summary-manifest-host"></div>
 
     <!-- SQ-wizard M2c: M4 xlsx-table host (11-col HW + Labour roll-up).
          Populated by recalcSummaryXlsx(). The totals block below sits
@@ -17744,7 +17731,6 @@ function _sqGoToStep(n){
   // wizard and goes straight to Summary before any edit fires another
   // recalcBom, this ensures the table is current. Cheap; safe to repeat.
   if(n === 3 && typeof recalcSummaryXlsx === 'function') recalcSummaryXlsx();
-  if(n === 3 && typeof recalcSummaryManifest === 'function') recalcSummaryManifest();
 }
 function _sqStepBack(){ if(_sqCurrentStep > 1) _sqGoToStep(_sqCurrentStep - 1); }
 function _sqStepNext(){ if(_sqCurrentStep < 3) _sqGoToStep(_sqCurrentStep + 1); }
@@ -18964,11 +18950,6 @@ function recalcBom(){
   // _sqRowLabour pure helpers, same inputs as recalcBom/recalcLabour
   // so the grand Combined Sell stays consistent with #bom-subtotal.
   if(typeof recalcSummaryXlsx === 'function') recalcSummaryXlsx();
-  // SQ Summary M5: 3-col Device Manifest sits above the xlsx. Same
-  // computeBomTree source, no labour data — only repaints on recalcBom
-  // (qty / section / supply-only changes affect it) and on first nav
-  // into Summary. NOT wired into recalcLabour.
-  if(typeof recalcSummaryManifest === 'function') recalcSummaryManifest();
 
   // Summary tiles. SQ-wizard M2b: global Margin is hidden in the
   // wizard UI but its computation lives on for PDF/CSV/cover until M4/M5
@@ -20235,74 +20216,6 @@ function recalcSummaryXlsx(){
   var host = document.getElementById('sq-summary-xlsx-host');
   if(!host) return;
   host.innerHTML = _sqRenderSummaryXlsx();
-}
-
-// ─── SQ Summary M5 — Device Manifest render ──────────────────────────────────
-// 3-cell flat device list: SKU · Description · Qty. Sits above the 11-col
-// xlsx table inside #sq-step-summary. No money math — customer-facing
-// device manifest, grouped by BOM_TEMPLATE section. Warn rows skipped
-// (manifest = real devices only). Pure render — no state, no markDirty.
-
-function _sqRenderSummaryManifestAutoRow(matRow){
-  var sku  = (typeof matRow.sku === 'string') ? matRow.sku.trim() : '';
-  var skuCellHtml = sku
-    ? '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
-    : '<div class="bom-cell-sku muted">—</div>';
-  var qty = (typeof matRow.qty === 'number') ? matRow.qty : 0;
-  return '<div class="bom-row auto-row" data-key="' + escapeHtml(matRow.key || '') + '">'
-       +   skuCellHtml
-       +   '<div class="bom-desc">' + escapeHtml(matRow.desc || '') + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + qty + '</div>'
-       + '</div>';
-}
-
-function _sqRenderSummaryManifestCustomRow(cust){
-  var line = cust.line || {};
-  var qty = (typeof line.qty === 'number') ? line.qty : 0;
-  return '<div class="bom-row" data-idx="' + cust.idx + '">'
-       +   '<div class="bom-cell-sku muted">—</div>'
-       +   '<div class="bom-desc">' + escapeHtml(line.desc || '') + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + qty + '</div>'
-       + '</div>';
-}
-
-function _sqRenderSummaryManifest(){
-  var buckets = computeBomTree();
-  var colHdrHtml = '<div class="bom-row col-hdr">'
-                 +   '<div>SKU</div>'
-                 +   '<div>Description</div>'
-                 +   '<div style="text-align:right">Qty</div>'
-                 + '</div>';
-  var html = '';
-  BOM_TEMPLATE.tiers.forEach(function(tier){
-    var anyRows = tier.subs.some(function(sub){
-      var b = buckets[sub.id]; if(!b) return false;
-      var realAuto = b.auto.filter(function(r){return !r.warn;}).length;
-      return (realAuto > 0 || b.custom.length > 0);
-    });
-    if(!anyRows) return;
-    html += '<div class="bom-tier1">';
-    html += '<div class="bom-tier1-hdr">' + escapeHtml(tier.title) + '</div>';
-    tier.subs.forEach(function(sub){
-      var b = buckets[sub.id]; if(!b) return;
-      var realAuto = b.auto.filter(function(r){return !r.warn;});
-      if(realAuto.length === 0 && b.custom.length === 0) return;
-      html += '<div class="bom-section">';
-      html += '<div class="bom-sec-hdr"><span>' + escapeHtml(sub.title) + '</span></div>';
-      html += colHdrHtml;
-      realAuto.forEach(function(r){ html += _sqRenderSummaryManifestAutoRow(r); });
-      b.custom.forEach(function(cust){ html += _sqRenderSummaryManifestCustomRow(cust); });
-      html += '</div>'; // .bom-section
-    });
-    html += '</div>'; // .bom-tier1
-  });
-  return html;
-}
-
-function recalcSummaryManifest(){
-  var host = document.getElementById('sq-summary-manifest-host');
-  if(!host) return;
-  host.innerHTML = '<div class="sq-summary-manifest-table">' + _sqRenderSummaryManifest() + '</div>';
 }
 
 function updateAutoRow(input){
