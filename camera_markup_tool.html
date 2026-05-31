@@ -19607,10 +19607,10 @@ function _sqRenderLabourSectionSubtotal(sectionId, sums, mode){
        +   '<div></div>'
        +   '<div class="bom-desc">Subtotal</div>'
        +   leading
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   '<div class="bom-cell bom-labour-sec-qcost">'  + _sqFmtMoney(sums.sumQCost)  + '</div>'
+       +   '<div class="bom-cell bom-labour-sec-qsell">'  + _sqFmtMoney(sums.sumQSell)  + '</div>'
+       +   '<div class="bom-cell bom-labour-sec-margin">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell bom-labour-sec-gm">'     + _sqFmtPct(gm)               + '</div>'
        +   trailing
        + '</div>';
 }
@@ -19622,12 +19622,12 @@ function _sqRenderLabourSectionSubtotal(sectionId, sums, mode){
 // recalcSummaryOnly skips it on its DOM walk.
 function _sqRenderLabourFooter(sums){
   var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
-  return '<div class="bom-row grand-subtotal" data-subtotal="grand" style="display:flex; gap:14px; justify-content:flex-end; align-items:center; grid-template-columns:none;">'
+  return '<div class="bom-row grand-subtotal" data-subtotal="grand" data-labour-footer="1" style="display:flex; gap:14px; justify-content:flex-end; align-items:center; grid-template-columns:none;">'
        +   '<div class="bom-desc" style="margin-right:auto;">Labour Subtotal</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumMargin) + '</div>'
-       +   '<div class="bom-cell">' + _sqFmtPct(gm) + '</div>'
+       +   '<div class="bom-cell bom-labour-foot-qcost">'  + _sqFmtMoney(sums.sumQCost)  + '</div>'
+       +   '<div class="bom-cell bom-labour-foot-qsell">'  + _sqFmtMoney(sums.sumQSell)  + '</div>'
+       +   '<div class="bom-cell bom-labour-foot-margin">' + _sqFmtMoney(sums.sumMargin) + '</div>'
+       +   '<div class="bom-cell bom-labour-foot-gm">'     + _sqFmtPct(gm)               + '</div>'
        + '</div>';
 }
 
@@ -19739,15 +19739,92 @@ function _sqUpdateLabourField(input){
   bomLabourLineRules[lineKey][field] = v;
   markDirty();
   _sqRecalcLabourRowCells(row, sectionId, lineKey);
+  // SQ labour subtotal fix: also repaint the section subtotal row and
+  // footer in-place so they track the row edit. Both helpers re-sum from
+  // current state via _sqRowLabour — no full recalcLabour rebuild.
+  _sqRecalcLabourSectionSubtotal(sectionId);
+  _sqRecalcLabourFooter();
   recalcSummaryOnly();
+}
+
+// SQ labour subtotal fix: walk the section's labour rows in #sq-labour-
+// body, accumulate sums via _sqRowLabour (same pure helper recalcLabour
+// uses), and rewrite the section subtotal row's 4 money cells in place.
+// Per-row cells were already repainted by _sqRecalcLabourRowCells; this
+// keeps the section subtotal in lockstep without a full body rebuild.
+// Selector targets the data labour rows (.labour-row) for the section
+// and the subtotal row via .section-subtotal[data-section]. Supply-only
+// zeroes the per-row contributions (mirrors _accum semantics).
+function _sqRecalcLabourSectionSubtotal(sectionId){
+  if(!sectionId) return;
+  var body = document.getElementById('sq-labour-body');
+  if(!body) return;
+  var rowSel = '.bom-row.labour-row[data-section="' + sectionId + '"]';
+  var rows = body.querySelectorAll(rowSel);
+  var sumQCost = 0, sumQSell = 0, sumMargin = 0;
+  rows.forEach(function(rowEl){
+    var lineKey = rowEl.dataset.lineKey || '';
+    var qtyEl = rowEl.querySelector('.bom-cell-qty.locked');
+    var matQty = qtyEl ? (parseFloat(qtyEl.dataset.qty || qtyEl.textContent) || 0) : 0;
+    var r = _sqRowLabour(sectionId, lineKey, matQty);
+    if(!bomLabourSupplyOnly){
+      sumQCost  += r.extCost;
+      sumQSell  += r.extSell;
+      sumMargin += r.margin;
+    }
+  });
+  var gm = sumQSell > 0 ? (sumMargin / sumQSell) * 100 : null;
+  var subSel = '.bom-row.section-subtotal[data-section="' + sectionId + '"]';
+  var subRow = body.querySelector(subSel);
+  if(!subRow) return;
+  var qcEl = subRow.querySelector('.bom-labour-sec-qcost');
+  var qsEl = subRow.querySelector('.bom-labour-sec-qsell');
+  var mEl  = subRow.querySelector('.bom-labour-sec-margin');
+  var gmEl = subRow.querySelector('.bom-labour-sec-gm');
+  if(qcEl) qcEl.textContent = _sqFmtMoney(sumQCost);
+  if(qsEl) qsEl.textContent = _sqFmtMoney(sumQSell);
+  if(mEl)  mEl.textContent  = _sqFmtMoney(sumMargin);
+  if(gmEl) gmEl.textContent = _sqFmtPct(gm);
+}
+
+// SQ labour subtotal fix: walk every section subtotal row in
+// #sq-labour-body, parse its 4 cell texts back to numbers, accumulate,
+// and rewrite the footer "Labour Subtotal" row's 4 money cells in place.
+// Reads the section subtotals (which the helper above keeps current)
+// rather than re-walking every row — same answer, less work.
+function _sqRecalcLabourFooter(){
+  var body = document.getElementById('sq-labour-body');
+  if(!body) return;
+  var footer = body.querySelector('.bom-row.grand-subtotal[data-labour-footer="1"]');
+  if(!footer) return;
+  var sumQCost = 0, sumQSell = 0, sumMargin = 0;
+  function _parseMoney(s){ return parseFloat(String(s||'').replace(/[^0-9.\-]/g, '')) || 0; }
+  body.querySelectorAll('.bom-row.section-subtotal').forEach(function(secRow){
+    var qcEl = secRow.querySelector('.bom-labour-sec-qcost');
+    var qsEl = secRow.querySelector('.bom-labour-sec-qsell');
+    var mEl  = secRow.querySelector('.bom-labour-sec-margin');
+    if(qcEl) sumQCost  += _parseMoney(qcEl.textContent);
+    if(qsEl) sumQSell  += _parseMoney(qsEl.textContent);
+    if(mEl)  sumMargin += _parseMoney(mEl.textContent);
+  });
+  var gm = sumQSell > 0 ? (sumMargin / sumQSell) * 100 : null;
+  var qcF = footer.querySelector('.bom-labour-foot-qcost');
+  var qsF = footer.querySelector('.bom-labour-foot-qsell');
+  var mF  = footer.querySelector('.bom-labour-foot-margin');
+  var gmF = footer.querySelector('.bom-labour-foot-gm');
+  if(qcF) qcF.textContent = _sqFmtMoney(sumQCost);
+  if(qsF) qsF.textContent = _sqFmtMoney(sumQSell);
+  if(mF)  mF.textContent  = _sqFmtMoney(sumMargin);
+  if(gmF) gmF.textContent = _sqFmtPct(gm);
 }
 
 // SQ-wizard M3 rework — In-row recompute. Reads the row's editable
 // inputs (Cost, Sell, Hours) + the locked matRow Qty span, recomputes
 // the 4 money cells, and toggles the override-dot's visibility for
 // Hourly rows. Used by _sqUpdateLabourField so the user sees the row's
-// totals update without a full DOM rebuild. The section subtotal stays
-// stale until next recalcLabour (mirrors MATERIALS' per-row edit path).
+// totals update without a full DOM rebuild. The section subtotal +
+// footer are kept in lockstep via _sqRecalcLabourSectionSubtotal +
+// _sqRecalcLabourFooter (no full body rebuild on every keystroke).
 function _sqRecalcLabourRowCells(row, sectionId, lineKey){
   if(!row) return;
   var mode = getLabourMode(sectionId);
