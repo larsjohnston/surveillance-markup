@@ -601,8 +601,12 @@ input[type="number"]::-webkit-outer-spin-button {
    scroll without pushing the wizard stepper sideways at narrow modal
    widths. */
 .sq-summary-xlsx-wrap { overflow-x:auto; margin-top:8px; }
+/* SQ + DHW parity P3: grid template now driven by --sq-summary-cols
+   custom property (set inline on .sq-summary-xlsx-table per render so
+   hidden cols collapse their tracks too). Fallback retains the original
+   11-col widths so an un-styled instance still reads correctly. */
 .sq-summary-xlsx-table .bom-row {
-  grid-template-columns: 75px minmax(160px, 1fr) 45px 65px 65px 65px 65px 70px 70px 70px 55px;
+  grid-template-columns: var(--sq-summary-cols, 75px minmax(160px, 1fr) 45px 65px 65px 65px 65px 70px 70px 70px 55px);
 }
 /* SQ-wizard M2d: locked Qty cell on auto rows. Visually distinct from
    the editable Cost input above (dotted underline + help cursor) and
@@ -20116,141 +20120,221 @@ function recalcLabour(){
   if(typeof recalcSummaryXlsx === 'function') recalcSummaryXlsx();
 }
 
-// ─── SQ-wizard M4 — SUMMARY xlsx render ──────────────────────────────────────
+// ─── SQ-wizard M4 — SUMMARY xlsx render (parity P3: column-hide port) ────────
 // Standalone walk of computeBomTree() that mirrors the math in recalcBom
 // (materials Sell via deriveSell) + recalcLabour (labour via _sqRowLabour).
-// Both math layers are already pure helpers — this renderer just composes
-// them into the per-row Combined Cost / Combined Sell / Margin $ / GM %
-// shape the xlsx Summary tab needs. Pure render — no state writes, no
-// markDirty, no DOM walk-back. Writes only into #sq-summary-xlsx-host so
-// recalcSummaryOnly's separate cell-text walk of #bom-body + #sq-labour-
-// body is unaffected. Grand Combined Sell here MUST equal #bom-subtotal
-// because both derive from the same pure helpers fed the same inputs.
+// Pure render — no state writes, no markDirty, no DOM walk-back. Writes
+// only into #sq-summary-xlsx-host so recalcSummaryOnly's separate cell-text
+// walk of #bom-body + #sq-labour-body is unaffected. Grand Combined Sell
+// here MUST equal #bom-subtotal because both derive from the same pure
+// helpers fed the same inputs.
 
-// 11-col xlsx auto row. Cols: SKU · Desc · Qty · HW Ext Cost · HW Ext
-// Sell · Lab Ext Cost · Lab Ext Sell · Combined Cost · Combined Sell ·
-// Margin $ · GM %. Qty is read-only (canvas-derived); no inputs anywhere
-// in the xlsx — this is a roll-up readout, not an editor.
-function _sqRenderSummaryXlsxAutoRow(matRow, sectionId, sectionRule){
+// SQ + DHW parity P3: column descriptor mirrors DHW's `colsAll` (6058+).
+// Drives col-header emission, row cell emission, and grid-template-columns.
+// _sqSummaryHiddenCols is a session-only viewing lens — totals still
+// reflect every column. defaultHidden is wired in P4 (this phase keeps
+// every column visible until the user hides one explicitly).
+var SQ_SUMMARY_COLS = [
+  { key:'sku',        label:'SKU',             grid:'75px',              align:'left'  },
+  { key:'description',label:'Description',     grid:'minmax(160px,1fr)', align:'left'  },
+  { key:'qty',        label:'Qty',             grid:'45px',              align:'right' },
+  { key:'hwExtCost',  label:'HW Ext Cost',     grid:'65px',              align:'right' },
+  { key:'hwExtSell',  label:'HW Ext Sell',     grid:'65px',              align:'right' },
+  { key:'labExtCost', label:'Labour Ext Cost', grid:'65px',              align:'right' },
+  { key:'labExtSell', label:'Labour Ext Sell', grid:'65px',              align:'right' },
+  { key:'combCost',   label:'Combined Cost',   grid:'70px',              align:'right' },
+  { key:'combSell',   label:'Combined Sell',   grid:'70px',              align:'right' },
+  { key:'margin',     label:'Margin $',        grid:'70px',              align:'right' },
+  { key:'gm',         label:'GM %',            grid:'55px',              align:'right' }
+];
+
+// Column-hide state — session-only (M5 persists). Keyed by SQ_SUMMARY_COLS.key.
+var _sqSummaryHiddenCols = {};
+var _sqSummaryToolsOpen  = false;
+
+function _sqSummaryVisibleCols(){
+  return SQ_SUMMARY_COLS.filter(function(c){ return !_sqSummaryHiddenCols[c.key]; });
+}
+
+// User-driven handlers — clone DHW's _dhwToggleSummaryHiddenCol /
+// _dhwToggleSummaryTools / _dhwClearSummaryAll (5434-5454).
+function _sqToggleSummaryHiddenCol(colKey){
+  if(_sqSummaryHiddenCols[colKey]) delete _sqSummaryHiddenCols[colKey];
+  else _sqSummaryHiddenCols[colKey] = true;
+  recalcSummaryXlsx();
+}
+function _sqToggleSummaryTools(){
+  _sqSummaryToolsOpen = !_sqSummaryToolsOpen;
+  recalcSummaryXlsx();
+}
+function _sqClearSummaryAll(){
+  _sqSummaryHiddenCols = {};
+  recalcSummaryXlsx();
+}
+
+// Per-row cell emitter. Takes a values object keyed by SQ_SUMMARY_COLS.key
+// + the visibleCols list + an optional cellClass override (e.g. col-hdr
+// emits raw text, data rows emit `.bom-cell` etc.). The skuCell / descCell
+// helpers handle the special-case classes; the rest fall through to the
+// uniform numeric-cell shape.
+function _sqRenderSummaryXlsxCell(col, values, opts){
+  opts = opts || {};
+  var v = values[col.key];
+  var alignStyle = (col.align === 'right') ? ' style="text-align:right"' : '';
+  if(opts.empty) return '<div data-col="' + col.key + '"' + alignStyle + '></div>';
+  // SKU / Description special-cased to keep their long-standing classes
+  // (bom-cell-sku styling + bom-desc title-tooltip behavior).
+  if(col.key === 'sku'){
+    return v
+      ? '<div class="bom-cell-sku" data-col="sku" title="' + escapeHtml(v) + '">' + escapeHtml(v) + '</div>'
+      : '<div class="bom-cell-sku muted" data-col="sku">—</div>';
+  }
+  if(col.key === 'description'){
+    return '<div class="bom-desc" data-col="description">' + escapeHtml(v || '') + '</div>';
+  }
+  return '<div class="bom-cell" data-col="' + col.key + '"' + alignStyle + '>' + v + '</div>';
+}
+
+function _sqRenderSummaryXlsxAutoRow(matRow, sectionId, sectionRule, visibleCols){
   var sku  = (typeof matRow.sku === 'string') ? matRow.sku.trim() : '';
-  var skuCellHtml = sku
-    ? '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
-    : '<div class="bom-cell-sku muted">—</div>';
   var cost = (typeof matRow.cost === 'number') ? matRow.cost : 0;
   var list = (typeof matRow.list === 'number' && isFinite(matRow.list)) ? matRow.list : null;
   var qty  = (typeof matRow.qty  === 'number') ? matRow.qty  : 0;
   var sell = deriveSell(cost, list, sectionRule);
-  var hwExtCost = qty * cost;
-  var hwExtSell = qty * sell;
+  var hwc = qty * cost, hws = qty * sell;
   var lineKey = matRow.key || '';
   var lab = _sqRowLabour(sectionId, lineKey, qty);
-  var labExtCost = bomLabourSupplyOnly ? 0 : lab.extCost;
-  var labExtSell = bomLabourSupplyOnly ? 0 : lab.extSell;
-  var combCost = hwExtCost + labExtCost;
-  var combSell = hwExtSell + labExtSell;
-  var margin = combSell - combCost;
-  var gm = combSell > 0 ? (margin / combSell) * 100 : null;
-  return '<div class="bom-row auto-row" data-section="' + sectionId + '" data-key="' + escapeHtml(lineKey) + '">'
-       +   skuCellHtml
-       +   '<div class="bom-desc">' + escapeHtml(matRow.desc || '') + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + qty + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(hwExtCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(hwExtSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(labExtCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(labExtSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(combCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(combSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(margin) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtPct(gm) + '</div>'
-       + '</div>';
+  var lbc = bomLabourSupplyOnly ? 0 : lab.extCost;
+  var lbs = bomLabourSupplyOnly ? 0 : lab.extSell;
+  var cc = hwc + lbc, cs = hws + lbs;
+  var mar = cs - cc;
+  var gm = cs > 0 ? (mar / cs) * 100 : null;
+  var values = {
+    sku: sku, description: matRow.desc || '', qty: qty,
+    hwExtCost: _sqFmtMoney(hwc), hwExtSell: _sqFmtMoney(hws),
+    labExtCost: _sqFmtMoney(lbc), labExtSell: _sqFmtMoney(lbs),
+    combCost: _sqFmtMoney(cc), combSell: _sqFmtMoney(cs),
+    margin: _sqFmtMoney(mar), gm: _sqFmtPct(gm)
+  };
+  var cells = visibleCols.map(function(c){ return _sqRenderSummaryXlsxCell(c, values); }).join('');
+  return '<div class="bom-row auto-row" data-section="' + sectionId + '" data-key="' + escapeHtml(lineKey) + '">' + cells + '</div>';
 }
 
-// Custom row variant. cust shape is { section, idx, line:{desc,unit,qty,id?} }
-// produced by computeBomTree's _routeCustom wrapper. Sell uses the list-
-// null fallback already baked into deriveSell.
-function _sqRenderSummaryXlsxCustomRow(cust, sectionId, sectionRule){
+function _sqRenderSummaryXlsxCustomRow(cust, sectionId, sectionRule, visibleCols){
   var line = cust.line || {};
-  var desc = line.desc || '';
   var cost = (typeof line.unit === 'number') ? line.unit : 0;
   var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
   var sell = deriveSell(cost, null, sectionRule);
-  var hwExtCost = qty * cost;
-  var hwExtSell = qty * sell;
+  var hwc = qty * cost, hws = qty * sell;
   var lineKey = line.id || '';
   var lab = _sqRowLabour(sectionId, lineKey, qty);
-  var labExtCost = bomLabourSupplyOnly ? 0 : lab.extCost;
-  var labExtSell = bomLabourSupplyOnly ? 0 : lab.extSell;
-  var combCost = hwExtCost + labExtCost;
-  var combSell = hwExtSell + labExtSell;
-  var margin = combSell - combCost;
-  var gm = combSell > 0 ? (margin / combSell) * 100 : null;
-  return '<div class="bom-row" data-section="' + sectionId + '" data-idx="' + cust.idx + '">'
-       +   '<div class="bom-cell-sku muted">—</div>'
-       +   '<div class="bom-desc">' + escapeHtml(desc) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + qty + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(hwExtCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(hwExtSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(labExtCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(labExtSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(combCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(combSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(margin) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtPct(gm) + '</div>'
-       + '</div>';
+  var lbc = bomLabourSupplyOnly ? 0 : lab.extCost;
+  var lbs = bomLabourSupplyOnly ? 0 : lab.extSell;
+  var cc = hwc + lbc, cs = hws + lbs;
+  var mar = cs - cc;
+  var gm = cs > 0 ? (mar / cs) * 100 : null;
+  var values = {
+    sku: '', description: line.desc || '', qty: qty,
+    hwExtCost: _sqFmtMoney(hwc), hwExtSell: _sqFmtMoney(hws),
+    labExtCost: _sqFmtMoney(lbc), labExtSell: _sqFmtMoney(lbs),
+    combCost: _sqFmtMoney(cc), combSell: _sqFmtMoney(cs),
+    margin: _sqFmtMoney(mar), gm: _sqFmtPct(gm)
+  };
+  var cells = visibleCols.map(function(c){ return _sqRenderSummaryXlsxCell(c, values); }).join('');
+  return '<div class="bom-row" data-section="' + sectionId + '" data-idx="' + cust.idx + '">' + cells + '</div>';
 }
 
-// Warn-row variant — single amber line spanning the Description column.
-// No ext math, no contribution to subtotals (caller skips before calling
-// this). Mirrors the Materials _sqRenderWarnRow pattern but with the
-// xlsx's 11-col cell count.
-function _sqRenderSummaryXlsxWarnRow(row){
-  return '<div class="bom-row warn-row" data-key="' + escapeHtml(row.key || '') + '">'
-       +   '<div></div>'                                        // SKU
-       +   '<div class="bom-desc">' + escapeHtml(row.desc || '') + '</div>'
-       +   '<div></div><div></div><div></div><div></div>'       // Qty · HWc · HWs · LBc
-       +   '<div></div><div></div><div></div><div></div>'       // LBs · CC · CS · M
-       +   '<div></div>'                                        // GM%
-       + '</div>';
+function _sqRenderSummaryXlsxWarnRow(row, visibleCols){
+  // Warn rows render an amber description-only line. SKU + Description
+  // cells carry the text; every other visible col is rendered empty so
+  // the row still consumes the right grid track count.
+  var cells = visibleCols.map(function(c){
+    if(c.key === 'description') return '<div class="bom-desc" data-col="description">' + escapeHtml(row.desc || '') + '</div>';
+    return '<div data-col="' + c.key + '"></div>';
+  }).join('');
+  return '<div class="bom-row warn-row" data-key="' + escapeHtml(row.key || '') + '">' + cells + '</div>';
 }
 
-// Section subtotal row. Sums all four ext cols + combined + margin; GM
-// recomputes blended at this aggregation level.
-function _sqRenderSummaryXlsxSectionSubtotal(sectionId, sums){
+function _sqRenderSummaryXlsxSectionSubtotal(sectionId, sums, visibleCols){
   var gm = sums.combSell > 0 ? (sums.margin / sums.combSell) * 100 : null;
-  return '<div class="bom-row section-subtotal" data-subtotal="section" data-section="' + sectionId + '">'
-       +   '<div></div>'
-       +   '<div class="bom-desc">Subtotal</div>'
-       +   '<div></div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.hwExtCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.hwExtSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.labExtCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.labExtSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.combCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.combSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.margin) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtPct(gm) + '</div>'
-       + '</div>';
+  var values = {
+    sku: '', description: 'Subtotal', qty: '',
+    hwExtCost: _sqFmtMoney(sums.hwExtCost), hwExtSell: _sqFmtMoney(sums.hwExtSell),
+    labExtCost: _sqFmtMoney(sums.labExtCost), labExtSell: _sqFmtMoney(sums.labExtSell),
+    combCost: _sqFmtMoney(sums.combCost), combSell: _sqFmtMoney(sums.combSell),
+    margin: _sqFmtMoney(sums.margin), gm: _sqFmtPct(gm)
+  };
+  var cells = visibleCols.map(function(c){
+    // SKU + Qty cells stay blank on subtotal rows (no per-row identity).
+    if(c.key === 'sku' || c.key === 'qty') return '<div data-col="' + c.key + '"></div>';
+    return _sqRenderSummaryXlsxCell(c, values);
+  }).join('');
+  return '<div class="bom-row section-subtotal" data-subtotal="section" data-section="' + sectionId + '">' + cells + '</div>';
 }
 
-// Grand subtotal — same shape, accent-styled via .grand-subtotal class.
-// The Combined Sell number here is the contract that must equal
-// #bom-subtotal post-recalcSummaryOnly (both derive from deriveSell ×
-// qty + _sqRowLabour.extSell, gated on supply-only the same way).
-function _sqRenderSummaryXlsxGrandSubtotal(sums){
+function _sqRenderSummaryXlsxGrandSubtotal(sums, visibleCols){
   var gm = sums.combSell > 0 ? (sums.margin / sums.combSell) * 100 : null;
-  return '<div class="bom-row grand-subtotal" data-subtotal="grand">'
-       +   '<div></div>'
-       +   '<div class="bom-desc">Sub-Total</div>'
-       +   '<div></div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.hwExtCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.hwExtSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.labExtCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.labExtSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.combCost) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.combSell) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtMoney(sums.margin) + '</div>'
-       +   '<div class="bom-cell" style="text-align:right">' + _sqFmtPct(gm) + '</div>'
-       + '</div>';
+  var values = {
+    sku: '', description: 'Sub-Total', qty: '',
+    hwExtCost: _sqFmtMoney(sums.hwExtCost), hwExtSell: _sqFmtMoney(sums.hwExtSell),
+    labExtCost: _sqFmtMoney(sums.labExtCost), labExtSell: _sqFmtMoney(sums.labExtSell),
+    combCost: _sqFmtMoney(sums.combCost), combSell: _sqFmtMoney(sums.combSell),
+    margin: _sqFmtMoney(sums.margin), gm: _sqFmtPct(gm)
+  };
+  var cells = visibleCols.map(function(c){
+    if(c.key === 'sku' || c.key === 'qty') return '<div data-col="' + c.key + '"></div>';
+    return _sqRenderSummaryXlsxCell(c, values);
+  }).join('');
+  return '<div class="bom-row grand-subtotal" data-subtotal="grand">' + cells + '</div>';
+}
+
+// SQ + DHW parity P3: column toolbar — clone of DHW's #sq-step-summary
+// .dhw-summary-toolbar pattern (6299-6305 + 6242-6284). Same icon, same
+// popover layout, same Clear-all affordance. The Rows quick-filters block
+// stays DHW-only (no flagged/gaps concept for SQ rows).
+function _sqRenderSummaryToolbar(){
+  var cols = SQ_SUMMARY_COLS;
+  var hiddenColsCount = cols.filter(function(c){ return !!_sqSummaryHiddenCols[c.key]; }).length;
+  var colsIconSvg = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="3" y="4" width="18" height="16" rx="1"/>' +
+    '<line x1="9" y1="4" x2="9" y2="20"/>' +
+    '<line x1="15" y1="4" x2="15" y2="20"/>' +
+  '</svg>';
+  var toolsBtn = '<button class="dhw-tools-btn' + (_sqSummaryToolsOpen ? ' active' : '') + '"' +
+    ' onclick="_sqToggleSummaryTools()"' +
+    ' title="Show or hide individual Summary columns">' +
+    colsIconSvg + 'Columns</button>';
+  var popover = '';
+  if(_sqSummaryToolsOpen){
+    var colChecks = cols.map(function(c){
+      var checked = !_sqSummaryHiddenCols[c.key];
+      return '<label class="dhw-col-toggle">' +
+        '<input type="checkbox" ' + (checked ? 'checked' : '') +
+        ' onchange="_sqToggleSummaryHiddenCol(\'' + c.key + '\')"> ' + escapeHtml(c.label) +
+      '</label>';
+    }).join('');
+    popover = '<div class="dhw-tools-popover">' +
+      '<div class="dhw-popover-section">' +
+        '<div class="dhw-popover-hdr">Columns</div>' +
+        colChecks +
+      '</div>' +
+      '<div class="dhw-popover-section">' +
+        '<div class="dhw-popover-actions">' +
+          '<button class="dhw-popover-clear" onclick="_sqClearSummaryAll()"' +
+            ' title="Restore every column">Clear all</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+  var captionHtml = (hiddenColsCount > 0)
+    ? '<span class="dhw-toolbar-caption">' + hiddenColsCount + ' column' + (hiddenColsCount === 1 ? '' : 's') + ' hidden &mdash; viewing lens; totals reflect all data.</span>'
+    : '';
+  return '<div class="dhw-summary-toolbar">' +
+    toolsBtn +
+    '<div class="dhw-toolbar-spacer"></div>' +
+    captionHtml +
+    popover +
+  '</div>';
 }
 
 // Orchestrator — walks BOM_TEMPLATE.tiers + buckets the same way as
@@ -20260,22 +20344,20 @@ function _sqRenderSummaryXlsxGrandSubtotal(sums){
 function _sqRenderSummaryXlsx(){
   var buckets = computeBomTree();
   var grand = { hwExtCost:0, hwExtSell:0, labExtCost:0, labExtSell:0, combCost:0, combSell:0, margin:0 };
-  // Column header. 11 cells. SKU/Desc left-aligned per .bom-row default;
-  // numeric columns right-aligned via inline style to match the data rows.
-  var colHdrHtml = '<div class="bom-row col-hdr">'
-                 +   '<div>SKU</div>'
-                 +   '<div>Description</div>'
-                 +   '<div style="text-align:right">Qty</div>'
-                 +   '<div style="text-align:right">HW Ext Cost</div>'
-                 +   '<div style="text-align:right">HW Ext Sell</div>'
-                 +   '<div style="text-align:right">Labour Ext Cost</div>'
-                 +   '<div style="text-align:right">Labour Ext Sell</div>'
-                 +   '<div style="text-align:right">Combined Cost</div>'
-                 +   '<div style="text-align:right">Combined Sell</div>'
-                 +   '<div style="text-align:right">Margin $</div>'
-                 +   '<div style="text-align:right">GM %</div>'
-                 + '</div>';
-  var html = '<div class="sq-summary-xlsx-wrap"><div class="sq-summary-xlsx-table">';
+  var visibleCols = _sqSummaryVisibleCols();
+  // Compute grid-template-columns from visibleCols so hidden cols collapse
+  // their tracks entirely (no display:none cells leaving phantom slots).
+  var gridTpl = visibleCols.map(function(c){ return c.grid; }).join(' ');
+  var gridStyle = ' style="--sq-summary-cols:' + gridTpl + ';"';
+  // Column header from visibleCols.
+  var headerCells = visibleCols.map(function(c){
+    var align = (c.align === 'right') ? ' style="text-align:right"' : '';
+    return '<div data-col="' + c.key + '"' + align + '>' + escapeHtml(c.label) + '</div>';
+  }).join('');
+  var colHdrHtml = '<div class="bom-row col-hdr">' + headerCells + '</div>';
+  // Toolbar above the table.
+  var toolbarHtml = _sqRenderSummaryToolbar();
+  var html = toolbarHtml + '<div class="sq-summary-xlsx-wrap"><div class="sq-summary-xlsx-table"' + gridStyle + '>';
   BOM_TEMPLATE.tiers.forEach(function(tier){
     var anyRows = tier.subs.some(function(sub){
       var b = buckets[sub.id];
@@ -20299,7 +20381,7 @@ function _sqRenderSummaryXlsx(){
       html += colHdrHtml;
       var sec = { hwExtCost:0, hwExtSell:0, labExtCost:0, labExtSell:0, combCost:0, combSell:0, margin:0 };
       warnAuto.forEach(function(r){
-        html += _sqRenderSummaryXlsxWarnRow(r);
+        html += _sqRenderSummaryXlsxWarnRow(r, visibleCols);
       });
       realAuto.forEach(function(r){
         var cost = (typeof r.cost === 'number') ? r.cost : 0;
@@ -20316,7 +20398,7 @@ function _sqRenderSummaryXlsx(){
         sec.labExtCost += lbc; sec.labExtSell += lbs;
         sec.combCost   += cc;  sec.combSell   += cs;
         sec.margin     += (cs - cc);
-        html += _sqRenderSummaryXlsxAutoRow(r, sub.id, sectionRule);
+        html += _sqRenderSummaryXlsxAutoRow(r, sub.id, sectionRule, visibleCols);
       });
       b.custom.forEach(function(cust){
         var line = cust.line || {};
@@ -20333,9 +20415,9 @@ function _sqRenderSummaryXlsx(){
         sec.labExtCost += lbc; sec.labExtSell += lbs;
         sec.combCost   += cc;  sec.combSell   += cs;
         sec.margin     += (cs - cc);
-        html += _sqRenderSummaryXlsxCustomRow(cust, sub.id, sectionRule);
+        html += _sqRenderSummaryXlsxCustomRow(cust, sub.id, sectionRule, visibleCols);
       });
-      html += _sqRenderSummaryXlsxSectionSubtotal(sub.id, sec);
+      html += _sqRenderSummaryXlsxSectionSubtotal(sub.id, sec, visibleCols);
       grand.hwExtCost  += sec.hwExtCost;
       grand.hwExtSell  += sec.hwExtSell;
       grand.labExtCost += sec.labExtCost;
@@ -20347,7 +20429,7 @@ function _sqRenderSummaryXlsx(){
     });
     html += '</div>'; // .bom-tier1
   });
-  html += _sqRenderSummaryXlsxGrandSubtotal(grand);
+  html += _sqRenderSummaryXlsxGrandSubtotal(grand, visibleCols);
   html += '</div></div>'; // .sq-summary-xlsx-table + .sq-summary-xlsx-wrap
   return html;
 }
