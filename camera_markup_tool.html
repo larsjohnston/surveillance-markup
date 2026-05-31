@@ -5356,7 +5356,9 @@ function openDoorHardwareModal(){
   _dhwSummaryHidden       = {};
   _dhwSummaryFilterUiOpen = false;
   _dhwSummaryQuickFilter  = null;
-  _dhwSummaryHiddenCols   = {};
+  // SQ + DHW parity P4: seed hidden-cols from defaults so the modal opens
+  // in the customer-facing view. Clear All restores the same defaults.
+  _dhwSummaryHiddenCols   = _dhwDefaultHiddenCols();
   _dhwSummaryToolsOpen    = false;
   // W8c: notes panel is transient UI state, reset on every modal open so it
   // doesn't surprise the user re-entering the manager.
@@ -5497,11 +5499,22 @@ function _dhwToggleSummaryTools(){
 // quick filter, hidden rows, hidden columns. Sort and the filter-UI-open
 // state are intentionally NOT reset (they aren't "filters"). Popover
 // stays open so the user can keep adjusting.
+// SQ + DHW parity P4: default-hidden derived from colsAll's defaultHidden
+// flags. Single source so seed + restore can't drift apart. The colsAll
+// list lives inside _dhwRenderSummary; this helper rebuilds an equivalent
+// from the same flags by mirroring the descriptor here (keep in sync with
+// the _dhwRenderSummary colsAll above).
+function _dhwDefaultHiddenCols(){
+  // Hidden by default — every column not in the customer-facing set.
+  return { description:true, finish:true, supplier:true, unitCost:true, markup:true, unitSell:true, installHrs:true };
+}
 function _dhwClearSummaryAll(){
   _dhwSummaryFilters    = {};
   _dhwSummaryQuickFilter = null;
   _dhwSummaryHidden     = {};
-  _dhwSummaryHiddenCols = {};
+  // SQ + DHW parity P4: Clear All restores default-hidden cols (not all-
+  // visible) so the customer-facing set is one click away.
+  _dhwSummaryHiddenCols = _dhwDefaultHiddenCols();
   renderDoorHardwareModal();
 }
 
@@ -6105,21 +6118,27 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     '</div>';
   }
 
-  // W6+++++ : columns descriptor drives both sort/filter and rendering.
-  // 'numeric' tells the sort comparator to use numeric vs string compare.
+  // W6+++++ / SQ + DHW parity P4: columns descriptor drives sort/filter,
+  // rendering, AND default visibility. Reordered + relabeled to mirror SQ
+  // Summary's customer-facing set (Qty · SKU · Extended HW · Extended
+  // Labour · Total · GM%) so both wizards read identically. New gm column
+  // computes (extSell − qty×unitCost) / total × 100 (labour is pass-through
+  // in DHW pricing, no markup applied — equipment carries the margin).
+  // defaultHidden seeds _dhwSummaryHiddenCols at every modal open.
   var colsAll = [
-    { key:'qty',         label:'Qty',         numeric:true,  align:'right' },
-    { key:'sku',         label:'SKU',         numeric:false, align:'left'  },
-    { key:'description', label:'Description', numeric:false, align:'left'  },
-    { key:'finish',      label:'Finish',      numeric:false, align:'left'  },
-    { key:'supplier',    label:'Supplier',    numeric:false, align:'left'  },
-    { key:'unitCost',    label:'Unit cost',   numeric:true,  align:'right' },
-    { key:'markup',      label:'Markup %',    numeric:true,  align:'right' },
-    { key:'unitSell',    label:'Unit sell',   numeric:true,  align:'right' },
-    { key:'extSell',     label:'Ext sell',    numeric:true,  align:'right' },
-    { key:'installHrs',  label:'Install hrs', numeric:true,  align:'right' },
-    { key:'labour',      label:'Labour',      numeric:true,  align:'right' },
-    { key:'total',       label:'Total',       numeric:true,  align:'right' }
+    { key:'qty',         label:'Qty',             numeric:true,  align:'right', defaultHidden:false },
+    { key:'sku',         label:'SKU',             numeric:false, align:'left',  defaultHidden:false },
+    { key:'extSell',     label:'Extended HW',     numeric:true,  align:'right', defaultHidden:false },
+    { key:'labour',      label:'Extended Labour', numeric:true,  align:'right', defaultHidden:false },
+    { key:'total',       label:'Total',           numeric:true,  align:'right', defaultHidden:false },
+    { key:'gm',          label:'GM %',            numeric:true,  align:'right', defaultHidden:false },
+    { key:'description', label:'Description',     numeric:false, align:'left',  defaultHidden:true  },
+    { key:'finish',      label:'Finish',          numeric:false, align:'left',  defaultHidden:true  },
+    { key:'supplier',    label:'Supplier',        numeric:false, align:'left',  defaultHidden:true  },
+    { key:'unitCost',    label:'Unit cost',       numeric:true,  align:'right', defaultHidden:true  },
+    { key:'markup',      label:'Markup %',        numeric:true,  align:'right', defaultHidden:true  },
+    { key:'unitSell',    label:'Unit sell',       numeric:true,  align:'right', defaultHidden:true  },
+    { key:'installHrs',  label:'Install hrs',     numeric:true,  align:'right', defaultHidden:true  }
   ];
   // W7b: column set depends on mode:
   //   supply-only — drop Install hrs / Labour / Total entirely (no labour
@@ -6398,11 +6417,29 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     var unitCostCell = (row.unitCost == null) ? '<span class="dhw-gap">not priced</span>' : (_dhwFmtMoney(row.unitCost) + flagMark);
     var unitSellCell = (row.unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.unitSell);
     var extSellCell  = (row.extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.extSell);
-    var markupCell = Number(row.markup).toFixed(2) + ' %' +
+    var markupCell = Number(row.markup).toFixed(1) + ' %' +
       (row.hasOverride ? ' <span class="dhw-best-supp" style="display:inline; font:500 9px var(--font-ui); color:var(--text-muted);">(override)</span>' : '');
     var hoursCell  = (row.installHrs == null) ? '<span class="dhw-gap">&mdash;</span>' : (row.installHrs + ' hr');
     var labourCell = (row.labour     == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.labour);
     var totalCell  = (row.total      == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(row.total);
+    // SQ + DHW parity P4: GM% denominator is the row's combined sell
+    // (total when labour is present; extSell in supply-only mode where
+    // labour is excluded and total is null). Cost = qty × unitCost +
+    // labour (labour is pass-through, no DHW markup); margin = sell
+    // − cost; gm = margin / sell × 100. Em-dash when sell ≤ 0 or
+    // unitCost is missing — matches the rest of the row's "—" gap cells.
+    var gmCell;
+    var _sellForGm = (typeof row.total   === 'number' && row.total   > 0) ? row.total
+                   : (typeof row.extSell === 'number' && row.extSell > 0) ? row.extSell
+                   : null;
+    if(typeof row.unitCost === 'number' && _sellForGm != null){
+      var _equipCost  = row.qty * row.unitCost;
+      var _labourCost = (typeof row.labour === 'number') ? row.labour : 0;
+      var _margin     = _sellForGm - (_equipCost + _labourCost);
+      gmCell = ((_margin / _sellForGm) * 100).toFixed(1) + ' %';
+    } else {
+      gmCell = '<span class="dhw-gap">&mdash;</span>';
+    }
     var cellByKey = {
       qty:         '<td class="dhw-num">' + gapMark + _dhwEsc(row.qty) + '</td>',
       sku:         '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>',
@@ -6415,7 +6452,8 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       extSell:     '<td class="dhw-num">' + extSellCell + '</td>',
       installHrs:  '<td class="dhw-num">' + hoursCell + '</td>',
       labour:      '<td class="dhw-num">' + labourCell + '</td>',
-      total:       '<td class="dhw-num">' + totalCell + '</td>'
+      total:       '<td class="dhw-num">' + totalCell + '</td>',
+      gm:          '<td class="dhw-num">' + gmCell + '</td>'
     };
     var dataCells = visibleCols.map(function(c){ return cellByKey[c.key] || ''; }).join('');
     var hideBtn = '<button class="dhw-hide-btn" onclick="_dhwToggleSummaryHidden(' + _dhwAttrJs(row.matchKey) + ')" title="Hide this row from the view">&times;</button>';
@@ -20129,27 +20167,38 @@ function recalcLabour(){
 // here MUST equal #bom-subtotal because both derive from the same pure
 // helpers fed the same inputs.
 
-// SQ + DHW parity P3: column descriptor mirrors DHW's `colsAll` (6058+).
-// Drives col-header emission, row cell emission, and grid-template-columns.
-// _sqSummaryHiddenCols is a session-only viewing lens — totals still
-// reflect every column. defaultHidden is wired in P4 (this phase keeps
-// every column visible until the user hides one explicitly).
+// SQ + DHW parity P4: column descriptor reordered to the brief's default
+// visible set (Qty · SKU · Extended HW · Extended Labour · Total · GM%
+// shown first), with non-default columns hidden out of the gate. Labels
+// renamed to read as customer-facing (HW Ext Sell → "Extended HW", Labour
+// Ext Sell → "Extended Labour", Combined Sell → "Total"). The cell math
+// is unchanged — only the descriptor shifts. defaultHidden drives the
+// initial _sqSummaryHiddenCols seed + the Clear All restore-to-defaults
+// behaviour.
 var SQ_SUMMARY_COLS = [
-  { key:'sku',        label:'SKU',             grid:'75px',              align:'left'  },
-  { key:'description',label:'Description',     grid:'minmax(160px,1fr)', align:'left'  },
-  { key:'qty',        label:'Qty',             grid:'45px',              align:'right' },
-  { key:'hwExtCost',  label:'HW Ext Cost',     grid:'65px',              align:'right' },
-  { key:'hwExtSell',  label:'HW Ext Sell',     grid:'65px',              align:'right' },
-  { key:'labExtCost', label:'Labour Ext Cost', grid:'65px',              align:'right' },
-  { key:'labExtSell', label:'Labour Ext Sell', grid:'65px',              align:'right' },
-  { key:'combCost',   label:'Combined Cost',   grid:'70px',              align:'right' },
-  { key:'combSell',   label:'Combined Sell',   grid:'70px',              align:'right' },
-  { key:'margin',     label:'Margin $',        grid:'70px',              align:'right' },
-  { key:'gm',         label:'GM %',            grid:'55px',              align:'right' }
+  { key:'qty',        label:'Qty',             grid:'45px',              align:'right', defaultHidden:false },
+  { key:'sku',        label:'SKU',             grid:'90px',              align:'left',  defaultHidden:false },
+  { key:'hwExtSell',  label:'Extended HW',     grid:'85px',              align:'right', defaultHidden:false },
+  { key:'labExtSell', label:'Extended Labour', grid:'95px',              align:'right', defaultHidden:false },
+  { key:'combSell',   label:'Total',           grid:'80px',              align:'right', defaultHidden:false },
+  { key:'gm',         label:'GM %',            grid:'60px',              align:'right', defaultHidden:false },
+  { key:'description',label:'Description',     grid:'minmax(160px,1fr)', align:'left',  defaultHidden:true  },
+  { key:'hwExtCost',  label:'HW Ext Cost',     grid:'70px',              align:'right', defaultHidden:true  },
+  { key:'labExtCost', label:'Labour Ext Cost', grid:'80px',              align:'right', defaultHidden:true  },
+  { key:'combCost',   label:'Combined Cost',   grid:'75px',              align:'right', defaultHidden:true  },
+  { key:'margin',     label:'Margin $',        grid:'70px',              align:'right', defaultHidden:true  }
 ];
 
+function _sqSummaryDefaultHidden(){
+  var out = {};
+  SQ_SUMMARY_COLS.forEach(function(c){ if(c.defaultHidden) out[c.key] = true; });
+  return out;
+}
+
 // Column-hide state — session-only (M5 persists). Keyed by SQ_SUMMARY_COLS.key.
-var _sqSummaryHiddenCols = {};
+// Seeded with default-hidden cols at module init so a fresh open reads as the
+// customer-facing default view; Clear All resets to the same seed (not all-visible).
+var _sqSummaryHiddenCols = _sqSummaryDefaultHidden();
 var _sqSummaryToolsOpen  = false;
 
 function _sqSummaryVisibleCols(){
@@ -20168,7 +20217,10 @@ function _sqToggleSummaryTools(){
   recalcSummaryXlsx();
 }
 function _sqClearSummaryAll(){
-  _sqSummaryHiddenCols = {};
+  // SQ + DHW parity P4: Clear All restores defaults (not all-visible) so
+  // the customer-facing set is one click away. DHW's _dhwClearSummaryAll
+  // matches.
+  _sqSummaryHiddenCols = _sqSummaryDefaultHidden();
   recalcSummaryXlsx();
 }
 
