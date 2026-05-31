@@ -495,9 +495,12 @@ input[type="number"]::-webkit-outer-spin-button {
    row from the Materials step. Markup + handlers preserved so save/load
    still touches #bom-margin-pct's value and setTierFilter() still works
    if invoked from a future re-introduction. CSS-only hide; no DOM
-   removal. */
-#bom-config       { display:none; }
-#tier-filter-row  { display:none; }
+   removal.
+   Fixup: target the OUTER host (#sq-tier-filter-host) not the inner chip
+   <span> — otherwise the grey band + "TIER FILTER" label stay visible
+   even though the chips themselves are gone. */
+#bom-config             { display:none; }
+#sq-tier-filter-host    { display:none; }
 /* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
    shows the full 11-col grid via horizontal scroll instead of clipping. */
 #bom-body { overflow-x:auto; }
