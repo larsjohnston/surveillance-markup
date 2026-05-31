@@ -18958,26 +18958,31 @@ function recalcBom(){
   // sums materials + labour. For the initial paint we compute the
   // labour Sell off the same buckets so the tiles render correctly
   // without waiting for a DOM walk.
+  //
+  // recalcBom fix: the original M3 tally referenced three identifiers
+  // that were never defined (_sqLabourUnit, getLabourRule,
+  // bomLabourLineQty) — every recalcBom call on a non-empty project
+  // with bomLabourSupplyOnly off ReferenceError'd here, skipping every
+  // downstream tile write (counts, subtotal, tax-amt, grand-total).
+  // Replaced with the same _sqRowLabour-based walk recalcLabour's
+  // _accum uses — single source of truth, no undefined refs.
   var labourSell = 0;
   if(!bomLabourSupplyOnly){
     BOM_TEMPLATE.tiers.forEach(function(tier){
       tier.subs.forEach(function(sub){
-        var b = buckets[sub.id];
-        if(!b) return;
-        b.auto.forEach(function(r){
-          if(r.warn) return;
+        var b = buckets[sub.id]; if(!b) return;
+        var realAuto = b.auto.filter(function(r){ return !r.warn; });
+        realAuto.forEach(function(r){
           var lineKey = r.key || '';
-          var u = _sqLabourUnit(getLabourRule(sub.id, lineKey));
           var matQty = (typeof r.qty === 'number') ? r.qty : 0;
-          var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
-          labourSell += qty * u.sell;
+          var lab = _sqRowLabour(sub.id, lineKey, matQty);
+          labourSell += lab.extSell;
         });
         b.custom.forEach(function(cust){
           var lineKey = (cust.line && cust.line.id) || '';
-          var u = _sqLabourUnit(getLabourRule(sub.id, lineKey));
           var matQty = (cust.line && typeof cust.line.qty === 'number') ? cust.line.qty : 0;
-          var qty = (typeof bomLabourLineQty[lineKey] === 'number') ? bomLabourLineQty[lineKey] : matQty;
-          labourSell += qty * u.sell;
+          var lab = _sqRowLabour(sub.id, lineKey, matQty);
+          labourSell += lab.extSell;
         });
       });
     });
