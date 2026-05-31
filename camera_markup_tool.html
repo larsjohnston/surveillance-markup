@@ -270,18 +270,17 @@ body.is-mac .menu-item[data-shortcut]::after { content:"\2318" attr(data-shortcu
        input[type="number"]:not([readonly]):not([disabled]),
        select:not([disabled]),
        textarea:not([readonly]):not([disabled])) {
-  border: 1px solid var(--border);
-  background: var(--surface-soft);
+  border: 1px solid var(--primary);
+  background: var(--surface);
   border-radius: 4px;
-  transition: border-color .12s, background .12s;
+  transition: border-color .12s, background .12s, outline-color .12s;
 }
 :where(input[type="text"]:not([readonly]):not([disabled]),
        input[type="number"]:not([readonly]):not([disabled]),
        select:not([disabled]),
        textarea:not([readonly]):not([disabled])):focus {
-  border-color: var(--primary);
-  background: var(--surface);
-  outline: none;
+  outline: 2px solid var(--primary-soft);
+  outline-offset: 0;
 }
 /* Native spinner-arrow removal for number inputs — applies everywhere.
    The arrows interfere with the visual editable-field cue, and the
@@ -414,6 +413,18 @@ input[type="number"]::-webkit-outer-spin-button {
 .bom-row .bom-cell.muted { color:#9ca3af; font-weight:500; }
 .bom-row .bom-cell-sku { font:600 10px var(--font-mono); color:#374151; text-align:left; padding-left:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .bom-row .bom-cell-sell { background:var(--surface-soft); border-radius:2px; }
+/* SQ polish: Materials Cost column "$" prefix. The Cost cell is an
+   editable <input>; inputs can't host ::before, so the renderer wraps
+   the input in a .bom-cell-cost div. The wrapper is the grid item and
+   carries the $ glyph absolutely positioned at the left edge; the input
+   inside fills the wrapper with extra left padding to clear the glyph.
+   Applies to BOTH auto + custom rows (shared wrapper class). */
+.bom-row .bom-cell-cost { position:relative; }
+.bom-row .bom-cell-cost::before {
+  content:'$'; position:absolute; left:5px; top:50%; transform:translateY(-50%);
+  font:700 11px var(--font-mono); color:#9ca3af; pointer-events:none; z-index:1;
+}
+.bom-row .bom-cell-cost input { padding-left:14px; width:100%; box-sizing:border-box; }
 /* SQ-wizard M2b: section subtotal + grand subtotal rows. Heavy top border,
    bold text. Grand has an extra accent. */
 .bom-row.section-subtotal { background:#f3f4f6; border-top:1px solid #d1d5db; font-weight:700; }
@@ -480,6 +491,13 @@ input[type="number"]::-webkit-outer-spin-button {
 #bom-margin-amt, #bom-margin-pct-disp { display:none; }
 #bom-summary .bom-stat:has(#bom-margin-amt) { display:none; }
 #bom-config .bom-cfg:has(#bom-margin-pct)   { display:none; }
+/* SQ polish: hide the entire margin-config band and the tier-filter chip
+   row from the Materials step. Markup + handlers preserved so save/load
+   still touches #bom-margin-pct's value and setTierFilter() still works
+   if invoked from a future re-introduction. CSS-only hide; no DOM
+   removal. */
+#bom-config       { display:none; }
+#tier-filter-row  { display:none; }
 /* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
    shows the full 11-col grid via horizontal scroll instead of clipping. */
 #bom-body { overflow-x:auto; }
@@ -19343,7 +19361,7 @@ function _sqRenderAutoRow(row, sectionId, rule){
        +   skuCellHtml
        +   '<div class="bom-desc" title="Auto-generated from your placements">' + escapeHtml(row.desc || '') + '</div>'
        +   listCell
-       +   '<input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)">'
+       +   '<div class="bom-cell-cost"><input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)"></div>'
        +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
        +   '<span class="bom-cell bom-cell-qty locked" data-field="qty" data-qty="' + qty + '" title="Quantity is set by the floor plan — click for details" onclick="_sqShowQtyLockNotice()">' + qty + '</span>'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
@@ -19384,7 +19402,7 @@ function _sqRenderCustomRow(cust, rule){
        +   '<div class="bom-cell-sku"></div>'
        +   '<input type="text" class="bom-desc" value="' + escapeHtml(line.desc || '') + '" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">'
        +   '<div class="bom-cell muted bom-cell-list">—</div>'
-       +   '<input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" oninput="updateCustomRow(this)">'
+       +   '<div class="bom-cell-cost"><input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" oninput="updateCustomRow(this)"></div>'
        +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
        +   '<input type="number" data-field="qty" value="' + qty + '" step="0.25" min="0" oninput="updateCustomRow(this)">'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
@@ -19547,7 +19565,11 @@ function _sqRenderLabourRow(matRow, sectionId, lineKey, isCustom){
   // the existing CSS (.bom-cell-qty.locked) applies but with a
   // different tooltip (labour Qty is informational, not floor-plan
   // driven — material qty IS floor-plan driven).
-  head += '<span class="bom-cell bom-cell-qty locked" data-qty="' + matQty + '" title="Material quantity (informational; labour math uses Hours in Hourly, Qty in Flat)">' + matQty + '</span>'
+  // SQ polish: auto rows get the click-to-explain lock-notice handler
+  // (mirrors the Materials side). Custom labour rows are user-typed
+  // material lines; their qty isn't canvas-derived, so no notice.
+  var qtyClick = isCustom ? '' : ' onclick="_sqShowQtyLockNotice()"';
+  head += '<span class="bom-cell bom-cell-qty locked" data-qty="' + matQty + '" title="Material quantity (informational; labour math uses Hours in Hourly, Qty in Flat)"' + qtyClick + '>' + matQty + '</span>'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(dispExtCost) + '</div>'
        +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(dispExtSell) + '</div>'
        +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(dispMargin) + '</div>'
