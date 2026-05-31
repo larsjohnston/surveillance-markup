@@ -491,16 +491,14 @@ input[type="number"]::-webkit-outer-spin-button {
 #bom-margin-amt, #bom-margin-pct-disp { display:none; }
 #bom-summary .bom-stat:has(#bom-margin-amt) { display:none; }
 #bom-config .bom-cfg:has(#bom-margin-pct)   { display:none; }
-/* SQ polish: hide the entire margin-config band and the tier-filter chip
-   row from the Materials step. Markup + handlers preserved so save/load
-   still touches #bom-margin-pct's value and setTierFilter() still works
-   if invoked from a future re-introduction. CSS-only hide; no DOM
-   removal.
-   Fixup: target the OUTER host (#sq-tier-filter-host) not the inner chip
-   <span> — otherwise the grey band + "TIER FILTER" label stay visible
-   even though the chips themselves are gone. */
+/* SQ polish: hide the margin-config band from the Materials step.
+   Markup + handlers preserved so save/load still touches
+   #bom-margin-pct's value. CSS-only hide; no DOM removal.
+   (Tier-filter band hide lives at the canonical #sq-tier-filter-host
+   rule further down — collapsed into a single display:none site to
+   avoid the cascade-order tie that hid the chip span but left the
+   surrounding band visible.) */
 #bom-config             { display:none; }
-#sq-tier-filter-host    { display:none; }
 /* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
    shows the full 11-col grid via horizontal scroll instead of clipping. */
 #bom-body { overflow-x:auto; }
@@ -587,18 +585,14 @@ input[type="number"]::-webkit-outer-spin-button {
    stacking context — common gotcha). */
 :root { --z-notice-modal: 80; }
 #sq-qty-lock-modal { z-index: var(--z-notice-modal); }
-/* SQ-wizard M2c: Tier Filter standalone block — sits at top of Materials
-   step (extracted from the old #bom-summary container). Light surface +
-   bottom rule so it reads as a control band above the rule strip. */
-#sq-tier-filter-host {
-  display:flex; align-items:center; gap:14px;
-  padding:10px 16px; background:#f9fafb;
-  border-bottom:1px solid var(--border); font:11px var(--font-ui);
-}
-#sq-tier-filter-host .lbl {
-  color:#6b7280; font-size:10px; text-transform:uppercase;
-  letter-spacing:.05em; font-weight:700;
-}
+/* SQ polish: Tier Filter band hidden — the chip filter was retired in
+   M5. Markup at #sq-tier-filter-host stays so setTierFilter() still
+   resolves if invoked from a future re-introduction; the layout
+   properties (padding/background/border-bottom + the .lbl typography)
+   were dropped along with the chips' visibility. Canonical single
+   site — was previously split across two rules whose source-order
+   cascade left this band visible. */
+#sq-tier-filter-host { display:none; }
 /* SQ-wizard M2c: vertical totals block at the end of the Summary step.
    Sub-Total + Tax + Grand-Total stack as labeled rows (NOT sibling tiles).
    Reuses the existing summary ids inside. Tax row carries the inline
