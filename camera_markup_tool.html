@@ -14,7 +14,12 @@
   --blue:#2563eb;
   /* Neutrals */
   --ink:#111827; --text:#111827; --text-muted:#6b7280; --text-faint:#9ca3af;
-  --border:#e5e7eb; --surface:#ffffff; --surface-soft:#f9fafb; --panel:#fff;
+  --border:#e5e7eb; --surface:#ffffff; --surface-soft:#f9fafb; --surface-muted:#f3f4f6; --panel:#fff;
+  /* SQ + DHW parity P1: amber semantic palette tokens. Previously scattered
+     as hex literals across pricing/warn/supply-only chrome — consolidated
+     so warn surfaces stay color-consistent and a future palette tweak is
+     one-place. */
+  --amber-bg:#fffbeb; --amber-soft-bg:#fef3c7; --amber-border:#fcd34d; --amber-rule:#d97706; --amber-text:#92400e;
   /* Camera type colors — semantic, do not change */
   --dome:#c8202c; --bullet:#2563eb; --ptz:#7c3aed; --lpr:#d97706;
   --turret:#0891b2; --fisheye:#16a34a;
@@ -311,12 +316,35 @@ input[type="number"]::-webkit-outer-spin-button {
 #bom-backdrop.show { display:block; }
 
 #bom-header {
-  background:#111827; color:#fff; padding:11px 16px;
+  background:var(--ink); color:#fff; padding:11px 16px;
   display:flex; align-items:center; gap:10px; border-bottom:3px solid var(--primary);
 }
 #bom-header h2 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; flex:1; }
 #bom-close { background:transparent; color:#fff; border:none; font-size:20px; cursor:pointer; padding:0 6px; }
 #bom-close:hover { color:var(--primary); }
+
+/* SQ + DHW parity P1: shared header band. DHW gains a band that mirrors
+   SQ's #bom-header (navy/ink fill, primary bottom rule, white title in
+   uppercase). Markup at #door-hardware-modal swaps to use this class so
+   the two wizards share the same chrome at the top. */
+.dhw-header {
+  background:var(--ink); color:#fff; padding:11px 16px;
+  display:flex; align-items:center; gap:10px; justify-content:space-between;
+  border-bottom:3px solid var(--primary);
+  margin:-24px -28px 18px; /* lift to the .big-modal-box edge */
+}
+.dhw-header h3 { margin:0; flex:1; font:700 13px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; color:#fff; }
+.dhw-header .dhw-close-x { background:transparent; color:#fff; border:none; font-size:20px; cursor:pointer; padding:0 6px; line-height:1; }
+.dhw-header .dhw-close-x:hover { color:var(--primary); }
+
+/* SQ + DHW parity P1: canonical .dhw-wizard-nav rule. Both wizards lean
+   on the class but no CSS bound it until now — Back/Continue were inline-
+   styled. Centralised so SQ + DHW nav rows always line up the same way. */
+.dhw-wizard-nav {
+  display:flex; justify-content:space-between; align-items:center; gap:12px;
+  padding:10px 16px 16px; margin-top:18px;
+}
+.dhw-wizard-nav .dhw-nav-spacer { flex:1 1 auto; }
 
 #bom-summary {
   padding: 12px 16px; background:#f9fafb; border-bottom:1px solid var(--border);
@@ -358,12 +386,10 @@ input[type="number"]::-webkit-outer-spin-button {
 
 /* BOM two-tier M7: warn variant for tier-2 sub-headings that need integrator
    attention (currently only "Unclassified — needs review" under §5). Amber
-   palette reused from #bom-config / .tab-warning-badge / .pricing-banner —
-   #fffbeb bg + #d97706 left rule + #92400e text. Goal: the integrator
-   cannot scroll past these without noticing. */
+   palette via tokens — keeps SQ + DHW warn surfaces in lockstep. */
 .bom-sec-hdr.warn {
-  background:#fffbeb; color:#92400e;
-  border-left:3px solid #d97706; padding-left:13px;
+  background:var(--amber-bg); color:var(--amber-text);
+  border-left:3px solid var(--amber-rule); padding-left:13px;
 }
 
 /* BOM two-tier M3: tier-1 (major) heading style. Sits above one or more
@@ -386,11 +412,11 @@ input[type="number"]::-webkit-outer-spin-button {
   display:grid;
   grid-template-columns: 75px minmax(140px, 1fr) 60px 65px 65px 45px 70px 70px 70px 55px 24px;
   gap:5px; align-items:center;
-  padding: 4px 16px; font-size:10px; border-bottom:1px solid #f3f4f6;
+  padding: 4px 16px; font-size:10px; border-bottom:1px solid var(--surface-muted);
 }
-.bom-row:hover { background:#f9fafb; }
+.bom-row:hover { background:var(--surface-soft); }
 .bom-row.col-hdr {
-  background:#f3f4f6; color:#6b7280; font:700 8px var(--font-ui);
+  background:var(--surface-muted); color:var(--text-muted); font:700 8px var(--font-ui);
   text-transform:uppercase; letter-spacing:.04em; padding-top:5px; padding-bottom:5px;
 }
 .bom-row input, .bom-row .bom-desc {
@@ -427,10 +453,10 @@ input[type="number"]::-webkit-outer-spin-button {
 .bom-row .bom-cell-cost input { padding-left:14px; width:100%; box-sizing:border-box; }
 /* SQ-wizard M2b: section subtotal + grand subtotal rows. Heavy top border,
    bold text. Grand has an extra accent. */
-.bom-row.section-subtotal { background:#f3f4f6; border-top:1px solid #d1d5db; font-weight:700; }
+.bom-row.section-subtotal { background:var(--surface-muted); border-top:1px solid #d1d5db; font-weight:700; }
 .bom-row.section-subtotal .bom-cell { font-weight:800; }
 .bom-row.grand-subtotal {
-  background:#111827; color:#fff; border-top:2px solid var(--primary);
+  background:var(--ink); color:#fff; border-top:2px solid var(--primary);
   margin-top:8px; padding-top:8px; padding-bottom:8px;
   border-radius:4px;
 }
@@ -457,10 +483,14 @@ input[type="number"]::-webkit-outer-spin-button {
   padding:4px 10px; cursor:pointer; font:600 10px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
 }
 .sq-default-rule-strip .sq-apply-defaults:hover { background:var(--surface-soft); }
+/* SQ + DHW parity P1: pill typography aligned with .dhw-status-pill
+   (10px / .06em / 700) so both pill systems read with the same weight.
+   Border-radius stays distinct (sq-rule-pill is a rounded chip; dhw-
+   status-pill is a flat tag) — semantic mismatch per recon. */
 .sq-rule-pill {
   margin-left:auto; padding:3px 9px; border-radius:11px;
   background:var(--surface-soft); border:1px solid var(--border);
-  font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
+  font:700 10px var(--font-ui); text-transform:uppercase; letter-spacing:.06em;
   color:var(--text); cursor:pointer; display:inline-flex; align-items:center; gap:5px;
 }
 .sq-rule-pill:hover { background:#fff; }
@@ -897,7 +927,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-section-hdr-actions { display:flex; gap:6px; margin-left:auto; }
 /* Polish: bold Awarded / Unawarded status pill beside the section header. */
 .dhw-status-pill { font:700 10px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; border-radius:3px; }
-.dhw-status-pill.dhw-status-unawarded { color:#92400e; background:#fef3c7; border:1px solid #fcd34d; }
+.dhw-status-pill.dhw-status-unawarded { color:var(--amber-text); background:var(--amber-soft-bg); border:1px solid var(--amber-border); }
 .dhw-status-pill.dhw-status-awarded   { color:#065f46; background:#d1fae5; border:1px solid #6ee7b7; }
 /* Polish + W6: info icon (ⓘ) for collapsed explanatory text. Native title
    tooltips were unreliable (browser-dependent delay; brief reported them
@@ -965,15 +995,15 @@ input[type="number"]::-webkit-outer-spin-button {
    greyed fill + muted text + line-through. Form controls (the Include
    button, markup/sell inputs) keep their normal text-decoration so the
    row remains operable for un-exclude and value preservation. */
-.dhw-table tr.dhw-row-excluded td { background:#f3f4f6; color:#9ca3af; text-decoration:line-through; }
+.dhw-table tr.dhw-row-excluded td { background:var(--surface-muted); color:var(--text-faint); text-decoration:line-through; }
 .dhw-table tr.dhw-row-excluded button,
 .dhw-table tr.dhw-row-excluded input { text-decoration:none; }
 /* W7c: zero-labour warning. Amber row tint on priced lines with no install
    hours entered, plus a matching amber banner under the labour table that
    counts them. Stronger amber than the gap-row cream (#fffaf2) so the two
    states stay distinguishable when both appear in the same table. */
-.dhw-table tr.dhw-row-nolabour td { background:#fef3c7; }
-.dhw-nolabour-warn { margin-top:10px; padding:10px 14px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:5px; color:#92400e; font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; }
+.dhw-table tr.dhw-row-nolabour td { background:var(--amber-soft-bg); }
+.dhw-nolabour-warn { margin-top:10px; padding:10px 14px; background:var(--amber-soft-bg); border:1px solid var(--amber-border); border-left:4px solid var(--amber-rule); border-radius:5px; color:var(--amber-text); font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; }
 .dhw-warn { color:#b45309; font-weight:700; }
 .dhw-gap  { color:#b45309; font-style:italic; }
 .dhw-num  { font:600 11px var(--font-mono); text-align:right; }
@@ -1006,7 +1036,7 @@ input[type="number"]::-webkit-outer-spin-button {
    tint) — W8c wires the notes list it opens; until then the onclick is
    a stub. The muted "all at lowest" variant has no border or fill — it's
    a quiet positive confirmation, not a callout. */
-.dhw-noncheapest-flag { margin:12px 0 0; padding:10px 14px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:5px; color:#92400e; font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; cursor:pointer; }
+.dhw-noncheapest-flag { margin:12px 0 0; padding:10px 14px; background:var(--amber-soft-bg); border:1px solid var(--amber-border); border-left:4px solid var(--amber-rule); border-radius:5px; color:var(--amber-text); font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; cursor:pointer; }
 .dhw-noncheapest-flag:hover { background:#fde68a; }
 .dhw-noncheapest-allgood { margin:12px 0 0; font:500 11px var(--font-ui); color:var(--text-muted); }
 /* W8c: notes panel for non-cheapest line annotations. Opens below the flag
@@ -1065,7 +1095,7 @@ input[type="number"]::-webkit-outer-spin-button {
    bar so it scans as a banner rather than a paragraph. */
 .dhw-supply-notice { margin-top:12px; padding:14px 16px; background:var(--primary-faint); border:1px solid var(--primary-soft); border-left:4px solid var(--primary); border-radius:5px; color:var(--text); font:500 12px var(--font-ui); line-height:1.5; }
 .dhw-supply-notice b { color:var(--primary-dark); }
-.dhw-advisory { padding:12px 14px; background:#fffbeb; border:1px solid #fcd34d; border-radius:5px; font:500 11px var(--font-ui); color:#92400e; line-height:1.5; }
+.dhw-advisory { padding:12px 14px; background:var(--amber-bg); border:1px solid var(--amber-border); border-radius:5px; font:500 11px var(--font-ui); color:var(--amber-text); line-height:1.5; }
 .dhw-advisory b { color:#78350f; }
 /* W6+++++: Step 5 Summary table tools — toolbar, sortable headers,
    filter input row, hide-row button, hidden-rows banner. All state
@@ -1092,8 +1122,8 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-tools-popover .dhw-popover-actions button { padding:6px 10px; font:600 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; border-radius:3px; border:1px solid var(--border); background:#fff; color:var(--text); cursor:pointer; text-align:left; }
 .dhw-tools-popover .dhw-popover-actions button:hover:not(.active):not(.dhw-popover-clear) { background:var(--surface-soft); }
 .dhw-tools-popover .dhw-popover-actions button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
-.dhw-tools-popover .dhw-popover-clear { color:#b45309; border-color:#fcd34d; }
-.dhw-tools-popover .dhw-popover-clear:hover { background:#fffbeb; }
+.dhw-tools-popover .dhw-popover-clear { color:#b45309; border-color:var(--amber-border); }
+.dhw-tools-popover .dhw-popover-clear:hover { background:var(--amber-bg); }
 .dhw-table thead th.dhw-sortable { cursor:pointer; user-select:none; }
 .dhw-table thead th.dhw-sortable:hover { color:var(--text); }
 .dhw-table thead th .dhw-sort-mark { color:var(--primary); margin-left:4px; font-weight:700; }
@@ -1143,8 +1173,8 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-hide-col { width:28px; text-align:center; }
 .dhw-hide-btn { background:none; border:0; cursor:pointer; color:#9ca3af; font:700 14px var(--font-ui); padding:0 4px; line-height:1; }
 .dhw-hide-btn:hover { color:#dc2626; }
-.dhw-hidden-banner { margin:8px 0 0; padding:8px 12px; background:#fffbeb; border:1px solid #fcd34d; border-radius:4px; font:500 11px var(--font-ui); color:#92400e; display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.dhw-hidden-banner button { background:none; border:0; color:#92400e; font:700 11px var(--font-ui); cursor:pointer; text-decoration:underline; padding:0; }
+.dhw-hidden-banner { margin:8px 0 0; padding:8px 12px; background:var(--amber-bg); border:1px solid var(--amber-border); border-radius:4px; font:500 11px var(--font-ui); color:var(--amber-text); display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.dhw-hidden-banner button { background:none; border:0; color:var(--amber-text); font:700 11px var(--font-ui); cursor:pointer; text-decoration:underline; padding:0; }
 /* W1: 5-step wizard. Stepper sits at the top of the modal body (above the
    step content). Active step gets the tool's red accent; inactive steps are
    muted/navy. Connectors are simple horizontal lines between dots. All
@@ -3160,10 +3190,13 @@ input[type="number"]::-webkit-outer-spin-button {
      always available as the global close affordance. -->
 <div id="door-hardware-modal" class="big-modal" onclick="if(event.target===this) closeDoorHardwareModal()">
   <div class="modal-box big-modal-box dhw-modal-box" style="position:relative;">
-    <button class="modal-close-x" onclick="closeDoorHardwareModal()" title="Close" aria-label="Close">&times;</button>
-    <h3>Door Hardware</h3>
+    <!-- SQ + DHW parity P1: shared header band mirrors SQ's #bom-header. -->
+    <div class="dhw-header">
+      <h3>Door Hardware</h3>
+      <button class="dhw-close-x" onclick="closeDoorHardwareModal()" title="Close" aria-label="Close">&times;</button>
+    </div>
     <div id="dhw-modal-body"></div>
-    <div id="dhw-wizard-nav" class="modal-actions" style="margin-top:18px;"></div>
+    <div id="dhw-wizard-nav" class="dhw-wizard-nav"></div>
   </div>
 </div>
 
@@ -3351,7 +3384,7 @@ input[type="number"]::-webkit-outer-spin-button {
        _sqRenderWizardNav(); reuses .dhw-wizard-nav layout
        (justify-between with .dhw-nav-spacer). Back hidden on step 1;
        Continue hidden on step 3 (final). -->
-  <div id="sq-wizard-nav" class="dhw-wizard-nav" style="padding:10px 16px 16px; display:flex; justify-content:space-between; align-items:center; gap:12px;"></div>
+  <div id="sq-wizard-nav" class="dhw-wizard-nav"></div>
   </div><!-- /#bom-scroll-wrap -->
 </aside>
 
@@ -19953,7 +19986,7 @@ function _sqRenderSupplyOnlyBadge(){
   var host = document.getElementById('sq-summary-supply-only-badge');
   if(!host) return;
   host.innerHTML = bomLabourSupplyOnly
-    ? '<span style="display:inline-block; margin:10px 16px; padding:5px 12px; background:#fef3c7; border:1px solid #fcd34d; border-left:4px solid #d97706; border-radius:4px; font:700 11px var(--font-ui); color:#92400e; letter-spacing:.04em; text-transform:uppercase;">Supply Only &mdash; labour excluded from totals</span>'
+    ? '<span style="display:inline-block; margin:10px 16px; padding:5px 12px; background:var(--amber-soft-bg); border:1px solid var(--amber-border); border-left:4px solid var(--amber-rule); border-radius:4px; font:700 11px var(--font-ui); color:var(--amber-text); letter-spacing:.04em; text-transform:uppercase;">Supply Only &mdash; labour excluded from totals</span>'
     : '';
 }
 
