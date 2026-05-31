@@ -15743,6 +15743,15 @@ function bomRowSku(row){
   if(k === 'auto-hdd')      return { sku: '', typeLabel: 'HDD (derived)' };
   if(k === 'auto-switch')   return { sku: '', typeLabel: 'NETWORK SWITCH (derived)' };
   if(k === 'placed-switch') return { sku: '', typeLabel: 'NETWORK SWITCH (placed)' };
+  // Pricing networking-fix: recording (CMVR head-end) + network (placed
+  // switch) rows already carry their EN-* catalogue SKU on row.sku from
+  // computeAutoRows. Without these branches the fall-through silently
+  // returned sku:'' and the M2a wrapper's _items[''] lookup missed, so
+  // r.cost/r.list stayed 0/null and 1.2 Networking rows rendered as
+  // List '—' / Cost $0.00 despite a loaded book carrying the right
+  // keys (verified EN-BR225-0 + EN-SW*-001 in pricingBook.json).
+  if(row.src === 'recording' && row.sku) return { sku: row.sku, typeLabel: '' };
+  if(row.src === 'network'   && row.sku) return { sku: row.sku, typeLabel: '' };
   return { sku: '', typeLabel: 'CUSTOM' };
 }
 
