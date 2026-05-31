@@ -3273,7 +3273,9 @@ input[type="number"]::-webkit-outer-spin-button {
       <div class="bom-stat" id="bom-intercom-stat"     style="display:none"><span class="lbl">Intercoms</span><span class="val" id="bom-intercom-count">0</span></div>
       <div class="bom-stat" id="bom-parcel-stat"       style="display:none"><span class="lbl">Parcel Lockers</span><span class="val" id="bom-parcel-count">0</span></div>
       <div class="bom-stat" id="bom-mailbox-stat"      style="display:none"><span class="lbl">Mailbox Banks</span><span class="val" id="bom-mailbox-count">0</span></div>
-      <div id="bom-suite-types-container" style="display:contents"></div>
+      <!-- SQ Summary M5: per-unit-type tiles collapsed to a single
+           Total Units roll-up. Hidden when zero suites placed. -->
+      <div class="bom-stat" id="bom-total-units-stat" style="display:none"><span class="lbl">Total Units</span><span class="val" id="bom-total-units">0</span></div>
     </div>
 
     <!-- SQ Summary M5: 3-col Device Manifest. Customer-facing flat
@@ -19057,22 +19059,17 @@ function recalcBom(){
     mEl.style.display = bomModel.mailboxCount > 0 ? '' : 'none';
     document.getElementById('bom-mailbox-count').textContent = String(bomModel.mailboxCount);
   }
-  // Pass N+1 M9: per-unit-type tiles. Container is repainted each recalc
-  // since unit types are project-level state that changes via Modal #1.
-  // Tiles for zero-suite types are omitted; order follows declared
-  // projectInfo.unitTypes sequence so cover, drawer, and brief stay in sync.
-  var sttContainer = document.getElementById('bom-suite-types-container');
-  if(sttContainer){
-    var typeHtml = '';
-    (projectInfo.unitTypes || []).forEach(function(ut){
-      var cnt = bomModel.suiteCountsByUnitType[ut.id] || 0;
-      if(cnt > 0){
-        typeHtml += '<div class="bom-stat"><span class="lbl">'
-                 + escapeHtml(ut.label || '(unlabeled)')
-                 + '</span><span class="val">' + cnt + '</span></div>';
-      }
-    });
-    sttContainer.innerHTML = typeHtml;
+  // SQ Summary M5: Total Units roll-up. Replaces the per-unit-type tile
+  // breakdown — sum every suiteCountsByUnitType value (already multiplied
+  // by pageMultiplier in computeRiserModel). Hide tile when zero so the
+  // counts grid collapses cleanly on no-suites projects.
+  var totalUnits = 0;
+  var sc = bomModel.suiteCountsByUnitType || {};
+  Object.keys(sc).forEach(function(k){ totalUnits += (sc[k] || 0); });
+  var tuStat = document.getElementById('bom-total-units-stat');
+  if(tuStat){
+    tuStat.style.display = totalUnits > 0 ? '' : 'none';
+    document.getElementById('bom-total-units').textContent = String(totalUnits);
   }
 
   // Persist current auto-row unit prices keyed for next render
