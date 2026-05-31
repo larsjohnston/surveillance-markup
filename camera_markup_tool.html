@@ -1100,6 +1100,46 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-table thead tr.dhw-filter-row th { padding:4px 6px; background:#fff; border-bottom:1px solid var(--border); text-transform:none; letter-spacing:normal; }
 .dhw-filter-input { width:100%; padding:4px 6px; border:1px solid var(--border); border-radius:3px; font:500 10px var(--font-mono); background:#fff; box-sizing:border-box; }
 .dhw-filter-input:focus { outline:none; border-color:var(--primary); }
+
+/* SQ + DHW polish: blue outline on every editable field inside the
+   Security Quote drawer (#bom-drawer) and Door Hardware modal
+   (#door-hardware-modal). Specificity (1,0,2) beats every per-context
+   (.bom-row input, .sq-default-rule-strip input, .sq-rule-pill-editor
+   input, .sq-summary-row .sq-summary-label input, .dhw-notes-input,
+   .dhw-input, .dhw-input-inline, .dhw-filter-input) rule at (0,1,2);
+   source-order placement after every per-context rule pins it as the
+   winner against same-specificity targets (e.g. #bom-tax-label at
+   (1,0,0) — beaten by specificity; ID-scoped rules at (1,0,*) — beaten
+   by source order).
+   Excludes readonly + disabled inputs (defensive — those keep their
+   muted look). Focus picks up the same outline-on-tint pattern as the
+   global :where rule but here it has to be re-declared inside the
+   ID scope so the per-context focus rules (which set outline:none)
+   don't win. */
+#bom-drawer input[type="text"]:not([readonly]):not([disabled]),
+#bom-drawer input[type="number"]:not([readonly]):not([disabled]),
+#bom-drawer select:not([disabled]),
+#bom-drawer textarea:not([readonly]):not([disabled]),
+#door-hardware-modal input[type="text"]:not([readonly]):not([disabled]),
+#door-hardware-modal input[type="number"]:not([readonly]):not([disabled]),
+#door-hardware-modal select:not([disabled]),
+#door-hardware-modal textarea:not([readonly]):not([disabled]) {
+  border: 1px solid var(--primary);
+  background: var(--surface);
+  border-radius: 4px;
+}
+#bom-drawer input[type="text"]:not([readonly]):not([disabled]):focus,
+#bom-drawer input[type="number"]:not([readonly]):not([disabled]):focus,
+#bom-drawer select:not([disabled]):focus,
+#bom-drawer textarea:not([readonly]):not([disabled]):focus,
+#door-hardware-modal input[type="text"]:not([readonly]):not([disabled]):focus,
+#door-hardware-modal input[type="number"]:not([readonly]):not([disabled]):focus,
+#door-hardware-modal select:not([disabled]):focus,
+#door-hardware-modal textarea:not([readonly]):not([disabled]):focus {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary-soft);
+  outline-offset: 0;
+}
 .dhw-hide-col { width:28px; text-align:center; }
 .dhw-hide-btn { background:none; border:0; cursor:pointer; color:#9ca3af; font:700 14px var(--font-ui); padding:0 4px; line-height:1; }
 .dhw-hide-btn:hover { color:#dc2626; }
@@ -19580,8 +19620,8 @@ function _sqRenderLabourRow(matRow, sectionId, lineKey, isCustom){
   var head = '<div class="' + rowCls + '" data-section="' + sectionId + '" data-line-key="' + escapeHtml(lineKey) + '">'
            +   skuCell
            +   '<div class="bom-desc">' + escapeHtml(desc) + '</div>'
-           +   '<input type="number" data-field="cost" value="' + (+r.cost).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)">'
-           +   '<input type="number" data-field="sell" value="' + (+r.sell).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)">';
+           +   '<div class="bom-cell-cost"><input type="number" data-field="cost" value="' + (+r.cost).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)"></div>'
+           +   '<div class="bom-cell-cost"><input type="number" data-field="sell" value="' + (+r.sell).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)"></div>';
   if(r.mode === 'hourly'){
     head += '<input type="number" data-field="hours" value="' + r.hours + '" step="0.25" min="0" onchange="_sqUpdateLabourField(this)">';
   }
