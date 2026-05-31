@@ -1100,6 +1100,46 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-table thead tr.dhw-filter-row th { padding:4px 6px; background:#fff; border-bottom:1px solid var(--border); text-transform:none; letter-spacing:normal; }
 .dhw-filter-input { width:100%; padding:4px 6px; border:1px solid var(--border); border-radius:3px; font:500 10px var(--font-mono); background:#fff; box-sizing:border-box; }
 .dhw-filter-input:focus { outline:none; border-color:var(--primary); }
+
+/* SQ + DHW polish: blue outline on every editable field inside the
+   Security Quote drawer (#bom-drawer) and Door Hardware modal
+   (#door-hardware-modal). Specificity (1,0,2) beats every per-context
+   (.bom-row input, .sq-default-rule-strip input, .sq-rule-pill-editor
+   input, .sq-summary-row .sq-summary-label input, .dhw-notes-input,
+   .dhw-input, .dhw-input-inline, .dhw-filter-input) rule at (0,1,2);
+   source-order placement after every per-context rule pins it as the
+   winner against same-specificity targets (e.g. #bom-tax-label at
+   (1,0,0) — beaten by specificity; ID-scoped rules at (1,0,*) — beaten
+   by source order).
+   Excludes readonly + disabled inputs (defensive — those keep their
+   muted look). Focus picks up the same outline-on-tint pattern as the
+   global :where rule but here it has to be re-declared inside the
+   ID scope so the per-context focus rules (which set outline:none)
+   don't win. */
+#bom-drawer input[type="text"]:not([readonly]):not([disabled]),
+#bom-drawer input[type="number"]:not([readonly]):not([disabled]),
+#bom-drawer select:not([disabled]),
+#bom-drawer textarea:not([readonly]):not([disabled]),
+#door-hardware-modal input[type="text"]:not([readonly]):not([disabled]),
+#door-hardware-modal input[type="number"]:not([readonly]):not([disabled]),
+#door-hardware-modal select:not([disabled]),
+#door-hardware-modal textarea:not([readonly]):not([disabled]) {
+  border: 1px solid var(--primary);
+  background: var(--surface);
+  border-radius: 4px;
+}
+#bom-drawer input[type="text"]:not([readonly]):not([disabled]):focus,
+#bom-drawer input[type="number"]:not([readonly]):not([disabled]):focus,
+#bom-drawer select:not([disabled]):focus,
+#bom-drawer textarea:not([readonly]):not([disabled]):focus,
+#door-hardware-modal input[type="text"]:not([readonly]):not([disabled]):focus,
+#door-hardware-modal input[type="number"]:not([readonly]):not([disabled]):focus,
+#door-hardware-modal select:not([disabled]):focus,
+#door-hardware-modal textarea:not([readonly]):not([disabled]):focus {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary-soft);
+  outline-offset: 0;
+}
 .dhw-hide-col { width:28px; text-align:center; }
 .dhw-hide-btn { background:none; border:0; cursor:pointer; color:#9ca3af; font:700 14px var(--font-ui); padding:0 4px; line-height:1; }
 .dhw-hide-btn:hover { color:#dc2626; }
@@ -3290,7 +3330,7 @@ input[type="number"]::-webkit-outer-spin-button {
       <div class="sq-summary-row">
         <span class="sq-summary-label">
           <input type="text" id="bom-tax-label" value="GST" maxlength="12" oninput="markDirty()"> (<span id="bom-tax-pct-disp">0</span>%)
-          <input type="number" id="bom-tax-pct" value="0" step="0.5" min="0" max="50" oninput="bomConfigChanged()">
+          <input type="number" id="bom-tax-pct" value="0" step="0.1" min="0" max="50" onchange="_sqSetTaxPct(this.value)">
         </span>
         <span class="sq-summary-value" id="bom-tax-amt">$0.00</span>
       </div>
@@ -5592,8 +5632,8 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
       '<label><b>Project Markup:</b> ' +
         '<span class="dhw-pct-wrap">' +
           '<input type="number" class="dhw-input" min="0" step="5"' +
-            // W6++ : display markup default at 2dp.
-            ' value="' + Number(markupDefault).toFixed(2) + '"' +
+            // SQ + DHW polish: percent inputs render at 1dp (was 2dp).
+            ' value="' + Number(markupDefault).toFixed(1) + '"' +
             ' onchange="_dhwSetDefaultMarkup(this.value)">' +
           '<span>%</span>' +
         '</span>' +
@@ -5657,9 +5697,9 @@ function _dhwRenderStep2Hardware(takeoff, quotes){
     // Per-line markup override; blank = fall back to project default.
     // W6+++++: data-dhw-colnav attributes wire Tab/Enter column-down nav.
     var markupInput = '<input type="number" class="dhw-input-inline" min="0" step="5"' +
-      ' value="' + (hasOverride ? Number(override).toFixed(2) : '') + '"' +
-      ' placeholder="' + Number(markupDefault).toFixed(2) + '"' +
-      ' title="Per-line override; blank = use project default (' + Number(markupDefault).toFixed(2) + '%)"' +
+      ' value="' + (hasOverride ? Number(override).toFixed(1) : '') + '"' +
+      ' placeholder="' + Number(markupDefault).toFixed(1) + '"' +
+      ' title="Per-line override; blank = use project default (' + Number(markupDefault).toFixed(1) + '%)"' +
       ' data-dhw-colnav="markup" data-dhw-colnav-key="' + _dhwEsc(key) + '"' +
       ' onkeydown="_dhwColNavKey(event)"' +
       ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
@@ -5830,7 +5870,7 @@ function _dhwRenderStep4Labour(takeoff, quotes){
     '<div class="dhw-control-row">' +
       '<label><b>Hourly rate:</b> $ ' +
         '<input type="number" class="dhw-input" min="0" step="1"' +
-          ' value="' + _dhwEsc(hourlyRate) + '"' +
+          ' value="' + _dhwEsc(Number(hourlyRate).toFixed(2)) + '"' +
           ' onchange="_dhwSetHourlyRate(this.value)"> /hr' +
       '</label>' +
       '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every line\'s install hours.</span>' +
@@ -7362,7 +7402,7 @@ function _dhwRenderPricingAndLabour(takeoff, quotes){
     '<div class="dhw-control-row">' +
       '<label><b>Project Markup:</b> ' +
         '<input type="number" class="dhw-input" min="0" step="5"' +
-          ' value="' + _dhwEsc(markupDefault) + '"' +
+          ' value="' + _dhwEsc(Number(markupDefault).toFixed(1)) + '"' +
           ' onchange="_dhwSetDefaultMarkup(this.value)"> %' +
       '</label>' +
       '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every awarded line unless a per-line override is set below. Steppers move ±5%; type any value directly.</span>' +
@@ -7371,7 +7411,7 @@ function _dhwRenderPricingAndLabour(takeoff, quotes){
     '<div class="dhw-control-row">' +
       '<label><b>Hourly rate:</b> $ ' +
         '<input type="number" class="dhw-input" min="0" step="1"' +
-          ' value="' + _dhwEsc(hourlyRate) + '"' +
+          ' value="' + _dhwEsc(Number(hourlyRate).toFixed(2)) + '"' +
           ' onchange="_dhwSetHourlyRate(this.value)"> /hr' +
       '</label>' +
       '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Per-line install hours editable in the table below (hours are per line, not per unit).</span>' +
@@ -7428,9 +7468,9 @@ function _dhwRenderPricingAndLabour(takeoff, quotes){
     var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
     var keyAttr = _dhwAttrJs(key);
     var markupInput = '<input type="number" class="dhw-input-inline" min="0" step="0.1"' +
-      ' value="' + _dhwEsc(hasOverride ? override : '') + '"' +
-      ' placeholder="' + _dhwEsc(markupDefault) + '"' +
-      ' title="Per-line override; blank = use project default (' + _dhwEsc(markupDefault) + '%)"' +
+      ' value="' + _dhwEsc(hasOverride ? Number(override).toFixed(1) : '') + '"' +
+      ' placeholder="' + _dhwEsc(Number(markupDefault).toFixed(1)) + '"' +
+      ' title="Per-line override; blank = use project default (' + _dhwEsc(Number(markupDefault).toFixed(1)) + '%)"' +
       ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
     var hoursInput = '<input type="number" class="dhw-input-inline" min="0" step="0.25"' +
       ' value="' + _dhwEsc(hasHoursOverride ? hoursVal : '') + '"' +
@@ -7502,18 +7542,16 @@ function _dhwRenderPricingAndLabour(takeoff, quotes){
 // Setters use onchange (blur), not oninput, so the re-render doesn't
 // steal keystroke focus. All mutations go through markDirty().
 function _dhwSetDefaultMarkup(raw){
-  var n = parseFloat(raw);
-  if(!isFinite(n) || n < 0) n = 0;
-  // W6++ : store at 2-decimal precision so the displayed field is clean
-  // (matches the per-line markup and back-calc rounding).
-  n = Math.round(n * 100) / 100;
+  // SQ + DHW polish: Project Markup is a percent — cap at 1dp (was 2dp
+  // pre-polish; tightened to match SQ's pricing rule precision).
+  var n = _sqRound1(raw);
   doorHardware.hardwarePricing.defaultMarkupPct = n;
   markDirty();
   renderDoorHardwareModal();
 }
 function _dhwSetHourlyRate(raw){
-  var n = parseFloat(raw);
-  if(!isFinite(n) || n < 0) n = 0;
+  // SQ + DHW polish: hourly rate is money — cap at 2dp.
+  var n = _sqRound2(raw);
   doorHardware.hardwarePricing.hourlyRate = n;
   markDirty();
   renderDoorHardwareModal();
@@ -7541,11 +7579,8 @@ function _dhwSetLineMarkup(matchKey, raw){
   if(s === ''){
     delete pricing.lineMarkupOverrides[matchKey];
   } else {
-    var n = parseFloat(s);
-    if(!isFinite(n) || n < 0) n = 0;
-    // W6++ : store at 2-decimal precision for clean field display.
-    n = Math.round(n * 100) / 100;
-    pricing.lineMarkupOverrides[matchKey] = n;
+    // SQ + DHW polish: per-line markup is a percent — 1dp.
+    pricing.lineMarkupOverrides[matchKey] = _sqRound1(s);
   }
   markDirty();
   renderDoorHardwareModal();
@@ -7578,14 +7613,13 @@ function _dhwSetLineUnitSell(matchKey, raw, unitCost){
     return;
   }
   if(typeof unitCost !== 'number' || !isFinite(unitCost) || unitCost <= 0) return;
-  var sell = parseFloat(s);
-  if(!isFinite(sell) || sell < 0) sell = 0;
+  // SQ + DHW polish: typed sell is money (2dp); back-calculated markup
+  // is a percent (1dp). The 2dp→1dp tighten on markup matches every
+  // other percent input in SQ + DHW.
+  var sell = _sqRound2(s);
   var markup = (sell / unitCost - 1) * 100;
   if(!isFinite(markup) || markup < 0) markup = 0;
-  // W6++ : round to 2dp so the markup field reads cleanly (50.01 not
-  // 50.0102). Round-trip: $49.11 × (1 + 50.01/100) = $73.6694 → $73.67
-  // formatted with .toFixed(2), within a cent of the user's typed sell.
-  markup = Math.round(markup * 100) / 100;
+  markup = Math.round(markup * 10) / 10;
   pricing.lineMarkupOverrides[matchKey] = markup;
   markDirty();
   renderDoorHardwareModal();
@@ -18611,6 +18645,21 @@ function bomConfigChanged(){
   recalcBom();
 }
 
+// SQ + DHW polish — Tax % canonical setter. Wired to #bom-tax-pct's
+// onchange (fires on blur). Caps at 1dp + clamps to [0, 50], restamps
+// the input with the canonical "X.X" form, then markDirty + recalcBom
+// like the rest of the config inputs. Replaces the prior generic
+// oninput="bomConfigChanged()" path so tax % follows the same precision
+// rule as every other percent input in SQ + DHW.
+function _sqSetTaxPct(raw){
+  var v = _sqRound1(raw);
+  if(v > 50) v = 50;
+  var el = document.getElementById('bom-tax-pct');
+  if(el) el.value = v.toFixed(1);
+  markDirty();
+  recalcBom();
+}
+
 // ─── BOM two-tier hierarchy (M3 + SQ-wizard M2a/b) ───────────────────────────
 // Fixed five-major × named-minor template; minor headings render only when
 // they hold ≥1 row (zero-qty groups hidden, mirroring the existing
@@ -19233,6 +19282,23 @@ function _sqFmtPct(n){
   return n.toFixed(1) + '%';
 }
 
+// SQ + DHW polish — two-tier rounding helpers. Money inputs cap at 2
+// decimals (cents); percent inputs cap at 1 decimal. Commit handlers
+// across SQ Materials/Labour/Summary + DHW route every user-typed value
+// through one of these before storing on state, then re-stamp the input
+// with the canonical toFixed string. Negative + NaN + empty → 0
+// (existing convention).
+function _sqRound2(n){
+  n = parseFloat(n);
+  if(!isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100) / 100;
+}
+function _sqRound1(n){
+  n = parseFloat(n);
+  if(!isFinite(n) || n < 0) return 0;
+  return Math.round(n * 10) / 10;
+}
+
 // SQ-wizard M2b — project-default rule strip. Sits above the section
 // blocks. Two controls (mode select, value input) write bomPricingRule
 // on change + trigger recalcBom. The "Apply to unset sections" button
@@ -19248,7 +19314,7 @@ function _sqRenderDefaultRuleStrip(){
        +     '<option value="markup"'   + (mode === 'markup'   ? ' selected' : '') + '>Mark-Up</option>'
        +     '<option value="discount"' + (mode === 'discount' ? ' selected' : '') + '>Discount</option>'
        +   '</select>'
-       +   '<input type="number" min="0" max="200" step="1" value="' + val + '" onchange="_sqSetDefaultValue(this.value)">'
+       +   '<input type="number" min="0" max="200" step="0.1" value="' + _sqRound1(val).toFixed(1) + '" onchange="_sqSetDefaultValue(this.value)">'
        +   '<span>%</span>'
        +   '<button class="sq-apply-defaults" type="button" onclick="_sqApplyDefaultsToUnsetSections()">Apply to unset sections</button>'
        + '</div>';
@@ -19285,8 +19351,8 @@ function _sqSetDefaultMode(mode){
   recalcBom();
 }
 function _sqSetDefaultValue(raw){
-  var v = parseFloat(raw);
-  if(!isFinite(v) || v < 0) v = 0;
+  // SQ + DHW polish: default pricing rule value is a percent — cap at 1dp.
+  var v = _sqRound1(raw);
   if(v > 200) v = 200;
   bomPricingRule.value = v;
   markDirty();
@@ -19312,7 +19378,7 @@ function _sqStartEditPill(sectionId){
                 +      '<option value="markup"'   + (mode === 'markup'   ? ' selected' : '') + '>Markup</option>'
                 +      '<option value="discount"' + (mode === 'discount' ? ' selected' : '') + '>Discount</option>'
                 +    '</select>'
-                +    '<input type="number" id="sq-edit-val-' + sectionId + '" min="0" max="200" step="1" value="' + val + '" onkeydown="_sqPillEditorKey(event,\'' + sectionId + '\')">'
+                +    '<input type="number" id="sq-edit-val-' + sectionId + '" min="0" max="200" step="0.1" value="' + _sqRound1(val).toFixed(1) + '" onkeydown="_sqPillEditorKey(event,\'' + sectionId + '\')">'
                 +    '<span>%</span>'
                 +    '<button class="ok"     type="button" onclick="_sqCommitPill(\'' + sectionId + '\')" title="Save">&check;</button>'
                 +    '<button class="cancel" type="button" onclick="_sqCancelPill(\'' + sectionId + '\')" title="Cancel">&times;</button>'
@@ -19330,8 +19396,8 @@ function _sqCommitPill(sectionId){
   var valEl  = document.getElementById('sq-edit-val-'  + sectionId);
   if(!modeEl || !valEl) return;
   var mode = (modeEl.value === 'discount') ? 'discount' : 'markup';
-  var v    = parseFloat(valEl.value);
-  if(!isFinite(v) || v < 0) v = 0;
+  // SQ + DHW polish: per-section pricing rule value is a percent — 1dp.
+  var v = _sqRound1(valEl.value);
   if(v > 200) v = 200;
   bomSectionRules[sectionId] = { mode: mode, value: v };
   markDirty();
@@ -19510,9 +19576,9 @@ function _sqRenderLabourDefaultStrip(){
     var v1 = (bomLabourRule && typeof bomLabourRule.costRate === 'number') ? bomLabourRule.costRate : 0;
     var v2 = (bomLabourRule && typeof bomLabourRule.sellRate === 'number') ? bomLabourRule.sellRate : 0;
     rateInputs = '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">Cost $/hr</span>'
-               + '<input type="number" min="0" step="0.01" value="' + v1 + '" onchange="_sqSetLabourDefaultV1(this.value)">'
+               + '<input type="number" min="0" step="0.01" value="' + _sqRound2(v1).toFixed(2) + '" onchange="_sqSetLabourDefaultV1(this.value)">'
                + '<span style="font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase;">Sell $/hr</span>'
-               + '<input type="number" min="0" step="0.01" value="' + v2 + '" onchange="_sqSetLabourDefaultV2(this.value)">';
+               + '<input type="number" min="0" step="0.01" value="' + _sqRound2(v2).toFixed(2) + '" onchange="_sqSetLabourDefaultV2(this.value)">';
   }
   return '<div class="sq-default-rule-strip">'
        +   '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;">'
@@ -19580,8 +19646,8 @@ function _sqRenderLabourRow(matRow, sectionId, lineKey, isCustom){
   var head = '<div class="' + rowCls + '" data-section="' + sectionId + '" data-line-key="' + escapeHtml(lineKey) + '">'
            +   skuCell
            +   '<div class="bom-desc">' + escapeHtml(desc) + '</div>'
-           +   '<input type="number" data-field="cost" value="' + (+r.cost).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)">'
-           +   '<input type="number" data-field="sell" value="' + (+r.sell).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)">';
+           +   '<div class="bom-cell-cost"><input type="number" data-field="cost" value="' + (+r.cost).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)"></div>'
+           +   '<div class="bom-cell-cost"><input type="number" data-field="sell" value="' + (+r.sell).toFixed(2) + '" step="0.01" min="0" onchange="_sqUpdateLabourField(this)"></div>';
   if(r.mode === 'hourly'){
     head += '<input type="number" data-field="hours" value="' + r.hours + '" step="0.25" min="0" onchange="_sqUpdateLabourField(this)">';
   }
@@ -19673,14 +19739,16 @@ function _sqSetLabourDefaultMode(mode){
   recalcSummaryOnly();
 }
 function _sqSetLabourDefaultV1(raw){
-  var v = parseFloat(raw); if(!isFinite(v) || v < 0) v = 0;
+  // SQ + DHW polish: default Cost $/hr is money — cap at 2dp.
+  var v = _sqRound2(raw);
   bomLabourRule.costRate = v;
   markDirty();
   recalcLabour();
   recalcSummaryOnly();
 }
 function _sqSetLabourDefaultV2(raw){
-  var v = parseFloat(raw); if(!isFinite(v) || v < 0) v = 0;
+  // SQ + DHW polish: default Sell $/hr is money — cap at 2dp.
+  var v = _sqRound2(raw);
   bomLabourRule.sellRate = v;
   markDirty();
   recalcLabour();
@@ -19755,8 +19823,16 @@ function _sqUpdateLabourField(input){
   var sectionId = row.dataset.section || '';
   var field     = input.dataset.field;
   if(!lineKey || !field) return;
-  var v = parseFloat(input.value);
-  if(!isFinite(v) || v < 0) v = 0;
+  // SQ + DHW polish: cost + sell are money — 2dp cap + canonical
+  // restamp. hours is left at its raw parse (not money, not percent).
+  var v;
+  if(field === 'cost' || field === 'sell'){
+    v = _sqRound2(input.value);
+    input.value = v.toFixed(2);
+  } else {
+    v = parseFloat(input.value);
+    if(!isFinite(v) || v < 0) v = 0;
+  }
   if(!bomLabourLineRules[lineKey]) bomLabourLineRules[lineKey] = {};
   bomLabourLineRules[lineKey][field] = v;
   markDirty();
@@ -20244,7 +20320,10 @@ function updateAutoRow(input){
   // writes to ONE shared entry.
   var key = _normalizeBomKey(row.dataset.key);
   var field = input.dataset.field;
-  var val = parseFloat(input.value) || 0;
+  // SQ + DHW polish: money input — cap at 2 decimals + restamp the
+  // input so 10.020 reads back as "10.02" after commit.
+  var val = _sqRound2(input.value);
+  input.value = val.toFixed(2);
   if(!bomAutoOverrides[key]) bomAutoOverrides[key] = {};
   bomAutoOverrides[key][field] = val;
   markDirty();
@@ -20348,7 +20427,13 @@ function updateCustomRow(input){
   var line = bomCustomLines[section][idx];
   if(!line) return;
   if(field === 'desc') line.desc = input.value;
-  else line[field] = parseFloat(input.value) || 0;
+  else if(field === 'unit'){
+    // SQ + DHW polish: cost is money — 2dp cap + canonical restamp.
+    var v = _sqRound2(input.value);
+    input.value = v.toFixed(2);
+    line[field] = v;
+  }
+  else line[field] = parseFloat(input.value) || 0;  // qty stays as-typed
   markDirty();
   // Skip cell math + summary for plain-text desc edits — those only
   // mutate label, not money. Numeric edits drive the in-row recalc +
