@@ -372,10 +372,15 @@ input[type="number"]::-webkit-outer-spin-button {
 .bom-section {
   padding: 8px 0; border-bottom:1px solid var(--border);
 }
+/* SQ + DHW parity P2: tier-2 section header adopts DHW's .dhw-section-hdr
+   typography (12px neutral uppercase with 1px border-bottom) so headers
+   match across both wizards. tier-1 (.bom-tier1-hdr) stays as the bigger
+   grouping. The .bom-sec-hdr.warn amber variant still overrides. */
 .bom-sec-hdr {
-  padding: 6px 16px; font-size:9px; letter-spacing:.12em;
-  text-transform:uppercase; color:var(--primary); font-weight:700;
-  display:flex; align-items:center; gap:8px;
+  padding:6px 16px 8px; font:700 12px var(--font-ui); color:var(--text);
+  text-transform:uppercase; letter-spacing:.10em;
+  border-bottom:1px solid var(--border); margin-bottom:4px;
+  display:flex; align-items:center; gap:10px;
 }
 .bom-sec-hdr .add-btn {
   background:#374151; color:#fff; border:none; border-radius:2px;
@@ -415,9 +420,17 @@ input[type="number"]::-webkit-outer-spin-button {
   padding: 4px 16px; font-size:10px; border-bottom:1px solid var(--surface-muted);
 }
 .bom-row:hover { background:var(--surface-soft); }
+/* SQ + DHW parity P2: navy sticky column header mirrors .dhw-table thead
+   first row (background var(--primary-dark) + white text + 2px ink
+   bottom outline + position:sticky). Reads as a frozen chrome element
+   distinct from the scrolling body. Applies to Materials, Labour, and
+   the Summary xlsx col-hdr rows. */
 .bom-row.col-hdr {
-  background:var(--surface-muted); color:var(--text-muted); font:700 8px var(--font-ui);
-  text-transform:uppercase; letter-spacing:.04em; padding-top:5px; padding-bottom:5px;
+  background:var(--primary-dark); color:#fff; font:700 9px var(--font-ui);
+  text-transform:uppercase; letter-spacing:.05em;
+  padding-top:8px; padding-bottom:8px;
+  border-bottom:2px solid var(--ink);
+  position:sticky; top:0; z-index:5;
 }
 .bom-row input, .bom-row .bom-desc {
   padding:2px 4px; border:1px solid transparent; border-radius:2px;
@@ -467,10 +480,12 @@ input[type="number"]::-webkit-outer-spin-button {
    Pills are clickable badges in the section header (right side). The
    "default-fallback" variant (no per-section override) renders muted +
    italic so the user can tell at a glance which sections inherit. */
+/* SQ + DHW parity P2: flat default-rule strip — drops the tinted band
+   so the strip composes inside the .dhw-section card that now wraps each
+   SQ step. Flex-row layout matches DHW's .dhw-control-row. */
 .sq-default-rule-strip {
-  padding:10px 16px; margin:8px 0 6px;
-  background:#f9fafb; border:1px solid var(--border); border-radius:4px;
-  display:flex; align-items:center; gap:10px; font:600 11px var(--font-ui);
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  margin-bottom:10px; font:500 12px var(--font-ui);
 }
 .sq-default-rule-strip label { color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:10px; }
 .sq-default-rule-strip select, .sq-default-rule-strip input {
@@ -3283,7 +3298,7 @@ input[type="number"]::-webkit-outer-spin-button {
        toggled by inline display in _sqGoToStep(n); inputs preserve
        state across step nav (no innerHTML rebuild). -->
   <div class="dhw-step-content">
-  <div id="sq-step-materials" data-step="1" style="display:block">
+  <div id="sq-step-materials" class="dhw-section" data-step="1" style="display:block">
   <!-- SQ-wizard M2c: Tier Filter relocated to its own host (was inside
        #bom-summary). Stays in Materials — filters camera rows only. -->
   <div id="sq-tier-filter-host">
@@ -3314,7 +3329,7 @@ input[type="number"]::-webkit-outer-spin-button {
     <!-- populated dynamically -->
   </div>
   </div><!-- /#sq-step-materials -->
-  <div id="sq-step-labour" data-step="2" style="display:none">
+  <div id="sq-step-labour" class="dhw-section" data-step="2" style="display:none">
     <!-- SQ-wizard M3: labour body. Populated imperatively by recalcLabour()
          on every recalcBom + on labour rule/qty edits. Renders the
          default rule strip (with Supply-only toggle) at top, per-section
@@ -3322,7 +3337,7 @@ input[type="number"]::-webkit-outer-spin-button {
          static LABOUR SUBTOTAL footer at the end. Empty when no rows. -->
     <div id="sq-labour-body"></div>
   </div>
-  <div id="sq-step-summary" data-step="3" style="display:none">
+  <div id="sq-step-summary" class="dhw-section" data-step="3" style="display:none">
     <!-- SQ-wizard M3: Supply-only badge host. Populated by
          _sqRenderSupplyOnlyBadge() — empty when bomLabourSupplyOnly is
          false; renders an amber notice when true. Sits above the counts
@@ -19614,10 +19629,11 @@ function _sqRenderLabourDefaultStrip(){
                + '<input type="number" min="0" step="0.01" value="' + _sqRound2(v2).toFixed(2) + '" onchange="_sqSetLabourDefaultV2(this.value)">';
   }
   return '<div class="sq-default-rule-strip">'
-       +   '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;">'
+       +   '<label class="dhw-toggle" title="Toggle on for supply-only jobs (labour excluded from totals)">'
        +     '<input type="checkbox"' + supplyChk + ' onchange="_sqSetLabourSupplyOnly(this.checked)">'
-       +     '<span>Supply only</span>'
+       +     '<span class="dhw-toggle-slider"></span>'
        +   '</label>'
+       +   '<span style="font-weight:700;">Supply only</span>'
        +   '<span style="flex:0 0 auto; color:var(--text-muted); padding:0 6px;">|</span>'
        +   '<label>Default labour</label>'
        +   '<span class="sq-mode-toggle" style="margin-left:0;">'
