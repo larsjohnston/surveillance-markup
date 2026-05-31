@@ -623,6 +623,13 @@ input[type="number"]::-webkit-outer-spin-button {
   border:1px solid var(--border); border-radius:3px;
   font:600 12px var(--font-mono); background:#fff; text-align:right;
 }
+/* SQ Summary M5: editable Tax label (default "GST"). Renders inline
+   inside the label cell of the Tax row — no border by default so it
+   reads as static text; focus picks up the global :where outline. */
+#bom-tax-label {
+  border:none; background:transparent; padding:0 2px;
+  font:inherit; color:inherit; width:auto; min-width:30px; text-align:left;
+}
 .sq-summary-row .sq-summary-value {
   font:700 16px var(--font-mono); color:#111;
 }
@@ -3288,7 +3295,7 @@ input[type="number"]::-webkit-outer-spin-button {
       </div>
       <div class="sq-summary-row">
         <span class="sq-summary-label">
-          Tax (<span id="bom-tax-pct-disp">0</span>%)
+          <input type="text" id="bom-tax-label" value="GST" maxlength="12" oninput="markDirty()"> (<span id="bom-tax-pct-disp">0</span>%)
           <input type="number" id="bom-tax-pct" value="0" step="0.5" min="0" max="50" oninput="bomConfigChanged()">
         </span>
         <span class="sq-summary-value" id="bom-tax-amt">$0.00</span>
@@ -14385,9 +14392,11 @@ function updateSaveIndicator(){
 function buildLiteSaveData(){
   // BOM Restructure follow-up: laborRate / laborHrs no longer persisted —
   // the inputs were removed and the labor compute lives in computeNonBomRows().
+  // SQ Summary M5: taxLabel persists the editable Tax row label (default "GST").
   var bomConfig = {
     marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
     taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
+    taxLabel:  _bomTaxLabel(),
     storDays:  parseFloat(document.getElementById('stor-days').value)||30,
     storFps:   parseFloat(document.getElementById('stor-fps').value)||15,
     storCodec: document.getElementById('stor-codec').value,
@@ -14623,9 +14632,11 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   // BOM Restructure follow-up: laborRate / laborHrs no longer persisted.
+  // SQ Summary M5: taxLabel persists the editable Tax row label.
   var bomConfig = {
     marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
     taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
+    taxLabel:  _bomTaxLabel(),
     storDays:  parseFloat(document.getElementById('stor-days').value)||30,
     storFps:   parseFloat(document.getElementById('stor-fps').value)||15,
     storCodec: document.getElementById('stor-codec').value,
@@ -15073,6 +15084,11 @@ function applyProjectState(data){
       // saves are silently ignored on load — the inputs they fed are gone.
       if(data.bom.config.marginPct !== undefined) document.getElementById('bom-margin-pct').value = data.bom.config.marginPct;
       if(data.bom.config.taxPct    !== undefined) document.getElementById('bom-tax-pct').value    = data.bom.config.taxPct;
+      // SQ Summary M5: taxLabel defaults to 'GST' for projects saved
+      // before this field existed. Falsy → default.
+      var __tl = (data.bom.config.taxLabel != null && String(data.bom.config.taxLabel).trim()) ? String(data.bom.config.taxLabel) : 'GST';
+      var __tlEl = document.getElementById('bom-tax-label');
+      if(__tlEl) __tlEl.value = __tl;
       if(data.bom.config.storDays  !== undefined) document.getElementById('stor-days').value      = data.bom.config.storDays;
       if(data.bom.config.storFps   !== undefined) document.getElementById('stor-fps').value       = data.bom.config.storFps;
       if(data.bom.config.storCodec !== undefined) document.getElementById('stor-codec').value     = data.bom.config.storCodec;
@@ -20505,6 +20521,15 @@ function formatMoney(n){
   return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+// SQ Summary M5: read the current Tax row label (default "GST"). Single
+// source for save/load/export consumers so they don't each re-read the
+// input's value with their own falsy guards.
+function _bomTaxLabel(){
+  var el = document.getElementById('bom-tax-label');
+  var v = el ? String(el.value || '').trim() : '';
+  return v || 'GST';
+}
+
 // Pass N M4-fix: customer-facing BOM description (PDF + CSV). Strips the
 // " — SKU" suffix from auto-generated AC rows so the customer sees
 // "Brivo Reader Mullion Mount Dual-Technology (black)" rather than the
@@ -20600,7 +20625,7 @@ function exportBomCSV(){
   rows.push('');
   rows.push(',,Subtotal,,,'+subtotal.toFixed(2));
   rows.push(',,Margin ('+marginPct+'%),,,'+marginAmt.toFixed(2));
-  rows.push(',,Tax ('+taxPct+'%),,,'+taxAmt.toFixed(2));
+  rows.push(',,'+_bomTaxLabel()+' ('+taxPct+'%),,,'+taxAmt.toFixed(2));
   rows.push(',,Grand Total,,,'+grand.toFixed(2));
 
   var a=document.createElement('a');
