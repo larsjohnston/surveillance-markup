@@ -300,10 +300,17 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 /* ── BOM Drawer ── centered modal variant (CSS-only) ───────── */
+/* SQ + DHW parity P5: vertical position aligned to DHW. DHW's
+   .big-modal-box uses max-height:92vh inside a flex-centered backdrop;
+   SQ used height:82vh which left it ~5vh lower at the bottom edge.
+   Match by bumping height to 92vh + keeping the same center anchor —
+   SQ now occupies the same vertical real estate as DHW (top ~4vh,
+   bottom ~96vh). Internal scroll-wrap still needs a definite height
+   so we keep an explicit value rather than max-height alone. */
 #bom-drawer {
   position: fixed; top:50%; left:50%;
   width: 66vw; min-width: 680px; max-width: 1080px;
-  height: 82vh; min-height: 480px; max-height: 92vh;
+  height: 92vh; min-height: 480px; max-height: 92vh;
   background:#fff; box-shadow:0 20px 60px rgba(0,0,0,.28);
   border-radius:8px; overflow:hidden;
   z-index:50; display:flex; flex-direction:column;
@@ -333,7 +340,12 @@ input[type="number"]::-webkit-outer-spin-button {
   border-bottom:3px solid var(--primary);
   margin:-24px -28px 18px; /* lift to the .big-modal-box edge */
 }
-.dhw-header h3 { margin:0; flex:1; font:700 13px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; color:#fff; }
+/* SQ + DHW parity P5: bump specificity past .modal-box h3 (which paints
+   h3 inside the modal box BLUE via var(--primary)). With the .dhw-header
+   band wrapped inside .dhw-modal-box, the descendant chain (0,2,1) beats
+   .modal-box h3's (0,1,1). Source order would also work but specificity
+   is more robust against future rule moves. */
+.dhw-modal-box .dhw-header h3 { margin:0; flex:1; font:700 13px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; color:#fff; }
 .dhw-header .dhw-close-x { background:transparent; color:#fff; border:none; font-size:20px; cursor:pointer; padding:0 6px; line-height:1; }
 .dhw-header .dhw-close-x:hover { color:var(--primary); }
 
@@ -1022,6 +1034,16 @@ input[type="number"]::-webkit-outer-spin-button {
    counts them. Stronger amber than the gap-row cream (#fffaf2) so the two
    states stay distinguishable when both appear in the same table. */
 .dhw-table tr.dhw-row-nolabour td { background:var(--amber-soft-bg); }
+/* SQ + DHW parity P5: Sub-Total row reads as a dark band (mirror of SQ's
+   .bom-row.grand-subtotal treatment) so the headline figure carries the
+   same visual weight on both wizards. Border-top is the primary accent;
+   bg ink, text white. */
+.dhw-table tr.dhw-sub-total-row td {
+  background: var(--ink); color: #fff;
+  border-top: 2px solid var(--primary) !important;
+  font-weight: 700;
+}
+.dhw-table tr.dhw-sub-total-row td.dhw-num { color: #fff; }
 .dhw-nolabour-warn { margin-top:10px; padding:10px 14px; background:var(--amber-soft-bg); border:1px solid var(--amber-border); border-left:4px solid var(--amber-rule); border-radius:5px; color:var(--amber-text); font:600 11px var(--font-ui); letter-spacing:.02em; line-height:1.5; }
 .dhw-warn { color:#b45309; font-weight:700; }
 .dhw-gap  { color:#b45309; font-style:italic; }
@@ -5494,6 +5516,22 @@ function _dhwToggleSummaryHiddenCol(colKey){
 function _dhwToggleSummaryTools(){
   _dhwSummaryToolsOpen = !_dhwSummaryToolsOpen;
   renderDoorHardwareModal();
+  // SQ + DHW parity P5: install a one-shot click-outside listener when
+  // the popover flips OPEN. Clicking anywhere that isn't the popover or
+  // its trigger button closes it. The listener removes itself after the
+  // close fires so we don't stack handlers across re-opens.
+  if(_dhwSummaryToolsOpen) _dhwInstallSummaryToolsCloseHandler();
+}
+function _dhwInstallSummaryToolsCloseHandler(){
+  function onDown(e){
+    var pop = document.querySelector('#door-hardware-modal .dhw-tools-popover');
+    var btn = document.querySelector('#door-hardware-modal .dhw-tools-btn');
+    if(!pop || !btn) return;
+    if(pop.contains(e.target) || btn.contains(e.target)) return;
+    document.removeEventListener('mousedown', onDown, true);
+    _dhwToggleSummaryTools();
+  }
+  document.addEventListener('mousedown', onDown, true);
 }
 // W6+++++++: clear ALL summary view lenses at once — per-column filters,
 // quick filter, hidden rows, hidden columns. Sort and the filter-UI-open
@@ -6356,12 +6394,13 @@ function _dhwRenderStep5Summary(takeoff, quotes){
 
   // Caption: surfaces what's lensed when something is active. Row-side
   // and column-side counts joined into one sentence.
+  // SQ + DHW parity P5: column-hidden count dropped from the caption —
+  // the popover's own visibility (and the truncated header row) make the
+  // hidden state self-evident. Row-count caption stays because rows can
+  // disappear entirely with no other indicator.
   var captionParts = [];
   if(visibleRows.length !== rowData.length){
     captionParts.push('Showing ' + visibleRows.length + ' of ' + rowData.length + ' lines');
-  }
-  if(hiddenColsCount > 0){
-    captionParts.push(hiddenColsCount + ' column' + (hiddenColsCount === 1 ? '' : 's') + ' hidden');
   }
   var captionHtml = (captionParts.length > 0)
     ? '<span class="dhw-toolbar-caption">' + captionParts.join(', ') + ' &mdash; viewing lens; totals reflect all data.</span>'
@@ -6481,9 +6520,9 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   }
   var sumRowCells;
   if(firstSumIdx === -1){
-    sumRowCells = '<td colspan="' + (1 + visibleCols.length) + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>';
+    sumRowCells = '<td colspan="' + (1 + visibleCols.length) + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sub-Total</td>';
   } else {
-    sumRowCells = '<td colspan="' + (1 + firstSumIdx) + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sums:</td>';
+    sumRowCells = '<td colspan="' + (1 + firstSumIdx) + '" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Sub-Total</td>';
     for(var sj = firstSumIdx; sj < visibleCols.length; sj++){
       var sc = visibleCols[sj];
       var sv = sumValueFor[sc.key];
@@ -6492,7 +6531,9 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       sumRowCells += '<td class="dhw-num" style="' + fw + ' padding-top:12px; border-top:1.5px solid var(--border);">' + html + '</td>';
     }
   }
-  var sumsRow = '<tr>' + sumRowCells + '</tr>';
+  // SQ + DHW parity P5: dark-band Sub-Total row mirrors SQ's xlsx
+  // grand-subtotal styling (ink bg + white text + primary top border).
+  var sumsRow = '<tr class="dhw-sub-total-row">' + sumRowCells + '</tr>';
 
   // Grand total row. Label spans every cell except the last visible one;
   // the grand total value lands in the rightmost cell. When 0 data cols
@@ -19004,6 +19045,12 @@ function recalcBom(){
   // SQ-wizard M2b: project default rule strip lives at the top of bom-body.
   html += _sqRenderDefaultRuleStrip();
 
+  // SQ + DHW parity P5: single sticky col-hdr at the top of #bom-body
+  // (mirrors DHW's one-thead-sticky pattern). Previously emitted per
+  // section, which broke the sticky illusion as the user scrolled past
+  // each section's header. Now: one col-hdr above every section.
+  html += colHdrHtml;
+
   // SQ-wizard M2b: grand totals accumulated across every visible row.
   var grandQCost = 0, grandQSell = 0, grandMargin = 0;
   var subtotalCost = 0;   // legacy "subtotal" semantics = sum of Qty×Cost,
@@ -19033,7 +19080,6 @@ function recalcBom(){
             +   '<span>' + escapeHtml(sub.title) + '</span>'
             +   _sqRenderRulePill(sub.id)
             + '</div>';
-      html += colHdrHtml;
 
       var secQCost = 0, secQSell = 0, secMargin = 0;
 
@@ -19613,7 +19659,7 @@ function _sqRenderSectionSubtotal(sectionId, sums){
   var gm = sums.sumQSell > 0 ? (sums.sumMargin / sums.sumQSell) * 100 : null;
   return '<div class="bom-row section-subtotal" data-subtotal="section" data-section="' + sectionId + '">'
        +   '<div></div>'
-       +   '<div class="bom-desc">Subtotal</div>'
+       +   '<div class="bom-desc">Sub-Total</div>'
        +   '<div></div><div></div><div></div><div></div>'
        +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQCost) + '</div>'
        +   '<div class="bom-cell">' + _sqFmtMoney(sums.sumQSell) + '</div>'
@@ -19784,7 +19830,7 @@ function _sqRenderLabourSectionSubtotal(sectionId, sums, mode){
   var trailing = (mode === 'flat') ? '' : '<div></div>';
   return '<div class="' + rowCls + '" data-subtotal="section" data-section="' + sectionId + '">'
        +   '<div></div>'
-       +   '<div class="bom-desc">Subtotal</div>'
+       +   '<div class="bom-desc">Sub-Total</div>'
        +   leading
        +   '<div class="bom-cell bom-labour-sec-qcost">'  + _sqFmtMoney(sums.sumQCost)  + '</div>'
        +   '<div class="bom-cell bom-labour-sec-qsell">'  + _sqFmtMoney(sums.sumQSell)  + '</div>'
@@ -20215,6 +20261,19 @@ function _sqToggleSummaryHiddenCol(colKey){
 function _sqToggleSummaryTools(){
   _sqSummaryToolsOpen = !_sqSummaryToolsOpen;
   recalcSummaryXlsx();
+  // SQ + DHW parity P5: click-outside-to-close. Mirrors DHW.
+  if(_sqSummaryToolsOpen) _sqInstallSummaryToolsCloseHandler();
+}
+function _sqInstallSummaryToolsCloseHandler(){
+  function onDown(e){
+    var pop = document.querySelector('#bom-drawer .dhw-tools-popover');
+    var btn = document.querySelector('#bom-drawer .dhw-tools-btn');
+    if(!pop || !btn) return;
+    if(pop.contains(e.target) || btn.contains(e.target)) return;
+    document.removeEventListener('mousedown', onDown, true);
+    _sqToggleSummaryTools();
+  }
+  document.addEventListener('mousedown', onDown, true);
 }
 function _sqClearSummaryAll(){
   // SQ + DHW parity P4: Clear All restores defaults (not all-visible) so
@@ -20310,7 +20369,7 @@ function _sqRenderSummaryXlsxWarnRow(row, visibleCols){
 function _sqRenderSummaryXlsxSectionSubtotal(sectionId, sums, visibleCols){
   var gm = sums.combSell > 0 ? (sums.margin / sums.combSell) * 100 : null;
   var values = {
-    sku: '', description: 'Subtotal', qty: '',
+    sku: '', description: 'Sub-Total', qty: '',
     hwExtCost: _sqFmtMoney(sums.hwExtCost), hwExtSell: _sqFmtMoney(sums.hwExtSell),
     labExtCost: _sqFmtMoney(sums.labExtCost), labExtSell: _sqFmtMoney(sums.labExtSell),
     combCost: _sqFmtMoney(sums.combCost), combSell: _sqFmtMoney(sums.combSell),
@@ -20378,9 +20437,9 @@ function _sqRenderSummaryToolbar(){
       '</div>' +
     '</div>';
   }
-  var captionHtml = (hiddenColsCount > 0)
-    ? '<span class="dhw-toolbar-caption">' + hiddenColsCount + ' column' + (hiddenColsCount === 1 ? '' : 's') + ' hidden &mdash; viewing lens; totals reflect all data.</span>'
-    : '';
+  // SQ + DHW parity P5: hidden-cols caption dropped. The popover + the
+  // truncated header row already communicate the state visually.
+  var captionHtml = '';
   return '<div class="dhw-summary-toolbar">' +
     toolsBtn +
     '<div class="dhw-toolbar-spacer"></div>' +
@@ -20409,7 +20468,10 @@ function _sqRenderSummaryXlsx(){
   var colHdrHtml = '<div class="bom-row col-hdr">' + headerCells + '</div>';
   // Toolbar above the table.
   var toolbarHtml = _sqRenderSummaryToolbar();
-  var html = toolbarHtml + '<div class="sq-summary-xlsx-wrap"><div class="sq-summary-xlsx-table"' + gridStyle + '>';
+  // SQ + DHW parity P5: single sticky col-hdr at top of the xlsx table
+  // (previously emitted per section, which broke the sticky illusion as
+  // the user scrolled past each section's header).
+  var html = toolbarHtml + '<div class="sq-summary-xlsx-wrap"><div class="sq-summary-xlsx-table"' + gridStyle + '>' + colHdrHtml;
   BOM_TEMPLATE.tiers.forEach(function(tier){
     var anyRows = tier.subs.some(function(sub){
       var b = buckets[sub.id];
@@ -20430,7 +20492,6 @@ function _sqRenderSummaryXlsx(){
       var sectionRule = getSectionRule(sub.id);
       html += '<div class="bom-section">';
       html += '<div class="bom-sec-hdr"><span>' + escapeHtml(sub.title) + '</span></div>';
-      html += colHdrHtml;
       var sec = { hwExtCost:0, hwExtSell:0, labExtCost:0, labExtSell:0, combCost:0, combSell:0, margin:0 };
       warnAuto.forEach(function(r){
         html += _sqRenderSummaryXlsxWarnRow(r, visibleCols);
