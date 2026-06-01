@@ -1,131 +1,265 @@
 #!/usr/bin/env python3
 """
-build_pricing_json.py — Convert the Brivo/Eagle Eye reseller price list .xlsx
-into the tool's Pricing Book schema (v1).
+build_pricing_json.py — Merge multiple vendor price books into one
+pricingBook.json for the Smart MF tool.
 
-Schema (from camera_markup_tool.html validatePricingBook):
+Vendors:
+  - Eagle Eye Networks (Brivo's "Video Reseller - NA1 L3" sheet)
+  - Brivo Access      (Brivo's "Access Reseller - NA1 L3" sheet)
+  - DoorBird          (manual extract from PDF → CSV)
+  - Luxer One         (manual extract from PDF → CSV)
+
+Schema (matches camera_markup_tool.html validatePricingBook):
   {
     schema_version: 1,
     currency: "CAD",
     updated: "<ISO date>",
     notes: "...",
     labor_rate_per_hour: <positive number>,
-    items: { "<SKU>": { unit_cost: <colE>, msrp: <colD>, notes: <colC/F> } }
+    items: { "<SKU>": { unit_cost: ..., msrp: ..., notes: ... } }
   }
 
-Decisions baked in (confirmed with user):
-  - cost basis = col E (Reseller L3 CDN) -> unit_cost
-  - col D (North America Price CDN, list) -> msrp
-  - include ALL data rows from BOTH equipment sheets (Access + Video).
-    Camera SKU scheme mismatch (een-* vs EN-*) handled tool-side later;
-    unmatched SKUs simply never get looked up. Including them costs nothing.
-  - data row = col A non-empty AND col E is numeric.
-    Section-header rows (text in A, empty D/E) are skipped.
+Manual-extract CSV format (DoorBird + Luxer):
+  sku,description,msrp,notes
+  DB-D2101V-SSV2A,DoorBird D2101V (SSV2A finish),2369.00,Stainless V2A brushed
+
+  unit_cost = msrp at adapter level (P0 Q3: no reseller tier in DoorBird
+  or Luxer CDN books; SQ pricing rules add margin downstream).
+
+Run:
+  python3 build_pricing_json.py \\
+    --brivo-ee  "source-data/April 2026 Brivo and EEN Price List NA1 Reseller L3 CDN.xlsx" \\
+    --doorbird  "source-data/doorbird-extract.csv" \\
+    --luxer     "source-data/luxer-extract.csv" \\
+    --out       "source-data/pricingBook.json"
+
+Missing intermediate files are SKIPPED with a warning — the converter
+emits whichever vendors are present. This lets you regen the EE+Brivo
+book today and add DoorBird+Luxer once the manual extracts land.
 """
-import openpyxl
+import argparse
+import csv
 import json
 import os
-import sys
 
-# Repo-relative defaults. Run from source-data/ with the .xlsx alongside, or
-# pass paths explicitly:  python build_pricing_json.py [SRC.xlsx] [OUT.json]
+import openpyxl
+
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(_HERE, '27_3_Brivo_Price_List_NA1_Reseller_L3_CDN_20260401.xlsx')
-OUT = os.path.join(_HERE, 'pricing.json')
-if len(sys.argv) > 1: SRC = sys.argv[1]
-if len(sys.argv) > 2: OUT = sys.argv[2]
 
-EQUIPMENT_SHEETS = ['Access Reseller - NA1 L3', 'Video Reseller - NA1 L3']
+# Sheet names inside the Brivo+EE combined xlsx. Two vendors, one file —
+# each adapter reads its own sheet.
+BRIVO_EE_SHEET_BRIVO     = 'Access Reseller - NA1 L3'
+BRIVO_EE_SHEET_EAGLE_EYE = 'Video Reseller - NA1 L3'
 
-# Price-list effective date (from sheet preamble "Effective 2026-04-01").
+# Effective date stamped into the merged book. Brivo+EE is the most-recent
+# vendor (2026-04-01); DoorBird is 2026-01-01, Luxer is 2024-11-01.
 PRICE_LIST_DATE = '2026-04-01'
-# labor_rate_per_hour is REQUIRED + must be positive by the validator, but is
-# NOT in the price list. Placeholder the user edits; flagged in notes.
+
+# labor_rate_per_hour is REQUIRED + must be positive by the validator, but
+# is NOT in any vendor price list. Placeholder; integrator edits per project.
 LABOR_RATE_PLACEHOLDER = 95.00
 
 
-def num(v):
+def _num(v):
     return v if isinstance(v, (int, float)) else None
 
 
-def build():
-    wb = openpyxl.load_workbook(SRC, data_only=True)
+def _parse_brivo_ee_sheet(xlsx_path, sheet_name):
+    """Shared adapter for the Brivo+EE combined xlsx. Each vendor lives on
+    its own sheet; column layout is identical:
+      A=SKU, B=description, C=spec/sub-desc, D=msrp (CDN list),
+      E=unit_cost (Reseller L3 CDN), F=notes.
+    Section-header rows (text in A, empty D/E) skipped.
+    """
+    wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+    if sheet_name not in wb.sheetnames:
+        raise SystemExit('[err] sheet "%s" not in %s' % (sheet_name, xlsx_path))
+    ws = wb[sheet_name]
     items = {}
-    stats = {'data_rows': 0, 'skipped_no_price': 0, 'dups': 0, 'per_sheet': {}}
+    for r in range(1, ws.max_row + 1):
+        a = ws.cell(row=r, column=1).value          # SKU
+        b = ws.cell(row=r, column=2).value          # description
+        c = ws.cell(row=r, column=3).value          # spec/sub-desc
+        d = _num(ws.cell(row=r, column=4).value)    # list (CDN) → msrp
+        e = _num(ws.cell(row=r, column=5).value)    # Reseller L3 → unit_cost
+        f = ws.cell(row=r, column=6).value          # notes
 
-    for name in EQUIPMENT_SHEETS:
-        ws = wb[name]
-        sheet_count = 0
-        for r in range(1, ws.max_row + 1):
-            a = ws.cell(row=r, column=1).value          # SKU
-            b = ws.cell(row=r, column=2).value          # description
-            c = ws.cell(row=r, column=3).value          # spec/sub-desc
-            d = num(ws.cell(row=r, column=4).value)     # list (CDN) -> msrp
-            e = num(ws.cell(row=r, column=5).value)     # Reseller L3 -> unit_cost
-            f = ws.cell(row=r, column=6).value          # notes
+        if a is None:
+            continue
+        sku = str(a).strip()
+        if not sku:
+            continue
+        if e is None and d is None:
+            continue
 
-            if a is None:
-                continue
-            sku = str(a).strip()
+        item = {}
+        if e is not None:
+            item['unit_cost'] = round(float(e), 2)
+        if d is not None:
+            item['msrp'] = round(float(d), 2)
+
+        note_parts = []
+        if isinstance(f, str) and f.strip():
+            note_parts.append(f.strip())
+        if isinstance(c, str) and c.strip():
+            note_parts.append(c.strip())
+        desc = (str(b).strip() if isinstance(b, str) else '')
+        full_note = desc
+        if note_parts:
+            full_note = (desc + ' — ' if desc else '') + ' · '.join(note_parts)
+        if full_note:
+            item['notes'] = full_note
+
+        items[sku] = item
+    return items
+
+
+def parse_eagle_eye(xlsx_path):
+    return _parse_brivo_ee_sheet(xlsx_path, BRIVO_EE_SHEET_EAGLE_EYE)
+
+
+def parse_brivo(xlsx_path):
+    return _parse_brivo_ee_sheet(xlsx_path, BRIVO_EE_SHEET_BRIVO)
+
+
+def _parse_manual_csv(csv_path, vendor_label):
+    """Adapter for DoorBird + Luxer manual-extract CSVs.
+    Columns: sku, description, msrp, notes (notes optional).
+    unit_cost defaults to msrp (P0 Q3 — vendors have no reseller tier in
+    the CDN books; SQ pricing rules add margin at the integrator level).
+    Skips rows with empty SKU or non-numeric msrp; warns on the latter.
+    Accepts msrp as a bare number, with a leading $, or with thousands
+    commas (e.g. "1,234.50").
+    """
+    items = {}
+    with open(csv_path, 'r', encoding='utf-8-sig', newline='') as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            sku = (row.get('sku') or '').strip()
             if not sku:
                 continue
-            # Data row requires a numeric reseller price (col E). Section
-            # headers have text in A but empty D/E -> skipped here.
-            if e is None and d is None:
+            msrp_raw = (row.get('msrp') or '').strip()
+            if not msrp_raw:
                 continue
-            if e is None:
-                # has list but no reseller price: keep with msrp only
-                stats['skipped_no_price'] += 1
-
-            item = {}
-            if e is not None:
-                item['unit_cost'] = round(float(e), 2)
-            if d is not None:
-                item['msrp'] = round(float(d), 2)
-
-            # notes: prefer the price-list "notes" col F, fall back to spec col C.
-            note_parts = []
-            if isinstance(f, str) and f.strip():
-                note_parts.append(f.strip())
-            if isinstance(c, str) and c.strip():
-                note_parts.append(c.strip())
-            desc = (str(b).strip() if isinstance(b, str) else '')
-            # Put the human-readable description first in notes so a user
-            # eyeballing the JSON can identify the SKU.
-            full_note = desc
-            if note_parts:
-                full_note = (desc + ' — ' if desc else '') + ' · '.join(note_parts)
-            if full_note:
-                item['notes'] = full_note
-
-            if sku in items:
-                stats['dups'] += 1
+            try:
+                msrp = float(msrp_raw.replace(',', '').replace('$', '').strip())
+            except ValueError:
+                print('[warn] %s: row "%s" has non-numeric msrp "%s" — skipped'
+                      % (vendor_label, sku, msrp_raw))
+                continue
+            item = {
+                'unit_cost': round(msrp, 2),  # Q3: same as msrp until dealer tier known
+                'msrp':      round(msrp, 2),
+            }
+            desc  = (row.get('description') or '').strip()
+            notes = (row.get('notes') or '').strip()
+            parts = []
+            if desc:
+                parts.append(desc)
+            if notes:
+                parts.append(notes)
+            if parts:
+                item['notes'] = ' — '.join(parts)
             items[sku] = item
-            sheet_count += 1
-            stats['data_rows'] += 1
-        stats['per_sheet'][name] = sheet_count
+    return items
 
-    book = {
-        'schema_version': 1,
-        'currency': 'CAD',
-        'updated': PRICE_LIST_DATE,
-        'notes': ('Generated from 27_3_Brivo_Price_List_NA1_Reseller_L3_CDN_20260401.xlsx. '
-                  'unit_cost = Reseller L3 (CDN). msrp = North America Price (CDN, list). '
-                  'labor_rate_per_hour is a PLACEHOLDER (' + str(LABOR_RATE_PLACEHOLDER) +
-                  ') — not in the price list; edit to your real rate.'),
-        'labor_rate_per_hour': LABOR_RATE_PLACEHOLDER,
-        'items': items,
-    }
-    return book, stats
+
+def parse_doorbird(csv_path):
+    return _parse_manual_csv(csv_path, 'doorbird')
+
+
+def parse_luxer(csv_path):
+    return _parse_manual_csv(csv_path, 'luxer')
+
+
+def _default_path(*parts):
+    return os.path.join(_HERE, *parts)
 
 
 def main():
-    book, stats = build()
-    with open(OUT, 'w') as fh:
+    parser = argparse.ArgumentParser(
+        description='Merge vendor price books into one pricingBook.json.',
+    )
+    parser.add_argument(
+        '--brivo-ee',
+        default=_default_path('source-data',
+            'April 2026 Brivo and EEN Price List NA1 Reseller L3 CDN.xlsx'),
+        help='Brivo + Eagle Eye combined reseller xlsx (Brivo Access + EE Video sheets).',
+    )
+    parser.add_argument(
+        '--doorbird',
+        default=_default_path('source-data', 'doorbird-extract.csv'),
+        help='DoorBird manual-extract CSV (columns: sku, description, msrp, notes).',
+    )
+    parser.add_argument(
+        '--luxer',
+        default=_default_path('source-data', 'luxer-extract.csv'),
+        help='Luxer One manual-extract CSV (columns: sku, description, msrp, notes).',
+    )
+    parser.add_argument(
+        '--out',
+        default=_default_path('source-data', 'pricingBook.json'),
+        help='Output pricingBook.json path.',
+    )
+    args = parser.parse_args()
+
+    items = {}
+    collisions = []
+    per_vendor = {}
+
+    # Order matters only for collision reporting. Within Brivo+EE both
+    # sheets are disjoint by prefix (EN-* vs B-*); DoorBird (DB-*) and
+    # Luxer (LUX-*) are vendor-namespaced. No expected overlaps.
+    for vendor, fn, src in [
+        ('eagle_eye', parse_eagle_eye, args.brivo_ee),
+        ('brivo',     parse_brivo,     args.brivo_ee),
+        ('doorbird',  parse_doorbird,  args.doorbird),
+        ('luxer',     parse_luxer,     args.luxer),
+    ]:
+        if not os.path.exists(src):
+            print('[warn] skipping %s: %s not found' % (vendor, src))
+            per_vendor[vendor] = 0
+            continue
+        try:
+            vendor_items = fn(src)
+        except Exception as exc:
+            print('[err] %s parser failed on %s: %s' % (vendor, src, exc))
+            per_vendor[vendor] = 0
+            continue
+        for sku, item in vendor_items.items():
+            if sku in items:
+                collisions.append((sku, vendor))
+                print('[warn] SKU collision: %s (later vendor: %s) — overwriting'
+                      % (sku, vendor))
+            items[sku] = item
+        per_vendor[vendor] = len(vendor_items)
+        print('[ok] %s: %d items' % (vendor, len(vendor_items)))
+
+    book = {
+        'schema_version':       1,
+        'currency':             'CAD',
+        'updated':              PRICE_LIST_DATE,
+        'notes': (
+            'Merged book: Brivo + Eagle Eye + DoorBird + Luxer One — effective '
+            + PRICE_LIST_DATE + '. unit_cost = vendor reseller/dealer price where '
+            'available; msrp = list. labor_rate_per_hour is a PLACEHOLDER ('
+            + str(LABOR_RATE_PLACEHOLDER) + '). DoorBird + Luxer One have no '
+            'reseller tier in their CDN books — unit_cost = msrp pending dealer '
+            'terms; SQ section pricing rules add margin downstream.'
+        ),
+        'labor_rate_per_hour':  LABOR_RATE_PLACEHOLDER,
+        'items':                items,
+    }
+    with open(args.out, 'w', encoding='utf-8') as fh:
         json.dump(book, fh, indent=2, ensure_ascii=False)
-    print('Wrote', OUT)
-    print('items:', len(book['items']))
-    print('stats:', json.dumps(stats, indent=2))
+    print('[ok] wrote %s' % args.out)
+    print('[ok] total: %d items across %d vendors' % (
+        len(items),
+        sum(1 for c in per_vendor.values() if c > 0)
+    ))
+    if collisions:
+        print('[warn] %d SKU collision(s) — later vendor wins' % len(collisions))
 
 
 if __name__ == '__main__':
