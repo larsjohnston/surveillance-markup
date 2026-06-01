@@ -48,3 +48,5 @@ docs/package-lock.json
 !source-data/luxer-extract-template.csv
 
 .claude/
+
+pricing-worker/
