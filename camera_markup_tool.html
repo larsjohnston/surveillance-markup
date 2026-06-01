@@ -6477,13 +6477,17 @@ function _dhwRenderStep5Summary(takeoff, quotes){
 
   // Header row — clickable sort + indicator. Iterates visibleCols so
   // hidden cols disappear entirely.
+  // SQ + DHW parity P7 follow-up FIX C: "Extended HW" / "Extended Labour"
+  // emit as two-line via _sqColHdrLabel so the DHW col-hdr matches SQ's
+  // explicit two-line shape. Other labels pass through unchanged
+  // (already trusted hardcoded constants in colsAll above).
   var headerCells = visibleCols.map(function(c){
     var cls = (c.align === 'right' ? 'dhw-num ' : '') + 'dhw-sortable';
     var mark = '';
     if(_dhwSummarySort.column === c.key && _dhwSummarySort.dir){
       mark = ' <span class="dhw-sort-mark">' + (_dhwSummarySort.dir === 'desc' ? '▼' : '▲') + '</span>';
     }
-    return '<th class="' + cls + '" onclick="_dhwSetSummarySort(\'' + c.key + '\')">' + c.label + mark + '</th>';
+    return '<th class="' + cls + '" onclick="_dhwSetSummarySort(\'' + c.key + '\')">' + _sqColHdrLabel(c.label) + mark + '</th>';
   }).join('');
   var hideHeader = '<th class="dhw-hide-col"></th>';
   var header = '<tr>' + hideHeader + headerCells + '</tr>';
@@ -19492,6 +19496,16 @@ function _sqFmtPct(n){
   return n.toFixed(1) + '%';
 }
 
+// SQ + DHW parity P7 follow-up FIX C — col-hdr label formatter. Maps the
+// two two-word "Extended …" labels to literal two-line <br>-broken HTML.
+// All other labels pass through escapeHtml (single line). Hardcoded
+// match list — no user-typed labels reach this fn, no XSS surface.
+function _sqColHdrLabel(label){
+  if(label === 'Extended HW')     return 'Extended<br>HW';
+  if(label === 'Extended Labour') return 'Extended<br>Labour';
+  return escapeHtml(label);
+}
+
 // SQ + DHW parity P6 — write the Project Totals box (Hardware / Labour /
 // Total / Expected Margin / Expected GM%). Pure write helper; callers
 // pre-compute the four sums so this fn doesn't re-walk buckets. Called
@@ -20214,6 +20228,17 @@ function _sqRenderSupplyOnlyBadge(){
 function recalcLabour(){
   var body = document.getElementById('sq-labour-body');
   if(!body) return;
+  // SQ + DHW parity P7 follow-up FIX A: under supply-only, render only
+  // the default rule strip (the strip itself carries the Supply-only
+  // toggle, so the user can still toggle back OFF). The per-section
+  // tables + footer are excluded entirely — labour data is not part
+  // of the project, no reason to surface it. Same xlsx repaint kicks
+  // in so the Summary stays consistent.
+  if(bomLabourSupplyOnly){
+    body.innerHTML = _sqRenderLabourDefaultStrip();
+    if(typeof recalcSummaryXlsx === 'function') recalcSummaryXlsx();
+    return;
+  }
   var buckets = computeBomTree();
   var html = '';
   html += _sqRenderLabourDefaultStrip();
@@ -20328,7 +20353,14 @@ function recalcLabour(){
 // behaviour.
 var SQ_SUMMARY_COLS = [
   { key:'qty',        label:'Qty',             grid:'45px',              align:'right', defaultHidden:false },
-  { key:'sku',        label:'SKU',             grid:'90px',              align:'left',  defaultHidden:false },
+  /* SQ + DHW parity P7 follow-up FIX B: SKU was 90px fixed; under the
+     default visible set (Qty · SKU · Extended HW · Extended Labour ·
+     Total · GM%) Description is hidden so its 3fr never enters the
+     grid → no flexible track → ~600px of right-edge whitespace.
+     SKU bumped to `minmax(90px, 2fr)` so a visible-by-default col
+     absorbs leftover modal width. When Description is un-hidden via
+     the popover, both tracks share (3fr Desc + 2fr SKU). */
+  { key:'sku',        label:'SKU',             grid:'minmax(90px,2fr)',  align:'left',  defaultHidden:false },
   { key:'hwExtSell',  label:'Extended HW',     grid:'85px',              align:'right', defaultHidden:false },
   { key:'labExtSell', label:'Extended Labour', grid:'95px',              align:'right', defaultHidden:false },
   { key:'combSell',   label:'Total',           grid:'80px',              align:'right', defaultHidden:false },
@@ -20587,9 +20619,16 @@ function _sqRenderSummaryXlsx(){
   var gridTpl = visibleCols.map(function(c){ return c.grid; }).join(' ');
   var gridStyle = ' style="--sq-summary-cols:' + gridTpl + ';"';
   // Column header from visibleCols.
+  // SQ + DHW parity P7 follow-up FIX C: force "EXTENDED HW" / "EXTENDED
+  // LABOUR" to render as two stacked lines so the col-hdr reads as
+  // intentionally-multi-line. Whitespace-wrap from earlier P7 FIX 4
+  // didn't fire because the tracks are wide enough; explicit <br> is
+  // the canonical fix for "give me exactly two lines here". Labels are
+  // hardcoded constants (no XSS surface).
   var headerCells = visibleCols.map(function(c){
     var align = (c.align === 'right') ? ' style="text-align:right"' : '';
-    return '<div data-col="' + c.key + '"' + align + '>' + escapeHtml(c.label) + '</div>';
+    var label = _sqColHdrLabel(c.label);
+    return '<div data-col="' + c.key + '"' + align + '>' + label + '</div>';
   }).join('');
   var colHdrHtml = '<div class="bom-row col-hdr">' + headerCells + '</div>';
   // Toolbar above the table.
