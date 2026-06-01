@@ -3862,6 +3862,41 @@ function firstSkuForBrand(db, brand){
 var PRICING_STORAGE_KEY = 'pricingBook';
 var PRICING_SCHEMA_VERSION = 1;
 
+// Pricing Cloud P2: cloud-backed pricing book — Cloudflare Worker proxies
+// the tool to a private GitHub repo holding pricingBook.json. Worker URL
+// + admin token live in localStorage (P3 modal handles UX; P2 ships the
+// fetch plumbing only).
+//   PRICING_STORAGE_KEY ('pricingBook')      — effective book; getUnitPrice
+//                                              reads here. Updated by EITHER
+//                                              a successful cloud fetch OR a
+//                                              local file load.
+//   PRICING_CACHE_KEY   ('pricingBookCache') — last successfully fetched
+//                                              cloud snapshot (parallel store
+//                                              so "Reload from cache" can
+//                                              restore after a local-file
+//                                              session).
+//   PRICING_META_KEY    ('pricingMeta')      — { commit, tenant, syncedAt }
+//                                              from last successful sync.
+//                                              Cleared on local-file load
+//                                              + on clearPricingBook.
+//   PRICING_AUTH_KEY    ('pricingAuthToken') — Worker admin secret. NOT
+//                                              cleared on book clear (clearing
+//                                              the book ≠ logging out).
+//   PRICING_WORKER_URL_KEY('pricingWorkerUrl') — optional override of the
+//                                              default Worker URL (for dev /
+//                                              staging). P2 reads only; P3
+//                                              exposes setter in Advanced.
+//   PRICING_SOURCE_KEY  ('pricingSource')    — 'cloud' | 'local' | null.
+//                                              Drives the indicator's branch
+//                                              in updatePricingUI.
+var PRICING_CACHE_KEY          = 'pricingBookCache';
+var PRICING_META_KEY           = 'pricingMeta';
+var PRICING_AUTH_KEY           = 'pricingAuthToken';
+var PRICING_WORKER_URL_KEY     = 'pricingWorkerUrl';
+var PRICING_SOURCE_KEY         = 'pricingSource';
+var PRICING_WORKER_URL_DEFAULT = 'https://pricing.mf-quoting-tool.workers.dev';
+var PRICING_TENANT_DEFAULT     = 'smartmf';
+
 /**
  * Pricing Book schema (v1)
  * -------------------------
@@ -4008,22 +4043,45 @@ function validatePricingBook(obj){
 // Refreshes the pricing banner (in the BOM drawer) and the pricing
 // status indicator (in the menubar) based on isPricingLoaded(). Call
 // after any load/clear or at page-load init. Returns the loaded boolean.
+//
+// Pricing Cloud P2: three labeled states when loaded, distinguished by
+// PRICING_SOURCE_KEY:
+//   'cloud'  → "Pricing · Cloud · synced <relative> · <commit>"
+//   'local'  → "Pricing · Local · <currency> · <updated>"
+//   (null)   → legacy pre-P2 fallback. "Pricing · <currency> · <updated>"
+// Not-loaded is unchanged: "Pricing · not loaded".
 function updatePricingUI(){
   var loaded = isPricingLoaded();
   var banner = document.getElementById('pricing-banner');
   if(banner) banner.style.display = loaded ? 'none' : 'flex';
   var status = document.getElementById('pricing-status');
-  if(status){
-    if(loaded){
-      var book = getPricingBook();
-      status.textContent = 'Pricing · ' + (book && book.currency ? book.currency : '—') + ' · ' + (book && book.updated ? book.updated : '—');
-      status.classList.remove('not-loaded');
-      status.classList.add('loaded');
-    } else {
-      status.textContent = 'Pricing · not loaded';
-      status.classList.remove('loaded');
-      status.classList.add('not-loaded');
-    }
+  if(!status) return loaded;
+  if(!loaded){
+    status.textContent = 'Pricing · not loaded';
+    status.classList.remove('loaded');
+    status.classList.add('not-loaded');
+    return loaded;
+  }
+  status.classList.remove('not-loaded');
+  status.classList.add('loaded');
+  var source = _pricingSource();
+  var book   = getPricingBook();
+  if(source === 'cloud'){
+    var meta   = _pricingMeta();
+    var rel    = _pricingRelativeTime(meta.syncedAt);
+    var commit = meta.commit ? (' · ' + meta.commit) : '';
+    status.textContent = 'Pricing · Cloud · synced ' + rel + commit;
+  } else if(source === 'local'){
+    status.textContent = 'Pricing · Local · ' +
+      ((book && book.currency) || '—') + ' · ' +
+      ((book && book.updated)  || '—');
+  } else {
+    // Legacy: a pre-P2 save loaded the book under PRICING_STORAGE_KEY but
+    // never stamped PRICING_SOURCE_KEY. Render the original label so the
+    // indicator stays informative until the next explicit load.
+    status.textContent = 'Pricing · ' +
+      ((book && book.currency) || '—') + ' · ' +
+      ((book && book.updated)  || '—');
   }
   return loaded;
 }
@@ -4094,6 +4152,12 @@ function _handlePricingFile(file){
       );
       return;
     }
+    // Pricing Cloud P2: stamp source='local' + drop cloud meta. The cloud
+    // cache (PRICING_CACHE_KEY) is preserved untouched — "Reload from
+    // cache" (P3 modal) can restore the last cloud snapshot after a
+    // local-file experiment.
+    try { localStorage.setItem(PRICING_SOURCE_KEY, 'local'); } catch(_){}
+    try { localStorage.removeItem(PRICING_META_KEY); } catch(_){}
     updatePricingUI();
     var itemCount = parsed.items ? Object.keys(parsed.items).length : 0;
     showToast('Pricing loaded: ' + itemCount + ' items, ' + (parsed.currency || '—') + ', updated ' + (parsed.updated || '—') + '.');
@@ -4107,6 +4171,134 @@ function _handlePricingFile(file){
   reader.readAsText(file);
 }
 
+// ─── Pricing Cloud P2 — cloud read/write + state helpers ───────────────────
+// Tool talks to a Cloudflare Worker (Worker URL + admin token below); the
+// Worker proxies to a private GitHub repo. Boot kicks off a silent fetch;
+// cache is painted synchronously first so the UI never blocks on network.
+
+function _pricingMeta(){
+  try {
+    var raw = localStorage.getItem(PRICING_META_KEY);
+    if(!raw) return {};
+    var obj = JSON.parse(raw);
+    return (obj && typeof obj === 'object') ? obj : {};
+  } catch(_){ return {}; }
+}
+
+function _pricingAuthToken(){
+  try { return localStorage.getItem(PRICING_AUTH_KEY) || ''; } catch(_){ return ''; }
+}
+
+function _pricingWorkerUrl(){
+  try { return localStorage.getItem(PRICING_WORKER_URL_KEY) || PRICING_WORKER_URL_DEFAULT; }
+  catch(_){ return PRICING_WORKER_URL_DEFAULT; }
+}
+
+function _pricingSource(){
+  try { return localStorage.getItem(PRICING_SOURCE_KEY) || null; } catch(_){ return null; }
+}
+
+// "5m ago" / "2h ago" / "3d ago" — coarse enough to read at a glance.
+// Mirrors the autosave indicator's relative-time semantics (which uses
+// a parallel rule set in updateSaveIndicator). Bad input → 'unknown'.
+function _pricingRelativeTime(iso){
+  if(!iso) return 'unknown';
+  var t = new Date(iso).getTime();
+  if(!isFinite(t)) return 'unknown';
+  var diff = (Date.now() - t) / 1000;
+  if(diff < 60)    return 'just now';
+  if(diff < 3600)  return Math.floor(diff / 60) + 'm ago';
+  if(diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+// fetchRemotePricing — async GET to the Worker.
+//   opts.silent: true  → no toast on any outcome (boot path).
+//                false → toast on success, auth failure, network failure.
+// Returns { ok, reason?, commit?, status? }. Side effects on success:
+//   localStorage updates: pricingBook (via setPricingBook), pricingBookCache,
+//   pricingMeta, pricingSource='cloud'. Indicator refreshed via
+//   updatePricingUI().
+// Side effects on failure: none beyond toast + console.warn. Existing
+// cache + book remain in place — tool stays usable offline.
+async function fetchRemotePricing(opts){
+  opts = opts || {};
+  var silent = !!opts.silent;
+  var token = _pricingAuthToken();
+  if(!token) return { ok:false, reason:'no-token' };
+  var url = _pricingWorkerUrl() + '/api/pricing?tenant=' + PRICING_TENANT_DEFAULT;
+  try {
+    var res = await fetch(url, {
+      method: 'GET',
+      headers: { 'X-Auth-Token': token }
+    });
+    if(res.status === 401){
+      if(!silent) showToast('Pricing auth failed — re-enter token via File → Pricing', 'warning');
+      return { ok:false, reason:'unauthorized', status:401 };
+    }
+    if(!res.ok){
+      if(!silent) showToast('Pricing sync error · using cached book', 'warning');
+      return { ok:false, reason:'http', status:res.status };
+    }
+    var data = await res.json();
+    var book = data && data.pricingBook;
+    var ok = setPricingBook(book);
+    if(!ok){
+      if(!silent) showToast('Pricing sync rejected — invalid book shape', 'warning');
+      return { ok:false, reason:'validation' };
+    }
+    try { localStorage.setItem(PRICING_CACHE_KEY, JSON.stringify(book)); } catch(_){}
+    try {
+      localStorage.setItem(PRICING_META_KEY, JSON.stringify({
+        commit:   data.meta && data.meta.commit,
+        tenant:   data.meta && data.meta.tenant,
+        syncedAt: new Date().toISOString()
+      }));
+    } catch(_){}
+    try { localStorage.setItem(PRICING_SOURCE_KEY, 'cloud'); } catch(_){}
+    updatePricingUI();
+    if(!silent) showToast('Pricing synced from cloud · ' + ((data.meta && data.meta.commit) || 'ok'));
+    return { ok:true, commit: data.meta && data.meta.commit };
+  } catch(e){
+    if(!silent) showToast('Pricing sync offline · using cached book', 'warning');
+    try { console.warn('[pricing] fetch failed:', e); } catch(_){}
+    return { ok:false, reason:'network', err:String(e) };
+  }
+}
+
+// uploadPricing — async POST. P2 declares but does not wire any caller;
+// P3 Pricing modal's "Upload new pricing file" action calls this. Returns
+// { ok, commit?, timestamp?, reason?, status?, detail? }. No localStorage
+// side effects; caller is expected to follow up with fetchRemotePricing()
+// to refresh the local view from the new server state.
+async function uploadPricing(book, message){
+  var token = _pricingAuthToken();
+  if(!token) return { ok:false, reason:'no-token' };
+  var url = _pricingWorkerUrl() + '/api/pricing?tenant=' + PRICING_TENANT_DEFAULT;
+  try {
+    var res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-Auth-Token':  token,
+        'Content-Type':  'application/json'
+      },
+      body: JSON.stringify({ pricingBook: book, message: message || '' })
+    });
+    if(res.status === 401){
+      return { ok:false, reason:'unauthorized', status:401 };
+    }
+    if(!res.ok){
+      var detail = '';
+      try { detail = await res.text(); } catch(_){}
+      return { ok:false, reason:'http', status:res.status, detail:detail };
+    }
+    var data = await res.json();
+    return { ok:true, commit:data.commit, timestamp:data.timestamp, author:data.author };
+  } catch(e){
+    return { ok:false, reason:'network', err:String(e) };
+  }
+}
+
 // Confirm before clearing. Pricing books are file-based so clearing is
 // recoverable via re-load — keep the confirm copy non-alarming.
 function confirmClearPricing(){
@@ -4117,6 +4309,11 @@ function confirmClearPricing(){
   var ok = confirm('Clear loaded pricing data?\n\nLoaded pricing books are file-based — you can re-load anytime via File → Load Pricing.');
   if(!ok) return;
   clearPricingBook();
+  // Pricing Cloud P2: also clear source + meta so the indicator resets to
+  // 'not loaded'. PRICING_CACHE_KEY + PRICING_AUTH_KEY + PRICING_WORKER_URL_KEY
+  // are explicitly NOT cleared — clearing the active book ≠ logging out.
+  try { localStorage.removeItem(PRICING_SOURCE_KEY); } catch(_){}
+  try { localStorage.removeItem(PRICING_META_KEY); } catch(_){}
   updatePricingUI();
   showToast('Pricing data cleared.');
 }
@@ -21241,6 +21438,14 @@ syncLabels(); updateList(); updateScaleIndicator(); updateDoriInfo();
 // Pricing Data Foundation M1: paint banner + status indicator based on
 // the current localStorage state.
 updatePricingUI();
+// Pricing Cloud P2: cache already painted above via updatePricingUI →
+// isPricingLoaded → getPricingBook (synchronous). Kick off async cloud
+// refresh; silent on this path (no toast spam at boot). On success,
+// setPricingBook + updatePricingUI swap in the fresh book; getUnitPrice
+// reads fresh from getPricingBook() each call so any in-flight render
+// races resolve cleanly (no UI shift). No-ops when no auth token is set
+// — P3 modal handles first-run token entry.
+fetchRemotePricing({ silent: true });
 // Pass D: drive the auto-save loop and indicator clock. The 60 s indicator
 // tick is mostly redundant with autoSaveTick (which also refreshes), but
 // keeps the relative timestamp moving even if autoSaveTick is gated off
