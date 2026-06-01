@@ -3784,19 +3784,40 @@ var BRIVO_CATALOG = [
 // The 'Other'/'Custom' brand on each family is the generic-placement
 // path (matches camera "Other" Tier 1). Its single SKU has empty model
 // and lets the user place a device with no curated metadata.
+// Pricing Vendor Expansion P1-C: DoorBird SKUs now carry the per-variant
+// finish suffix (`-SSV2A` = stainless steel V2A brushed, the integrator
+// default per Q2). The bare `DB-<model>` keys used through P1-B migrate
+// on load via LEGACY_SKU_MAP in applyProjectState — old saves don't
+// silently lose price lookups. `code:` field is the short Tier 3 tile
+// label (mirrors CMVR_CATALOG/SWITCH_CATALOG convention).
 var INTERCOM_DB = {
-  'DB-D2101V':       { brand:'Doorbird', model:'D2101V',  seriesType:'door-station',   unitCapacity:1,    desc:'IP Video Door Station — Single Unit / Stainless V2A Brushed' },
-  'DB-D2102V':       { brand:'Doorbird', model:'D2102V',  seriesType:'door-station',   unitCapacity:2,    desc:'IP Video Door Station — 2 Units / 2 Call Buttons' },
-  'DB-D2103V':       { brand:'Doorbird', model:'D2103V',  seriesType:'door-station',   unitCapacity:3,    desc:'IP Video Door Station — 3 Units / Architectural Bronze' },
-  'DB-D21DKV':       { brand:'Doorbird', model:'D21DKV',  seriesType:'door-station',   unitCapacity:500,  desc:'IP Video Door Station with Keypad — up to 500 Units' },
-  'DB-D31TDV':       { brand:'Doorbird', model:'D31TDV',  seriesType:'door-station',   unitCapacity:1000, desc:'IP Video Door Station Touchscreen — up to 1000 Units' },
-  'DB-A1101':        { brand:'Doorbird', model:'A1101',   seriesType:'indoor-station', unitCapacity:null, desc:'4-inch Indoor Video Monitor — Per-Unit Answering Station' },
-  'CUSTOM-INTERCOM': { brand:'Custom',   model:'',        seriesType:'door-station',   unitCapacity:null, desc:'Custom Intercom — user-defined' }
+  'DB-D2101V-SSV2A': { brand:'Doorbird', code:'D2101V SSV2A', model:'D2101V',  seriesType:'door-station',   unitCapacity:1,    desc:'IP Video Door Station — Single Unit / Stainless V2A Brushed' },
+  'DB-D2102V-SSV2A': { brand:'Doorbird', code:'D2102V SSV2A', model:'D2102V',  seriesType:'door-station',   unitCapacity:2,    desc:'IP Video Door Station — 2 Units / 2 Call Buttons / Stainless V2A Brushed' },
+  'DB-D2103V-SSV2A': { brand:'Doorbird', code:'D2103V SSV2A', model:'D2103V',  seriesType:'door-station',   unitCapacity:3,    desc:'IP Video Door Station — 3 Units / Stainless V2A Brushed' },
+  'DB-D21DKV-SSV2A': { brand:'Doorbird', code:'D21DKV SSV2A', model:'D21DKV',  seriesType:'door-station',   unitCapacity:500,  desc:'IP Video Door Station with Keypad — up to 500 Units / Stainless V2A Brushed' },
+  'DB-D31TDV-SSV2A': { brand:'Doorbird', code:'D31TDV SSV2A', model:'D31TDV',  seriesType:'door-station',   unitCapacity:1000, desc:'IP Video Door Station Touchscreen — up to 1000 Units / Stainless V2A Brushed' },
+  'DB-A1101-SSV2A':  { brand:'Doorbird', code:'A1101 SSV2A',  model:'A1101',   seriesType:'indoor-station', unitCapacity:null, desc:'4-inch Indoor Video Monitor — Per-Unit Answering Station / Stainless V2A Brushed' },
+  'CUSTOM-INTERCOM': { brand:'Custom',   code:'Custom',       model:'',        seriesType:'door-station',   unitCapacity:null, desc:'Custom Intercom — user-defined' }
 };
 
+// Pricing Vendor Expansion P1-C: LuxerOne placeholder replaced with the
+// real RAL9005 (black) finish per-variant SKUs from the Luxer One Canada
+// 2026 PDF. Base + expansion pairs for the two most common door counts
+// (Gen 4 17-door full bank A4*; Gen 4 8-door A8*); plus the two install
+// service SKUs. LEGACY_SKU_MAP in applyProjectState migrates the old
+// `LUX-PCL-PLACEHOLDER` to `LUX-A4B.UL-C-RAL9005` so saved projects don't
+// silently lose price lookups. `code:` is the short Tier 3 tile label.
+// `bays:0` on the install/service rows signals "not a placeable locker"
+// (kept as catalog entries so they can appear in BOM rows even without
+// a canvas placement).
 var PARCEL_DB = {
-  'LUX-PCL-PLACEHOLDER': { brand:'LuxerOne', model:'Locker Bank', bays:24, desc:'LuxerOne Parcel Locker — placeholder, replace with real SKU' },
-  'CUSTOM-PARCEL':       { brand:'Custom',   model:'',            bays:0,  desc:'Custom Parcel Locker — user-defined' }
+  'LUX-A4B.UL-C-RAL9005': { brand:'LuxerOne', code:'A4B.UL Base',  model:'A4B.UL Base',     bays:17, desc:'LuxerOne Gen 4 17-Door Main Locker Bank — RAL9005 black' },
+  'LUX-A4D.E-C-RAL9005':  { brand:'LuxerOne', code:'A4D.E Exp',    model:'A4D.E Expansion', bays:17, desc:'LuxerOne Gen 4 17-Door Expansion Locker — RAL9005 black' },
+  'LUX-A8B.UL-C-RAL9005': { brand:'LuxerOne', code:'A8B.UL Base',  model:'A8B.UL Base',     bays:8,  desc:'LuxerOne Gen 4 8-Door Main Locker Bank — RAL9005 black' },
+  'LUX-A8D.E-C-RAL9005':  { brand:'LuxerOne', code:'A8D.E Exp',    model:'A8D.E Expansion', bays:8,  desc:'LuxerOne Gen 4 8-Door Expansion Locker — RAL9005 black' },
+  'LUX-CAM-INSTALL':      { brand:'LuxerOne', code:'Cam Install',  model:'Camera Install',  bays:0,  desc:'LuxerOne Camera Installation Service' },
+  'LUX-INSTALL-KIT':      { brand:'LuxerOne', code:'Install Kit',  model:'Indoor Install',  bays:0,  desc:'LuxerOne Indoor Installation Kit' },
+  'CUSTOM-PARCEL':        { brand:'Custom',   code:'Custom',       model:'',                bays:0,  desc:'Custom Parcel Locker — user-defined' }
 };
 
 // Mailbox catalog holds only the Custom SKU. Canada Post mailbox banks
@@ -11963,7 +11984,12 @@ function setPanelMode(mode){
   if(mode === 'intercom'){
     if(!currentIntercomBrand) currentIntercomBrand = 'Doorbird';
     if(!currentIntercomModel){
-      currentIntercomModel = INTERCOM_DB['DB-D21DKV'] ? 'DB-D21DKV'
+      // Pricing Vendor Expansion P1-C: bare DB-D21DKV → DB-D21DKV-SSV2A
+      // (per-variant SKU). LEGACY_SKU_MAP in applyProjectState migrates
+      // old saves' device.sku to the new key; this default-arm path picks
+      // the new key directly. firstSkuForBrand fallback still resolves if
+      // the catalog entry is renamed/removed.
+      currentIntercomModel = INTERCOM_DB['DB-D21DKV-SSV2A'] ? 'DB-D21DKV-SSV2A'
                           : firstSkuForBrand(INTERCOM_DB, currentIntercomBrand);
     }
     renderLeftPaneDrillDown('intercom');
@@ -14948,6 +14974,24 @@ function parseTabOrderFromSave(saved, n){
 // Apply parsed project JSON to the running app state. Assumes the source
 // document (PDF/image) is already loaded — pages[] is populated, canvases
 // rendered, currentPage at 0. Caller is responsible for the right ordering.
+// Pricing Vendor Expansion P1-C: legacy SKU migration map. INTERCOM_DB
+// SKUs gained a finish suffix (DB-<model> → DB-<model>-SSV2A); PARCEL_DB
+// replaced the LUX-PCL-PLACEHOLDER with the RAL9005 4-door base SKU.
+// applyProjectState walks every saved device record + bomAutoOverrides
+// key carrying a legacy SKU and rewrites it to the new key. One-way:
+// once the load completes and the user saves, the migration is
+// permanent (new keys go back into the save). Mailbox devices use a
+// brand+cols+rows shape (no SKU lookup), so they're untouched.
+var LEGACY_SKU_MAP = {
+  'DB-D2101V':           'DB-D2101V-SSV2A',
+  'DB-D2102V':           'DB-D2102V-SSV2A',
+  'DB-D2103V':           'DB-D2103V-SSV2A',
+  'DB-D21DKV':           'DB-D21DKV-SSV2A',
+  'DB-D31TDV':           'DB-D31TDV-SSV2A',
+  'DB-A1101':            'DB-A1101-SSV2A',
+  'LUX-PCL-PLACEHOLDER': 'LUX-A4B.UL-C-RAL9005'
+};
+
 function applyProjectState(data){
   if(data.cameras) cameras = data.cameras;
   if(data.calibrations) calibrations = data.calibrations;
@@ -15093,6 +15137,26 @@ function applyProjectState(data){
   // fields. Saves predating v16 lack these keys; default empty so older
   // projects load cleanly with no smart-apartment / suite content.
   smartApartment   = Array.isArray(data.smartApartment) ? data.smartApartment : [];
+  // Pricing Vendor Expansion P1-C: rewrite each intercom/parcel device's
+  // legacy SKU (stored in dev.model — see line 12680 INTERCOM_DB[dev.model]
+  // resolution) to the new per-variant SKU. Logs per migration so the
+  // user sees the rewrite. Mailbox devices migrate separately (brand-only,
+  // no SKU lookup) — skip them here. Runs before the mailbox v17 walk
+  // below, so no ordering hazard.
+  var _migratedSkuCount = 0;
+  smartApartment.forEach(function(dev){
+    if(dev.type === 'mailbox') return;
+    if(typeof dev.model !== 'string') return;
+    var mapped = LEGACY_SKU_MAP[dev.model];
+    if(mapped){
+      try { console.log('[migration] sku ' + dev.model + ' → ' + mapped + ' on ' + dev.type); } catch(_){}
+      dev.model = mapped;
+      _migratedSkuCount++;
+    }
+  });
+  if(_migratedSkuCount > 0){
+    try { console.log('[migration] pricing-vendor-expansion: migrated ' + _migratedSkuCount + ' smart-apartment SKU(s) to per-variant form.'); } catch(_){}
+  }
   smartAptCounters = (data.smartAptCounters && typeof data.smartAptCounters === 'object')
     ? data.smartAptCounters
     : { intercom: {}, parcel: {}, mailbox: {} };
@@ -15283,6 +15347,33 @@ function applyProjectState(data){
       });
     }
     if(data.bom.autoOverrides) bomAutoOverrides = data.bom.autoOverrides;
+    // Pricing Vendor Expansion P1-C: rewrite bomAutoOverrides keys whose
+    // trailing SKU is in LEGACY_SKU_MAP. Keys for intercom/parcel rows are
+    // `auto-sa-<type>-<sku>` (see bomRowSku L15976-15977 + row.key emission
+    // L18337/L18360). Without this rewrite a cost override saved on the
+    // old SKU would silently never apply to the migrated row.
+    var _migratedOvCount = 0;
+    Object.keys(bomAutoOverrides).forEach(function(key){
+      var prefixes = ['auto-sa-intercom-', 'auto-sa-parcel-'];
+      for(var i = 0; i < prefixes.length; i++){
+        var p = prefixes[i];
+        if(key.indexOf(p) === 0){
+          var oldSku = key.slice(p.length);
+          var newSku = LEGACY_SKU_MAP[oldSku];
+          if(newSku){
+            var newKey = p + newSku;
+            bomAutoOverrides[newKey] = bomAutoOverrides[key];
+            delete bomAutoOverrides[key];
+            _migratedOvCount++;
+            try { console.log('[migration] bomAutoOverrides key ' + key + ' → ' + newKey); } catch(_){}
+          }
+          break;
+        }
+      }
+    });
+    if(_migratedOvCount > 0){
+      try { console.log('[migration] pricing-vendor-expansion: migrated ' + _migratedOvCount + ' bomAutoOverrides key(s).'); } catch(_){}
+    }
     if(data.bom.config){
       // BOM Restructure follow-up: laborRate / laborHrs entries in pre-pass
       // saves are silently ignored on load — the inputs they fed are gone.
