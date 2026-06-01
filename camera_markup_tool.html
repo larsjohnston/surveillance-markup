@@ -665,6 +665,47 @@ input[type="number"]::-webkit-outer-spin-button {
   background:var(--surface-soft);
   border-radius:0 0 4px 4px;
 }
+
+/* SQ + DHW parity P6: SQ Summary Project Totals box. Mirrors DHW's
+   Project Totals card (6608) — Hardware / Labour / Total / Expected
+   Margin / Expected Gross Margin. Sits between the xlsx table and the
+   #sq-summary-totals stack so Sub-Total / Tax / Grand Total still
+   render below. Class names also usable on the DHW side later if its
+   inline-styled block gets extracted. */
+.dhw-summary-project-totals {
+  margin:18px 16px 0;
+  padding:16px 18px;
+  background:#fff;
+  border:1.5px solid var(--border);
+  border-radius:6px;
+  max-width:520px;
+}
+.dhw-spt-title {
+  font:700 12px var(--font-ui); color:var(--text);
+  text-transform:uppercase; letter-spacing:.10em;
+  margin-bottom:10px; padding-bottom:8px;
+  border-bottom:1px solid var(--border);
+}
+.dhw-spt-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  padding:5px 0;
+  font:600 11px var(--font-ui); color:var(--text-muted);
+  letter-spacing:.04em; text-transform:uppercase;
+}
+.dhw-spt-row .dhw-spt-val {
+  font:700 13px var(--font-mono); color:var(--text);
+  letter-spacing:normal; text-transform:none;
+}
+.dhw-spt-row-total {
+  border-top:1px solid var(--border);
+  padding-top:8px; margin-top:3px;
+}
+.dhw-spt-row-total .dhw-spt-label {
+  font-weight:700; color:var(--text);
+}
+.dhw-spt-row-total .dhw-spt-val {
+  font:800 14px var(--font-mono); color:var(--primary);
+}
 .sq-summary-row {
   display:flex; justify-content:space-between; align-items:baseline;
   padding:6px 0;
@@ -3390,6 +3431,37 @@ input[type="number"]::-webkit-outer-spin-button {
          Populated by recalcSummaryXlsx(). The totals block below sits
          AT THE END of the Summary body so the xlsx renders above it. -->
     <div id="sq-summary-xlsx-host"></div>
+
+    <!-- SQ + DHW parity P6: Project Totals box mirrors DHW Summary's
+         end-of-Summary card. Hardware / Labour / Total / Expected
+         Margin / Expected Gross Margin written by _sqRecalcProjectTotals
+         (called from recalcBom + recalcSummaryOnly). No Tax row inside
+         (SQ-only feature, lives in the existing #sq-summary-totals stack
+         below). No Expected Project Hours row (SQ labour is dual-mode
+         Hourly+Flat; "hours" has no clean cross-mode aggregate). -->
+    <div class="dhw-summary-project-totals" id="sq-project-totals">
+      <div class="dhw-spt-title">Project Totals</div>
+      <div class="dhw-spt-row">
+        <span class="dhw-spt-label">Hardware</span>
+        <span id="bom-hw-total" class="dhw-spt-val">$0.00</span>
+      </div>
+      <div class="dhw-spt-row" id="bom-lab-total-row">
+        <span class="dhw-spt-label">Labour</span>
+        <span id="bom-lab-total" class="dhw-spt-val">$0.00</span>
+      </div>
+      <div class="dhw-spt-row dhw-spt-row-total">
+        <span class="dhw-spt-label">Total</span>
+        <span id="bom-combined-total" class="dhw-spt-val">$0.00</span>
+      </div>
+      <div class="dhw-spt-row">
+        <span class="dhw-spt-label">Expected Margin</span>
+        <span id="bom-expected-margin" class="dhw-spt-val">$0.00</span>
+      </div>
+      <div class="dhw-spt-row">
+        <span class="dhw-spt-label">Expected Gross Margin</span>
+        <span id="bom-expected-gm" class="dhw-spt-val">0.0%</span>
+      </div>
+    </div>
 
     <!-- SQ-wizard M2c: vertical totals block at the END of the Summary
          body. Sub-Total stacks above Tax (with its input + % disp); Grand
@@ -6357,7 +6429,13 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     // Show toggles only for cols that exist in the current mode (combined
     // mode drops extSell + labour — they fold into Total — so we drop
     // their checkboxes too to avoid offering hides on absent columns).
-    var colChecks = cols.map(function(c){
+    // SQ + DHW parity P6: also trim unitCost / unitSell / installHrs from
+    // the popover — they're DHW-specific per-unit views with no SQ
+    // analog, and Σextended is the canonical figure. Cols stay in the
+    // descriptor (rendered when explicitly un-hidden via code), just
+    // out of the toggle UI.
+    var POPOVER_TRIM = { unitCost:true, unitSell:true, installHrs:true };
+    var colChecks = cols.filter(function(c){ return !POPOVER_TRIM[c.key]; }).map(function(c){
       var checked = !_dhwSummaryHiddenCols[c.key];
       return '<label class="dhw-col-toggle">' +
         '<input type="checkbox" ' + (checked ? 'checked' : '') +
@@ -19175,7 +19253,12 @@ function recalcBom(){
   // downstream tile write (counts, subtotal, tax-amt, grand-total).
   // Replaced with the same _sqRowLabour-based walk recalcLabour's
   // _accum uses — single source of truth, no undefined refs.
+  // SQ + DHW parity P6: track labour Cost alongside Sell so the new
+  // Project Totals box can compute Expected Margin without re-walking
+  // the buckets. Supply-only guard zeroes both — labour disappears from
+  // both Sub-Total and the margin math, matching the badge semantics.
   var labourSell = 0;
+  var labourCost = 0;
   if(!bomLabourSupplyOnly){
     BOM_TEMPLATE.tiers.forEach(function(tier){
       tier.subs.forEach(function(sub){
@@ -19186,12 +19269,14 @@ function recalcBom(){
           var matQty = (typeof r.qty === 'number') ? r.qty : 0;
           var lab = _sqRowLabour(sub.id, lineKey, matQty);
           labourSell += lab.extSell;
+          labourCost += lab.extCost;
         });
         b.custom.forEach(function(cust){
           var lineKey = (cust.line && cust.line.id) || '';
           var matQty = (cust.line && typeof cust.line.qty === 'number') ? cust.line.qty : 0;
           var lab = _sqRowLabour(sub.id, lineKey, matQty);
           labourSell += lab.extSell;
+          labourCost += lab.extCost;
         });
       });
     });
@@ -19212,6 +19297,11 @@ function recalcBom(){
   document.getElementById('bom-margin-amt').textContent = '$' + formatMoney(marginAmt);
   document.getElementById('bom-tax-amt').textContent = '$' + formatMoney(taxAmt);
   document.getElementById('bom-grand-total').textContent = '$' + formatMoney(grand);
+
+  // SQ + DHW parity P6: Project Totals box (Hardware / Labour / Total /
+  // Expected Margin / Expected GM%). Combined === subtotal by definition
+  // (both = grandQSell + labourSell). Margin = combined − allCost.
+  _sqRecalcProjectTotals(grandQSell, subtotalCost, labourSell, labourCost);
 
   // Pass N M5 / Pass N+1 M9: AC + smart-apartment counts mirror the cover
   // summary lines. Same source (computeRiserModel → *Count fields, all
@@ -19416,6 +19506,31 @@ function _sqFmtMoney(n){
 function _sqFmtPct(n){
   if(n == null || !isFinite(n)) return '—';
   return n.toFixed(1) + '%';
+}
+
+// SQ + DHW parity P6 — write the Project Totals box (Hardware / Labour /
+// Total / Expected Margin / Expected GM%). Pure write helper; callers
+// pre-compute the four sums so this fn doesn't re-walk buckets. Called
+// from recalcBom (canonical bucket walk) AND recalcSummaryOnly (DOM
+// re-sum on cell edits) so the box stays in lockstep with #bom-subtotal.
+// combined === hwSell + labSell by construction; Sub-Total tile reads
+// the same identity from its own path (grandQSell + labourSell) — the
+// console parity check in the brief asserts this.
+function _sqRecalcProjectTotals(hwSell, hwCost, labSell, labCost){
+  var combined = (hwSell || 0) + (labSell || 0);
+  var allCost  = (hwCost || 0) + (labCost || 0);
+  var margin   = combined - allCost;
+  var gm       = combined > 0 ? (margin / combined) * 100 : 0;
+  var elHw  = document.getElementById('bom-hw-total');
+  var elLab = document.getElementById('bom-lab-total');
+  var elC   = document.getElementById('bom-combined-total');
+  var elM   = document.getElementById('bom-expected-margin');
+  var elGm  = document.getElementById('bom-expected-gm');
+  if(elHw)  elHw.textContent  = _sqFmtMoney(hwSell || 0);
+  if(elLab) elLab.textContent = _sqFmtMoney(labSell || 0);
+  if(elC)   elC.textContent   = _sqFmtMoney(combined);
+  if(elM)   elM.textContent   = _sqFmtMoney(margin);
+  if(elGm)  elGm.textContent  = combined > 0 ? _sqFmtPct(gm) : '0.0%';
 }
 
 // SQ + DHW polish — two-tier rounding helpers. Money inputs cap at 2
@@ -20817,14 +20932,23 @@ function recalcSummaryOnly(){
   // Labour walks #sq-labour-body the same way materials walks #bom-body.
   // Supply-only short-circuits the labour walk (already zeroed at row
   // level in recalcLabour, but a guard here makes the intent explicit).
+  // SQ + DHW parity P6: also sum qcost so the Project Totals box can
+  // compute Expected Margin from the same DOM walk Sub-Total uses (no
+  // re-derivation drift). qcost cell is .bom-line-qcost, parallel to
+  // .bom-line-qsell / .bom-line-margin already harvested.
   function _sumQsellAndMargin(scopeSel){
-    var subRes = { qsell: 0, margin: 0 };
+    var subRes = { qsell: 0, qcost: 0, margin: 0 };
     document.querySelectorAll(scopeSel + ' .bom-row').forEach(function(rowEl){
       if(rowEl.dataset.subtotal) return;
       var qsEl = rowEl.querySelector('.bom-line-qsell');
       if(qsEl){
         var qsVal = parseFloat(qsEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
         subRes.qsell += qsVal;
+      }
+      var qcEl = rowEl.querySelector('.bom-line-qcost');
+      if(qcEl){
+        var qcVal = parseFloat(qcEl.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+        subRes.qcost += qcVal;
       }
       var mEl = rowEl.querySelector('.bom-line-margin');
       if(mEl){
@@ -20835,7 +20959,7 @@ function recalcSummaryOnly(){
     return subRes;
   }
   var mat = _sumQsellAndMargin('#bom-body');
-  var lab = bomLabourSupplyOnly ? { qsell: 0, margin: 0 } : _sumQsellAndMargin('#sq-labour-body');
+  var lab = bomLabourSupplyOnly ? { qsell: 0, qcost: 0, margin: 0 } : _sumQsellAndMargin('#sq-labour-body');
   var subtotal = mat.qsell + lab.qsell;
   var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
   var taxAmt = subtotal * taxPct / 100;
@@ -20846,6 +20970,10 @@ function recalcSummaryOnly(){
   document.getElementById('bom-margin-amt').textContent = '$0.00';
   document.getElementById('bom-tax-amt').textContent = '$' + formatMoney(taxAmt);
   document.getElementById('bom-grand-total').textContent = '$' + formatMoney(grand);
+
+  // SQ + DHW parity P6: keep the Project Totals box in sync after a
+  // cell-edit re-sum. Same identity as recalcBom — combined === subtotal.
+  _sqRecalcProjectTotals(mat.qsell, mat.qcost, lab.qsell, lab.qcost);
 }
 
 function formatMoney(n){
