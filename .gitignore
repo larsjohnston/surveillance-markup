@@ -41,5 +41,10 @@ docs/package-lock.json
 # above so they take precedence on these two specific files.
 !source-data/pricing-template.json
 !source-data/README.md
+# Pricing Vendor Expansion P1-B: DoorBird + Luxer manual-extract templates.
+# The FILL-IN copies (doorbird-extract.csv / luxer-extract.csv) stay
+# gitignored — only the *-template.csv reference copies are tracked.
+!source-data/doorbird-extract-template.csv
+!source-data/luxer-extract-template.csv
 
 .claude/

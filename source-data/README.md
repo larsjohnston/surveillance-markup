@@ -50,6 +50,40 @@ LUX-A4B.UL-C-RAL9005,Luxer Gen 4 Main Locker Bank,16984.00,RAL9005 black
 - `notes` populates the catalog tooltip and PDF roll-up. Keep it short.
 - Empty `msrp` cells skip the row silently. Non-numeric `msrp` cells skip with a `[warn]` log.
 
+## How to extract DoorBird + Luxer data
+
+Two reference template CSVs ship in the repo:
+
+- `doorbird-extract-template.csv` — pre-populated with the SKUs the tool currently uses (one per `INTERCOM_DB` entry), `msrp` blank.
+- `luxer-extract-template.csv` — pre-populated with `PARCEL_DB` SKUs (4 hardware + 2 install/service), `msrp` blank.
+
+Workflow:
+
+1. **Open the vendor PDF** — DoorBird's section start is on the TOC; Luxer's price tables are on pages 14-20 of the 2026 book.
+2. **Copy the template** to a working file:
+   - `cp doorbird-extract-template.csv doorbird-extract.csv`
+   - `cp luxer-extract-template.csv luxer-extract.csv`
+   - The `-template.csv` files are tracked in git; the `-extract.csv` working copies are gitignored.
+3. **Fill `msrp` per row** from the vendor PDF.
+   - DoorBird: List Price column on the right edge of each Door Stations / Indoor Stations table. Match the SSV2A finish row per model (stainless steel V2A brushed = the integrator default).
+   - Luxer One: List Price (CAD $) column. RAL9005 is the black finish — match that variant for each base / expansion model.
+4. **Add or remove rows** as needed:
+   - Template SKU not in the vendor PDF (catalog has a placeholder model the vendor doesn't actually ship): delete the row OR leave `msrp` blank to skip.
+   - Real SKU not in the template (vendor model the tool's catalog hasn't yet exposed): add a new row. The catalog (`INTERCOM_DB` / `PARCEL_DB`) needs a matching entry before the row prices anything.
+5. **Save** as `source-data/doorbird-extract.csv` / `source-data/luxer-extract.csv` — NOT overwriting the `-template.csv` files (those are the reference copies for the next regen).
+6. **Run the converter**:
+   ```
+   python3 build_pricing_json.py
+   ```
+   Stats line per vendor (`[ok] doorbird: 6 items`, etc.) confirms the rows landed.
+7. **Re-load pricing** in the app: File → Load Pricing → `source-data/pricingBook.json`. The DoorBird + Luxer rows now resolve via `getUnitPrice(sku)`.
+
+Notes:
+
+- `unit_cost = msrp` for DoorBird + Luxer (no reseller tier in their CDN books). SQ section pricing rules add the integrator's margin.
+- The Luxer template uses RAL9005 black for the default finish; the DoorBird template uses SSV2A brushed stainless. Both are intentional Q2 picks — variant drill-down is deferred.
+- `notes` carries the PDF "Finish" column text (e.g. "Stainless steel V2A brushed"). Keep short — long notes wrap awkwardly in the BOM tooltip.
+
 ## Schema (v1)
 
 ```json
