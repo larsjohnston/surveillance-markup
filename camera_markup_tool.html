@@ -425,9 +425,14 @@ input[type="number"]::-webkit-outer-spin-button {
    · Qty×Cost · Qty×Sell · Margin $ · GM % · del). minmax(0,1fr) lets the
    Description shrink without overflow on narrow drawers. .bom-body has
    overflow-x:auto as a fallback for very narrow viewports. */
+/* SQ + DHW parity P7 FIX 2: Description col 1fr → 3fr so it absorbs
+   leftover modal width across SQ Materials (this rule) + Labour (the
+   .labour-flat-row override below) + Summary xlsx (the
+   .sq-summary-xlsx-table override). DHW's .dhw-table is unchanged
+   (table layout, width:100% already). */
 .bom-row {
   display:grid;
-  grid-template-columns: 75px minmax(140px, 1fr) 60px 65px 65px 45px 70px 70px 70px 55px 24px;
+  grid-template-columns: 75px minmax(200px, 3fr) 60px 65px 65px 45px 70px 70px 70px 55px 24px;
   gap:5px; align-items:center;
   padding: 4px 16px; font-size:10px; border-bottom:1px solid var(--surface-muted);
 }
@@ -437,12 +442,22 @@ input[type="number"]::-webkit-outer-spin-button {
    bottom outline + position:sticky). Reads as a frozen chrome element
    distinct from the scrolling body. Applies to Materials, Labour, and
    the Summary xlsx col-hdr rows. */
+/* SQ + DHW parity P7 FIX 4: col-hdr typography + padding bumped to
+   match DHW thead (font:700 10px, padding 10px 16px, line-height 1.2,
+   white-space normal). align-items:start so wrapped labels top-align
+   with single-line ones. DHW thead at .dhw-table thead tr:first-child th
+   already wraps because <th> defaults allow word-break; SQ grid cells
+   need the rules made explicit. */
 .bom-row.col-hdr {
-  background:var(--primary-dark); color:#fff; font:700 9px var(--font-ui);
+  background:var(--primary-dark); color:#fff; font:700 10px var(--font-ui);
   text-transform:uppercase; letter-spacing:.05em;
-  padding-top:8px; padding-bottom:8px;
+  padding-top:10px; padding-bottom:10px;
   border-bottom:2px solid var(--ink);
   position:sticky; top:0; z-index:5;
+  align-items:start; line-height:1.2;
+}
+.bom-row.col-hdr > * {
+  white-space:normal; word-break:normal; overflow-wrap:normal;
 }
 .bom-row input, .bom-row .bom-desc {
   padding:2px 4px; border:1px solid transparent; border-radius:2px;
@@ -556,9 +571,16 @@ input[type="number"]::-webkit-outer-spin-button {
    avoid the cascade-order tie that hid the chip span but left the
    surrounding band visible.) */
 #bom-config             { display:none; }
-/* SQ-wizard M2b: bom-body x-scroll fallback so a narrow drawer still
-   shows the full 11-col grid via horizontal scroll instead of clipping. */
-#bom-body { overflow-x:auto; }
+/* SQ + DHW parity P7 FIX 3: previously `#bom-body { overflow-x:auto; }`
+   was the narrow-drawer x-scroll fallback. CSS spec: overflow-x:auto with
+   overflow-y:visible computes overflow-y to auto — turning #bom-body into
+   a scroll container in BOTH axes. That moved the sticky .col-hdr's
+   containing block from #bom-scroll-wrap (where it should anchor) onto
+   #bom-body, so the header scrolled away with the body.
+   Fix: drop overflow on #bom-body; #bom-scroll-wrap now owns horizontal
+   overflow too. Same narrow-drawer fallback, sticky works against the
+   outer scroll context. */
+#bom-scroll-wrap { overflow-x:auto; }
 /* SQ-wizard M3 rework: segmented [Flat][Hourly] toggle. Reuses
    .tier-btn aesthetic; container butts pills via overflow:hidden +
    zero gap so the seam reads as a single segmented control. The
@@ -602,7 +624,7 @@ input[type="number"]::-webkit-outer-spin-button {
    11-col .bom-row grid. */
 .bom-row.labour-flat-row,
 .bom-row.labour-flat-col-hdr {
-  grid-template-columns: 75px minmax(140px, 1fr) 65px 65px 45px 70px 70px 70px 55px;
+  grid-template-columns: 75px minmax(200px, 3fr) 65px 65px 45px 70px 70px 70px 55px;
 }
 
 /* SQ-wizard M4: Summary step xlsx table. 11-col track (SKU · Desc · Qty
@@ -612,13 +634,26 @@ input[type="number"]::-webkit-outer-spin-button {
    Labour (line 529) .bom-row tracks are untouched. Wrap allows horizontal
    scroll without pushing the wizard stepper sideways at narrow modal
    widths. */
-.sq-summary-xlsx-wrap { overflow-x:auto; margin-top:8px; }
+/* SQ + DHW parity P7 FIX 2: wrap + table both full-width so the SQ
+   Summary xlsx stretches to the modal edge like .dhw-table (which has
+   width:100%). Without these the grid container shrink-fits its tracks
+   and leaves trailing whitespace at narrow-but-finite widths.
+   SQ + DHW parity P7 FIX 3: overflow-x:auto dropped from the wrap —
+   it created a sticky containing block under the .col-hdr, breaking
+   the sticky-to-modal-header behavior. #bom-scroll-wrap is now the
+   single x+y scroll container; the table simply overflows the wrap
+   horizontally on narrow modal widths and #bom-scroll-wrap scrolls. */
+.sq-summary-xlsx-wrap { width:100%; margin-top:8px; }
+.sq-summary-xlsx-table { width:100%; }
 /* SQ + DHW parity P3: grid template now driven by --sq-summary-cols
    custom property (set inline on .sq-summary-xlsx-table per render so
    hidden cols collapse their tracks too). Fallback retains the original
-   11-col widths so an un-styled instance still reads correctly. */
+   11-col widths so an un-styled instance still reads correctly.
+   SQ + DHW parity P7 FIX 2: Description gets a larger 1fr coefficient
+   (3fr) so it absorbs leftover modal width — visible only when other
+   tracks are at their min sizes (i.e. wide modal). */
 .sq-summary-xlsx-table .bom-row {
-  grid-template-columns: var(--sq-summary-cols, 75px minmax(160px, 1fr) 45px 65px 65px 65px 65px 70px 70px 70px 55px);
+  grid-template-columns: var(--sq-summary-cols, 75px minmax(200px, 3fr) 45px 65px 65px 65px 65px 70px 70px 70px 55px);
 }
 /* SQ-wizard M2d: locked Qty cell on auto rows. Visually distinct from
    the editable Cost input above (dotted underline + help cursor) and
@@ -654,17 +689,11 @@ input[type="number"]::-webkit-outer-spin-button {
    site — was previously split across two rules whose source-order
    cascade left this band visible. */
 #sq-tier-filter-host { display:none; }
-/* SQ-wizard M2c: vertical totals block at the end of the Summary step.
-   Sub-Total + Tax + Grand-Total stack as labeled rows (NOT sibling tiles).
-   Reuses the existing summary ids inside. Tax row carries the inline
-   #bom-tax-pct input. */
-#sq-summary-totals {
-  margin:18px 16px 4px;
-  padding:14px 18px;
-  border-top:2px solid var(--primary);
-  background:var(--surface-soft);
-  border-radius:0 0 4px 4px;
-}
+/* SQ + DHW parity P7 FIX 7: #sq-summary-totals CSS rule + the
+   .sq-summary-row / .sq-summary-grand / #bom-tax-label rules below
+   (further down in this stylesheet) are orphans now that the totals
+   stack is gone. Removed inline; .sq-summary-row + .sq-summary-grand
+   rules below are also dropped. */
 
 /* SQ + DHW parity P6: SQ Summary Project Totals box. Mirrors DHW's
    Project Totals card (6608) — Hardware / Labour / Total / Expected
@@ -706,40 +735,11 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-spt-row-total .dhw-spt-val {
   font:800 14px var(--font-mono); color:var(--primary);
 }
-.sq-summary-row {
-  display:flex; justify-content:space-between; align-items:baseline;
-  padding:6px 0;
-  font:600 13px var(--font-ui); color:var(--text);
-}
-.sq-summary-row .sq-summary-label {
-  display:flex; align-items:center; gap:8px;
-}
-.sq-summary-row .sq-summary-label input[type=number] {
-  width:60px; padding:3px 6px;
-  border:1px solid var(--border); border-radius:3px;
-  font:600 12px var(--font-mono); background:#fff; text-align:right;
-}
-/* SQ Summary M5: editable Tax label (default "GST"). Renders inline
-   inside the label cell of the Tax row — no border by default so it
-   reads as static text; focus picks up the global :where outline. */
-#bom-tax-label {
-  border:none; background:transparent; padding:0 2px;
-  font:inherit; color:inherit; width:auto; min-width:30px; text-align:left;
-}
-.sq-summary-row .sq-summary-value {
-  font:700 16px var(--font-mono); color:#111;
-}
-.sq-summary-row.sq-summary-grand {
-  border-top:1px solid var(--border);
-  margin-top:4px; padding-top:10px;
-}
-.sq-summary-row.sq-summary-grand .sq-summary-label {
-  font-weight:800; text-transform:uppercase; letter-spacing:.06em;
-  color:#111; font-size:11px;
-}
-.sq-summary-row.sq-summary-grand .sq-summary-value {
-  font-size:20px; color:var(--primary);
-}
+/* SQ + DHW parity P7 FIX 7: .sq-summary-row, .sq-summary-grand,
+   #bom-tax-label CSS rules deleted along with the Tax row markup
+   they styled. The :where(...) global focus rule at line 1252 still
+   lists .sq-summary-row in its selector list — left as-is (harmless
+   no-op selector; cleanup of that rule belongs in a follow-up). */
 /* Phase 2a F3: inline BOM warning row (e.g. "No CMVR Present"). Amber
    text + bold, no inputs, no line-total — purely informational. Matches
    the palette of .dhw-warn / .bom-sec-hdr.warn so the severity reads
@@ -1057,6 +1057,9 @@ input[type="number"]::-webkit-outer-spin-button {
   background: var(--primary-dark);
   color: #fff;
   border-bottom: 2px solid var(--ink);
+  /* SQ + DHW parity P7 FIX 4: explicit wrap rules so DHW + SQ col-hdrs
+     read identically — both wrap multi-word labels, both top-align. */
+  white-space:normal; word-break:normal; vertical-align:top; line-height:1.2;
 }
 .dhw-table thead tr:first-child th .dhw-sort-mark { color: #fff; }
 .dhw-table thead tr:first-child th.dhw-sortable:hover { color: #fff; text-decoration: underline; }
@@ -3463,34 +3466,18 @@ input[type="number"]::-webkit-outer-spin-button {
       </div>
     </div>
 
-    <!-- SQ-wizard M2c: vertical totals block at the END of the Summary
-         body. Sub-Total stacks above Tax (with its input + % disp); Grand
-         Total below. Reuses the existing #bom-subtotal / #bom-tax-pct /
-         #bom-tax-pct-disp / #bom-tax-amt / #bom-grand-total ids so
-         recalcBom + recalcSummaryOnly write here without code changes. -->
-    <div id="sq-summary-totals">
-      <div class="sq-summary-row">
-        <span class="sq-summary-label">Sub-Total</span>
-        <span class="sq-summary-value" id="bom-subtotal">$0.00</span>
-      </div>
-      <div class="sq-summary-row">
-        <span class="sq-summary-label">
-          <input type="text" id="bom-tax-label" value="GST" maxlength="12" oninput="markDirty()"> (<span id="bom-tax-pct-disp">0</span>%)
-          <input type="number" id="bom-tax-pct" value="0" step="0.1" min="0" max="50" onchange="_sqSetTaxPct(this.value)">
-        </span>
-        <span class="sq-summary-value" id="bom-tax-amt">$0.00</span>
-      </div>
-      <div class="sq-summary-row sq-summary-grand">
-        <span class="sq-summary-label">Grand Total</span>
-        <span class="sq-summary-value" id="bom-grand-total">$0.00</span>
-      </div>
-    </div>
-
-    <!-- SQ-wizard M2c: legacy hidden margin spans live here so recalcBom's
-         (now no-op) writes to #bom-margin-amt + #bom-margin-pct-disp
-         resolve. CSS hides them; M4/M5 removes both spans + the writes. -->
-    <span id="bom-margin-pct-disp" style="display:none">0</span>
-    <span id="bom-margin-amt"      style="display:none">$0.00</span>
+    <!-- SQ + DHW parity P7 FIX 7: #sq-summary-totals (Sub-Total / Tax /
+         Grand Total stack) deleted from the Summary step — moves to the
+         future Proposal wizard. Project Totals box above is now the
+         end-of-summary card. Tax label input, tax pct input/display,
+         grand-total span, and the legacy hidden margin spans (which
+         existed only to host recalcBom's no-op writes) all go with it.
+         Save shape (bom.taxLabel + bom.config.taxPct) is preserved in
+         the save envelope; recalcBom + recalcSummaryOnly guard their
+         element lookups so the math still runs against nothing
+         (subtotal still feeds #bom-subtotal — wait, that's gone too —
+         no-op; the Project Totals box owns the on-screen subtotal/
+         combined figure now via _sqRecalcProjectTotals). -->
   </div>
   </div><!-- /.dhw-step-content -->
   <!-- SQ-wizard M1: wizard nav row. Populated imperatively by
@@ -6210,21 +6197,17 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   var overrides     = pricing.lineMarkupOverrides || {};
   var hoursMap      = pricing.lineInstallHours    || {};
 
-  // W7b: hide the Combine toggle entirely under supply-only. With no
-  // labour there is nothing to combine; showing the toggle would imply
-  // labour exists. Toggle reappears when supply-only is OFF.
-  var combineRow = supplyOnly ? '' :
-    '<div class="dhw-control-row" style="margin-top:14px;">' +
-      '<label><input type="checkbox" ' + (combined ? 'checked' : '') +
-        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Combine hardware + labour into one column</b></label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Merges Ext sell + Labour into a single Total column. Grand total below is unchanged either way (always hardware + labour).</span>' +
-    '</div>';
+  // SQ + DHW parity P7 FIX 6: "Combine hardware + labour into one column"
+  // checkbox removed from the Summary step (moves to the future Proposal
+  // wizard). The underlying pricing.includeLabour state still drives
+  // column structure below (combined flag) and is still toggleable from
+  // the Labour step's "Include install labour in totals" checkbox at
+  // line 7635 — same boolean, two UI surfaces, only the Summary one drops.
 
   if(!award || !award.basis){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Summary</span></div>' +
       '<div class="dhw-empty">Award a basis on the Comparison step to see the full summary.</div>' +
-      combineRow +
     '</div>';
   }
 
@@ -6613,19 +6596,11 @@ function _dhwRenderStep5Summary(takeoff, quotes){
   // grand-subtotal styling (ink bg + white text + primary top border).
   var sumsRow = '<tr class="dhw-sub-total-row">' + sumRowCells + '</tr>';
 
-  // Grand total row. Label spans every cell except the last visible one;
-  // the grand total value lands in the rightmost cell. When 0 data cols
-  // are visible (user hid everything), label spans just the Hide col and
-  // a value cell follows — Project Totals box remains the canonical
-  // home for the headline number.
-  var totalCellsCount = 1 + visibleCols.length;
-  var grandColspan    = Math.max(1, totalCellsCount - 1);
-  var grandRow = '<tr>' +
-    '<td colspan="' + grandColspan + '" style="text-align:right; font-weight:800; padding-top:6px;">' +
-      (supplyOnly ? 'Grand total (hardware only):' : 'Grand total (hardware + labour):') +
-    '</td>' +
-    '<td class="dhw-num" style="font-weight:800; font-size:13px; color:var(--primary); padding-top:6px;">' + _dhwFmtMoney(grandTotal) + '</td>' +
-  '</tr>';
+  // SQ + DHW parity P7 FIX 5: "Grand total (hardware + labour):" row
+  // removed. The Project Totals box's TOTAL line is the canonical headline
+  // number going forward; the dark-band Sub-Total row + Project Totals
+  // card already carry the same total. grandTotal is still computed above
+  // for the Project Totals box's Total + Margin math.
 
   // Hidden-rows banner (only when any rows are hidden).
   var hiddenBanner = hiddenCount > 0
@@ -6636,28 +6611,13 @@ function _dhwRenderStep5Summary(takeoff, quotes){
       '</div>'
     : '';
 
-  // Items-not-priced count + Project Totals box. Hardware-Module M5
-  // strengthens this into the early-catch resolution-safeguard warning.
-  // The number here IS the unresolved count: activeResolved excludes the
-  // W7 excluded/by-others map, so any line still showing unpriced AND
-  // appearing here is exactly the "neither priced nor excluded" set the
-  // M5 export gate fires on. Amber banner styling matches the W7c
-  // zero-labour warning so the two read as the same severity language.
-  var unpricedLine;
-  if(unpricedCount > 0){
-    unpricedLine =
-      '<div class="dhw-nolabour-warn" style="margin-top:12px;">' +
-        '&#9888; ' + unpricedCount + ' line' + (unpricedCount === 1 ? '' : 's') +
-        ' not yet priced or excluded &mdash; ' +
-        (unpricedCount === 1 ? 'it' : 'they') +
-        ' won&rsquo;t show a price on the customer Hardware Schedule. ' +
-        'Price ' + (unpricedCount === 1 ? 'it' : 'them') +
-        ' on the Comparison step, or mark ' + (unpricedCount === 1 ? 'it' : 'them') +
-        ' by-others on the Hardware step.' +
-      '</div>';
-  } else {
-    unpricedLine = '<p style="margin:10px 0 0; font:600 11px var(--font-ui); color:var(--text-muted);">All awarded lines resolved (priced or marked by-others).</p>';
-  }
+  // SQ + DHW parity P7 FIX 6: yellow "lines not yet priced or excluded"
+  // banner + the green "All awarded lines resolved" reassurance line
+  // both moved to the future Proposal wizard. unpricedCount is still
+  // computed above (driven by the resolveAward walk) so the Proposal
+  // can read it later — only the DOM emission is dropped here. Summary
+  // is now data-only.
+  var unpricedLine = '';
 
   var projectTotal     = equipmentSell + labourTotalEngine;
   var expectedMargin   = projectTotal - hardwareCost;
@@ -6738,16 +6698,15 @@ function _dhwRenderStep5Summary(takeoff, quotes){
     '<div>' +
       '<table class="dhw-table">' +
         '<thead>' + header + filterRow + '</thead>' +
-        '<tbody>' + trs + sumsRow + grandRow + '</tbody>' +
+        '<tbody>' + trs + sumsRow + '</tbody>' +
       '</table>' +
     '</div>' +
     hiddenBanner +
     unpricedLine +
-    '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
-      'Internal review. The customer proposal will show sell prices only — never cost, markup, or supplier names. ' +
-      'Edits to markup live on the Hardware step; edits to install hours live on the Labour step.' +
-    '</p>' +
-    combineRow +
+    /* SQ + DHW parity P7 FIX 6: "Internal review..." subtext paragraph
+       and "Combine hardware + labour into one column" checkbox both
+       deleted — moved to the future Proposal wizard. Summary becomes
+       data-only. */
     excludedSection +
     projectTotalsBox +
   '</div>';
@@ -14630,9 +14589,12 @@ function buildLiteSaveData(){
   // BOM Restructure follow-up: laborRate / laborHrs no longer persisted —
   // the inputs were removed and the labor compute lives in computeNonBomRows().
   // SQ Summary M5: taxLabel persists the editable Tax row label (default "GST").
+  // SQ + DHW parity P7 FIX 7: bom-tax-pct input deleted from Summary; the
+  // save shape still carries taxPct so the Proposal wizard can rehydrate
+  // it later. Until that UI lands, taxPct round-trips as 0 (guarded read).
   var bomConfig = {
     marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
-    taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
+    taxPct:    _sqReadNum('bom-tax-pct'),
     taxLabel:  _bomTaxLabel(),
     storDays:  parseFloat(document.getElementById('stor-days').value)||30,
     storFps:   parseFloat(document.getElementById('stor-fps').value)||15,
@@ -14870,9 +14832,10 @@ async function saveJSON(){
 
   // BOM Restructure follow-up: laborRate / laborHrs no longer persisted.
   // SQ Summary M5: taxLabel persists the editable Tax row label.
+  // SQ + DHW parity P7 FIX 7: see buildLiteSaveData — same guard.
   var bomConfig = {
     marginPct: parseFloat(document.getElementById('bom-margin-pct').value)||0,
-    taxPct:    parseFloat(document.getElementById('bom-tax-pct').value)||0,
+    taxPct:    _sqReadNum('bom-tax-pct'),
     taxLabel:  _bomTaxLabel(),
     storDays:  parseFloat(document.getElementById('stor-days').value)||30,
     storFps:   parseFloat(document.getElementById('stor-fps').value)||15,
@@ -15320,7 +15283,11 @@ function applyProjectState(data){
       // BOM Restructure follow-up: laborRate / laborHrs entries in pre-pass
       // saves are silently ignored on load — the inputs they fed are gone.
       if(data.bom.config.marginPct !== undefined) document.getElementById('bom-margin-pct').value = data.bom.config.marginPct;
-      if(data.bom.config.taxPct    !== undefined) document.getElementById('bom-tax-pct').value    = data.bom.config.taxPct;
+      // SQ + DHW parity P7 FIX 7: bom-tax-pct input may be absent.
+      if(data.bom.config.taxPct    !== undefined){
+        var __tpEl = document.getElementById('bom-tax-pct');
+        if(__tpEl) __tpEl.value = data.bom.config.taxPct;
+      }
       // SQ Summary M5: taxLabel defaults to 'GST' for projects saved
       // before this field existed. Falsy → default.
       var __tl = (data.bom.config.taxLabel != null && String(data.bom.config.taxLabel).trim()) ? String(data.bom.config.taxLabel) : 'GST';
@@ -15895,7 +15862,8 @@ function drawProposalCover(doc, W, H){
       b.custom.forEach(function(c){ subtotal += (c.line.qty||0)*(c.line.unit||0); });
     });
     var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
-    var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
+    // SQ + DHW parity P7 FIX 7: bom-tax-pct input may be absent.
+    var taxPct = _sqReadNum('bom-tax-pct');
     var marginAmt = subtotal * marginPct / 100;
     var afterMargin = subtotal + marginAmt;
     var taxAmt = afterMargin * taxPct / 100;
@@ -19087,11 +19055,23 @@ function computeBomTree(){
   return buckets;
 }
 
+// SQ + DHW parity P7 FIX 7: small helper for the guarded writes below —
+// recalcBom + recalcSummaryOnly + the save/load + PDF paths reach for ids
+// that now no longer exist in the DOM (Tax row was deleted from the
+// Summary step). Read paths fall back to 0; write paths skip. Math + save
+// shape untouched.
+function _sqGetEl(id){ return document.getElementById(id); }
+function _sqReadNum(id){ var el = _sqGetEl(id); return el ? (parseFloat(el.value) || 0) : 0; }
+function _sqWriteText(id, txt){ var el = _sqGetEl(id); if(el) el.textContent = txt; }
+
 function recalcBom(){
-  var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
-  var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
-  document.getElementById('bom-margin-pct-disp').textContent = marginPct;
-  document.getElementById('bom-tax-pct-disp').textContent = taxPct;
+  // SQ + DHW parity P7 FIX 7: tax pct + margin pct inputs may be absent
+  // (Tax row removed). Read with _sqReadNum (0 default); write the *-disp
+  // spans only when present.
+  var marginPct = _sqReadNum('bom-margin-pct');
+  var taxPct    = _sqReadNum('bom-tax-pct');
+  _sqWriteText('bom-margin-pct-disp', marginPct);
+  _sqWriteText('bom-tax-pct-disp', taxPct);
 
   recalcStorage();
 
@@ -19293,10 +19273,14 @@ function recalcBom(){
   document.getElementById('bom-cam-count').textContent = bomTierFilter==='all'
     ? totalMult
     : (multipliedTotal(cameras.filter(function(c){return (c.tier||'recommended')===bomTierFilter;})) + ' / ' + totalMult);
-  document.getElementById('bom-subtotal').textContent = '$' + formatMoney(subtotal);
-  document.getElementById('bom-margin-amt').textContent = '$' + formatMoney(marginAmt);
-  document.getElementById('bom-tax-amt').textContent = '$' + formatMoney(taxAmt);
-  document.getElementById('bom-grand-total').textContent = '$' + formatMoney(grand);
+  // SQ + DHW parity P7 FIX 7: tax/grand-total spans (formerly inside the
+  // deleted #sq-summary-totals stack) may be absent. Guarded writes are
+  // no-ops when the elements are gone. Project Totals box below now
+  // carries the on-screen subtotal / combined figure.
+  _sqWriteText('bom-subtotal',    '$' + formatMoney(subtotal));
+  _sqWriteText('bom-margin-amt',  '$' + formatMoney(marginAmt));
+  _sqWriteText('bom-tax-amt',     '$' + formatMoney(taxAmt));
+  _sqWriteText('bom-grand-total', '$' + formatMoney(grand));
 
   // SQ + DHW parity P6: Project Totals box (Hardware / Labour / Total /
   // Expected Margin / Expected GM%). Combined === subtotal by definition
@@ -19531,6 +19515,12 @@ function _sqRecalcProjectTotals(hwSell, hwCost, labSell, labCost){
   if(elC)   elC.textContent   = _sqFmtMoney(combined);
   if(elM)   elM.textContent   = _sqFmtMoney(margin);
   if(elGm)  elGm.textContent  = combined > 0 ? _sqFmtPct(gm) : '0.0%';
+  // SQ + DHW parity P7 FIX 1B: hide Labour row under supply-only. Math
+  // is already zero (labour Sell + Cost both contribute 0 from the
+  // recalcBom guard); the row hide keeps the box visually consistent
+  // with the supply-only badge + dropped Labour cols.
+  var elLabRow = document.getElementById('bom-lab-total-row');
+  if(elLabRow) elLabRow.style.display = bomLabourSupplyOnly ? 'none' : '';
 }
 
 // SQ + DHW polish — two-tier rounding helpers. Money inputs cap at 2
@@ -20343,7 +20333,7 @@ var SQ_SUMMARY_COLS = [
   { key:'labExtSell', label:'Extended Labour', grid:'95px',              align:'right', defaultHidden:false },
   { key:'combSell',   label:'Total',           grid:'80px',              align:'right', defaultHidden:false },
   { key:'gm',         label:'GM %',            grid:'60px',              align:'right', defaultHidden:false },
-  { key:'description',label:'Description',     grid:'minmax(160px,1fr)', align:'left',  defaultHidden:true  },
+  { key:'description',label:'Description',     grid:'minmax(200px,3fr)', align:'left',  defaultHidden:true  },
   { key:'hwExtCost',  label:'HW Ext Cost',     grid:'70px',              align:'right', defaultHidden:true  },
   { key:'labExtCost', label:'Labour Ext Cost', grid:'80px',              align:'right', defaultHidden:true  },
   { key:'combCost',   label:'Combined Cost',   grid:'75px',              align:'right', defaultHidden:true  },
@@ -20362,8 +20352,20 @@ function _sqSummaryDefaultHidden(){
 var _sqSummaryHiddenCols = _sqSummaryDefaultHidden();
 var _sqSummaryToolsOpen  = false;
 
+// SQ + DHW parity P7 FIX 1A: supply-only force-hides labExtSell +
+// labExtCost cols on top of the user's session toggles. _sqSummaryHiddenCols
+// (the persisted/session state) is left untouched so toggling supply-only
+// OFF restores the prior visibility verbatim. The popover renders these
+// two as disabled when supply-only ON (see _sqRenderSummaryToolbar below).
+function _sqLabourColForcedHidden(key){
+  return bomLabourSupplyOnly && (key === 'labExtSell' || key === 'labExtCost');
+}
 function _sqSummaryVisibleCols(){
-  return SQ_SUMMARY_COLS.filter(function(c){ return !_sqSummaryHiddenCols[c.key]; });
+  return SQ_SUMMARY_COLS.filter(function(c){
+    if(_sqSummaryHiddenCols[c.key]) return false;
+    if(_sqLabourColForcedHidden(c.key)) return false;
+    return true;
+  });
 }
 
 // User-driven handlers — clone DHW's _dhwToggleSummaryHiddenCol /
@@ -20532,11 +20534,20 @@ function _sqRenderSummaryToolbar(){
     colsIconSvg + 'Columns</button>';
   var popover = '';
   if(_sqSummaryToolsOpen){
+    // SQ + DHW parity P7 FIX 1A: under supply-only, labExtSell + labExtCost
+    // toggles render disabled + greyed with a "(disabled — supply only)"
+    // tail. Click is inert; toggling supply-only OFF restores the user's
+    // prior state (the underlying _sqSummaryHiddenCols entry is untouched).
     var colChecks = cols.map(function(c){
-      var checked = !_sqSummaryHiddenCols[c.key];
-      return '<label class="dhw-col-toggle">' +
-        '<input type="checkbox" ' + (checked ? 'checked' : '') +
-        ' onchange="_sqToggleSummaryHiddenCol(\'' + c.key + '\')"> ' + escapeHtml(c.label) +
+      var forced  = _sqLabourColForcedHidden(c.key);
+      var checked = !_sqSummaryHiddenCols[c.key] && !forced;
+      var labelTail = forced ? ' <span style="color:var(--text-muted);font-style:italic;">(disabled — supply only)</span>' : '';
+      var cls = forced ? 'dhw-col-toggle dhw-col-toggle-disabled' : 'dhw-col-toggle';
+      var disAttr = forced ? ' disabled' : '';
+      var handler = forced ? '' : ' onchange="_sqToggleSummaryHiddenCol(\'' + c.key + '\')"';
+      return '<label class="' + cls + '">' +
+        '<input type="checkbox" ' + (checked ? 'checked' : '') + disAttr + handler + '> ' +
+        escapeHtml(c.label) + labelTail +
       '</label>';
     }).join('');
     popover = '<div class="dhw-tools-popover">' +
@@ -20961,15 +20972,18 @@ function recalcSummaryOnly(){
   var mat = _sumQsellAndMargin('#bom-body');
   var lab = bomLabourSupplyOnly ? { qsell: 0, qcost: 0, margin: 0 } : _sumQsellAndMargin('#sq-labour-body');
   var subtotal = mat.qsell + lab.qsell;
-  var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
+  // SQ + DHW parity P7 FIX 7: tax pct input + tax/grand spans may be
+  // absent (Tax row deleted from Summary). Math still runs; guarded
+  // writes are no-ops when the element is gone. Save shape preserves
+  // bom.config.taxPct independently — Proposal wizard will rehydrate
+  // it later from the same store.
+  var taxPct = _sqReadNum('bom-tax-pct');
   var taxAmt = subtotal * taxPct / 100;
   var grand = subtotal + taxAmt;
-  document.getElementById('bom-subtotal').textContent = '$' + formatMoney(subtotal);
-  // SQ-wizard M2b: bom-margin-amt is hidden in the wizard UI, but we
-  // still write 0 to avoid drift if a future view un-hides it.
-  document.getElementById('bom-margin-amt').textContent = '$0.00';
-  document.getElementById('bom-tax-amt').textContent = '$' + formatMoney(taxAmt);
-  document.getElementById('bom-grand-total').textContent = '$' + formatMoney(grand);
+  _sqWriteText('bom-subtotal',    '$' + formatMoney(subtotal));
+  _sqWriteText('bom-margin-amt',  '$0.00');
+  _sqWriteText('bom-tax-amt',     '$' + formatMoney(taxAmt));
+  _sqWriteText('bom-grand-total', '$' + formatMoney(grand));
 
   // SQ + DHW parity P6: keep the Project Totals box in sync after a
   // cell-edit re-sum. Same identity as recalcBom — combined === subtotal.
@@ -21074,7 +21088,8 @@ function exportBomCSV(){
   });
 
   var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
-  var taxPct = parseFloat(document.getElementById('bom-tax-pct').value) || 0;
+  // SQ + DHW parity P7 FIX 7: bom-tax-pct input may be absent.
+  var taxPct = _sqReadNum('bom-tax-pct');
   var marginAmt = subtotal * marginPct / 100;
   var afterMargin = subtotal + marginAmt;
   var taxAmt = afterMargin * taxPct / 100;
