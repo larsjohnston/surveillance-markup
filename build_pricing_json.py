@@ -124,12 +124,14 @@ def parse_brivo(xlsx_path):
 
 
 def _parse_manual_csv(csv_path, vendor_label):
-    """Adapter for DoorBird + Luxer manual-extract CSVs.
-    Columns: sku, description, msrp, notes (notes optional).
-    unit_cost defaults to msrp (P0 Q3 — vendors have no reseller tier in
-    the CDN books; SQ pricing rules add margin at the integrator level).
-    Skips rows with empty SKU or non-numeric msrp; warns on the latter.
-    Accepts msrp as a bare number, with a leading $, or with thousands
+    """Adapter for DoorBird / Luxer / Brivo-credentials manual-extract CSVs.
+    Required columns: sku, description, msrp. Optional: unit_cost, notes.
+    If unit_cost is present and numeric, it OVERRIDES the msrp fallback
+    (Brivo credentials CSV ships reseller pricing alongside MSRP).
+    DoorBird + Luxer CSVs have no unit_cost column — row.get returns None,
+    so unit_cost stays at msrp (original P0 Q3 behavior). Skips rows with
+    empty SKU or non-numeric msrp; warns on the latter and on non-numeric
+    unit_cost. Accepts numbers as bare, with a leading $, or with thousands
     commas (e.g. "1,234.50").
     """
     items = {}
@@ -148,8 +150,16 @@ def _parse_manual_csv(csv_path, vendor_label):
                 print('[warn] %s: row "%s" has non-numeric msrp "%s" — skipped'
                       % (vendor_label, sku, msrp_raw))
                 continue
+            unit_cost = msrp  # Q3 default: fall back to msrp when no reseller tier known.
+            uc_raw = (row.get('unit_cost') or '').strip()
+            if uc_raw:
+                try:
+                    unit_cost = float(uc_raw.replace(',', '').replace('$', '').strip())
+                except ValueError:
+                    print('[warn] %s: row "%s" has non-numeric unit_cost "%s" — using msrp'
+                          % (vendor_label, sku, uc_raw))
             item = {
-                'unit_cost': round(msrp, 2),  # Q3: same as msrp until dealer tier known
+                'unit_cost': round(unit_cost, 2),
                 'msrp':      round(msrp, 2),
             }
             desc  = (row.get('description') or '').strip()
@@ -171,6 +181,10 @@ def parse_doorbird(csv_path):
 
 def parse_luxer(csv_path):
     return _parse_manual_csv(csv_path, 'luxer')
+
+
+def parse_brivo_credentials(csv_path):
+    return _parse_manual_csv(csv_path, 'brivo_credentials')
 
 
 def _default_path(*parts):
@@ -198,6 +212,11 @@ def main():
         help='Luxer One manual-extract CSV (columns: sku, description, msrp, notes).',
     )
     parser.add_argument(
+        '--brivo-credentials',
+        default=_default_path('source-data', 'brivo-credentials-extract.csv'),
+        help='Brivo Credentials manual-extract CSV (columns: sku, description, msrp, unit_cost, notes).',
+    )
+    parser.add_argument(
         '--out',
         default=_default_path('source-data', 'pricingBook.json'),
         help='Output pricingBook.json path.',
@@ -212,10 +231,11 @@ def main():
     # sheets are disjoint by prefix (EN-* vs B-*); DoorBird (DB-*) and
     # Luxer (LUX-*) are vendor-namespaced. No expected overlaps.
     for vendor, fn, src in [
-        ('eagle_eye', parse_eagle_eye, args.brivo_ee),
-        ('brivo',     parse_brivo,     args.brivo_ee),
-        ('doorbird',  parse_doorbird,  args.doorbird),
-        ('luxer',     parse_luxer,     args.luxer),
+        ('eagle_eye',         parse_eagle_eye,         args.brivo_ee),
+        ('brivo',             parse_brivo,             args.brivo_ee),
+        ('doorbird',          parse_doorbird,          args.doorbird),
+        ('luxer',             parse_luxer,             args.luxer),
+        ('brivo_credentials', parse_brivo_credentials, args.brivo_credentials),
     ]:
         if not os.path.exists(src):
             print('[warn] skipping %s: %s not found' % (vendor, src))
@@ -241,7 +261,7 @@ def main():
         'currency':             'CAD',
         'updated':              PRICE_LIST_DATE,
         'notes': (
-            'Merged book: Brivo + Eagle Eye + DoorBird + Luxer One — effective '
+            'Merged book: Brivo (Access + Credentials) + Eagle Eye + DoorBird + Luxer One — effective '
             + PRICE_LIST_DATE + '. unit_cost = vendor reseller/dealer price where '
             'available; msrp = list. labor_rate_per_hour is a PLACEHOLDER ('
             + str(LABOR_RATE_PLACEHOLDER) + '). DoorBird + Luxer One have no '
