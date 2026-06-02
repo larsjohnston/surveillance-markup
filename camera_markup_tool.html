@@ -20519,6 +20519,16 @@ function _sqRenderAutoRow(row, sectionId, rule){
     : '<div class="bom-cell-sku muted">—</div>';
   var cost = (typeof row.cost === 'number') ? row.cost : 0;
   var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
+  // Lazy-load: credential rows (and any future row class) may be emitted
+  // before the cloud pricing book has arrived — re-resolve from the live
+  // book by sku when cost is missing. Cheap (single-key lookup) and
+  // idempotent — once the row has a real cost, this branch is a no-op.
+  if(cost === 0 && row.sku && isPricingLoaded()){
+    var luCost = getUnitPrice(row.sku);
+    if(typeof luCost === 'number' && isFinite(luCost)) cost = luCost;
+    var luList = getListPrice(row.sku);
+    if(typeof luList === 'number' && isFinite(luList)) list = luList;
+  }
   var qty  = (typeof row.qty  === 'number') ? row.qty  : 0;
   var sell = deriveSell(cost, list, rule);
   var qc   = qty * cost;
