@@ -19082,11 +19082,20 @@ function computeAutoRows(){
       if(typeof qty !== 'number' || !isFinite(qty) || qty <= 0) return;
       var cat = BRIVO_CRED_CATALOG[sku];
       if(!cat) return;
+      // Credentials-wiring v26 follow-up: carry cost + list onto the row
+      // so _sqRenderAutoRow prices credential rows (other AC rows hit the
+      // shared price-resolver path via r.sku; credential rows take the
+      // same path but we surface the values up-front for SQ render — the
+      // SQ MATERIALS render leans on row.cost/row.list when present).
+      var unitCost  = getUnitPrice(sku);
+      if(typeof unitCost !== 'number' || !isFinite(unitCost)) unitCost = 0;
+      var listPrice = getListPrice(sku);
+      if(typeof listPrice !== 'number' || !isFinite(listPrice)) listPrice = null;
       acRows.push({
         auto: true, src: 'accessControl',
         key: 'auto-ac-cred-brivo-' + sku,
         sku: sku, desc: cat.description,
-        qty: qty, unit: 0,
+        qty: qty, cost: unitCost, list: listPrice, unit: 0,
         sectionAuto: true, section: '2.1'
       });
     });
