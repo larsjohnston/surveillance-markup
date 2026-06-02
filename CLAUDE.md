@@ -1,119 +1,254 @@
-You are helping build the Smart Building Markup & Quoting Tool: a single-file, browser-based tool for quoting cameras, access control, intercoms, parcel lockers, mailbox banks, smart suites, and in-unit IoT devices. The whole tool is one file, camera_markup_tool.html (CSS in one <style> block, JS in one <script> block). It runs client-side with no build step.
-For the company Smart MF, a multifamily development company that takes floor plans, door/hardware schedules, and architectural drawings and builds a complete package: branded cover page, customer-facing Bill of Materials, integrator-facing Take-Off, riser diagram, marked-up floor plans, and price quotes for developers, GCs, property managers, and owners. Will become a standalone, web-hosted, subscription SaaS for other integration companies later.
-Hard rules — follow every time
-Vanilla JS only. Use var, never let/const. Match existing style.
-No new dependencies. CDN-loaded libs are pdf.js and jsPDF only. Ask before adding any.
-Single file must keep working served locally (and via file:// double-click). No frameworks, no bundler, no node_modules at runtime.
-The HTML file is large (~140 KB, well past 2700 lines). Favor targeted str_replace edits over rewrites.
-Surgical changes only: touch only what's needed. Don't refactor or "improve" adjacent code.
-Read before you write. Read exports, immediate callers, and shared utilities first. If unsure why code is structured a certain way, ask.
-Tier-certainty: before building or modifying any tiered UI, if you're less than 80% sure which tier a thing is — or what Tier 1 / Tier 2 / Tier 3 map to for that module — STOP and ask. Do not guess the tier mapping. Mis-tiering is a recurring, expensive mistake.
-Recon-gate big passes: for any change touching multiple sites or shared state, FIRST report findings (every touch-point with line numbers, shared helpers, save-shape impact) and pause for confirmation before editing. Recon has repeatedly caught pre-existing systems the brief didn't anticipate (e.g. a legacy switches map, a duplicate selection cascade). Never skip it on a multi-site change.
-Fail loud: don't claim done or tested if any part was skipped. Surface uncertainty.
-Consult CLAUDE.md before any non-trivial edit (it carries the live gotcha list).
-speak very briefly. no explanations, just a recommendation.
-Design / style — consistency across every module is mandatory
-Universal 3-tier left-pane structure (applies to EVERY module — cameras, accessories, access control, intercom, parcel, mailbox, suite, IoT)
-Every left-pane drill-down uses the SAME three tiers, with static section headers in the pattern `<Mode> <Tier-role>`:
-Tier 1 — broadest grouping (manufacturer / brand / top category). Icon tiles at the half-size `.tier1-tile` footprint (see Tile rules). e.g. Camera Manufacturers: Eagle Eye / Hanwha / Other.
-Tier 2 — sub-type within Tier 1. Icon tiles, shared `.tier2-tile` size. e.g. Camera Styles: Dome / Bullet / Turret / Fisheye / PTZ / LPR. Camera Accessories: CMVR / Network / Accessories.
-Tier 3 — the specific model / SKU. TEXT-ONLY tiles — short code label, NO icon — shared `.tier3-tile` size in the shared 5-column grid (`.lp-tier3-list`, `repeat(5, 1fr)`). e.g. Camera Models: PD01 … DD11. CMVR models: 224+ / 320 / 323g … Every module's Tier 3 uses this same grid — NO per-module column override.
-A section mirrors this structure even when it is a peer block (e.g. Camera Accessories is its own Tier-1/2/3 stack below the camera drill-down, not a deeper tier of cameras). When in doubt about whether something is a new module or a deeper tier of an existing one — see the tier-certainty rule and ask.
-Tile rules
-Tiles over dropdowns everywhere. Selection = tile highlight only — no "Selected: X → Y" breadcrumb echo, no dropdown `<select>`.
-Three shared tile classes — reuse globally, NEVER hardcode new tile dimensions, sizing must match across every module:
-`.tier1-tile` ≈ 38px (half the height/width of Tier 2). Tier 1 is manufacturer / brand selection — a lighter, less-prominent row that doesn't compete for visual weight with the armable Tier 2 below it. Applies to every module's Tier 1 (camera manufacturers, accessory manufacturers, AC manufacturers, intercom manufacturers, etc.).
-`.tier2-tile` ≈ 76px. Tier 2 is the armable / placement-bearing tier — needs the full visual weight.
-`.tier3-tile` ≈ 42px text-only tile inside the shared 5-col `.lp-tier3-list` grid.
-If a new tier needs a size, it's already one of these three classes — never invent a fourth.
-Tier 1 / Tier 2 tile icon = the SAME silhouette as that thing's canvas marker (camera style glyph, head-end glyph, switch glyph), where the thing has a marker. Placeholder modules (no catalog/marker yet) use a neutral glyph and a "coming soon" stub.
-Tier 3 tiles carry NO icon by design — the short code IS the identifier, exactly like camera models (PD01). Label = an explicit `code:` field on the catalog entry (never derived by regex).
-Specifics live in the RIGHT PANEL, not on the tile. Capacity, price, PoE/AI, dimensions, flags, badges → shown in the right panel on select (mirror openRightPanelForCamera). Tiles stay identity-only.
-Active-tile (selected/armed) treatment: LIGHT fill + COLORED outline + COLORED glyph/label, in that thing's accent color. NOT a solid color-fill with a knockout glyph. Each grouping gets its own active color-variant class (`.active-dome` … `.active-lpr`, `.active-accessory`) — add a new variant, never reuse another module's. The solid-fill `.tier2-tile.active` is RESERVED for Access Control reader/controller tiles. Reuse existing color tokens; never a one-off hex. Tier-1/2 glyphs tint with the active color via `currentColor` where possible.
-All tier rows within a pane share the SAME horizontal inset (the `#controls` 13px); a peer block must match it, not sit flush. Padding on a tile-grid row (shrinks columns); margin on a `.lp-tier3-list` grid (preserves its internal padding gutter).
-Banned anti-pattern at EVERY tier: a single-column grid (`repeat(1, 1fr)`) or a list container reused as text rows — that's a dropdown in disguise. Tier 1/2 are ≥2-col icon-tile grids; Tier 3 is the shared 5-col text-tile grid.
-Definition of done for any tier: Tier 1 renders as ≥2-col `.tier1-tile` icon tiles at half-size; Tier 2 renders as ≥2-col `.tier2-tile` icon tiles (icon matches the canvas marker); Tier 3 renders in the shared 5-col text-tile grid (no per-module column override); selection shows by highlight; all specifics in the right panel. Reaching for `repeat(1, 1fr)`, a per-module column override, a list-container-as-rows, a new tile dimension, or price/specs on a tile — STOP, that's the mistake.
-Embedded tools inside the tier stack (deliberate exceptions)
-The 3-tier stack is otherwise strict — Tier 1 → Tier 2 → Tier 3, nothing between. There is exactly ONE sanctioned exception today:
-Storage Calculator (Camera Accessories drill-down only). Renders as a collapsible bar between the Camera Accessories Tier 2 row (CMVR / Network / Accessories) and the Tier 3 CMVR Models grid. The vertical space comes from Tier 1 being half-size. Collapsed by default; expand-on-click reveals the existing inputs (days / fps / codec / mode) and result readout. It lives there because storage sizing is the calculation the user reaches for while picking a CMVR — it belongs in the placement context, not in the Security Quote modal.
-New modules / drill-downs do NOT get to inject widgets into the tier stack without explicit approval. Treat this as the only carve-out; the default answer to "can I drop a widget between tiers" is no.
-Left-pane interaction — single-open accordion + sticky placement
-Accordion: Tier 3 is HIDDEN until its Tier 2 tile is clicked (progressive disclosure). Only ONE Tier-2 drill-down is open/armed at a time across the whole pane; opening one collapses every other Tier-3 list, clears the other arms, drops their highlights. Re-clicking the open Tier-2 collapses + clears it. A Tier-3 section header (where one exists) hides/shows in lockstep with its grid. Tier-3 visibility is owned by ONE function (sole writer of `.style.display` on the tier-3 containers) — no render/arm/paint path may also set display. Cold-start arms NOTHING and highlights nothing.
-Sticky placement (tool-wide; Suites exempt — modal flow): arming a model is "load once, place many." Every empty-canvas click places another of the armed item; the arm SURVIVES each placement and survives page-switches. Stop by Esc (also closes the right panel) OR re-clicking the armed tile (toggle off). Only one model armed tool-wide; arming any family clears all other arms. Selecting a placed device DISARMS (inspect ≠ place; uniform across all families — no select* re-arms from the placed device's model). One shared `_cancelAllPlacement()` helper clears all arm vars + mode flags + banner + repaints tier-3 highlights; it does NOT close the panel (only Esc does).
-Hit-test wins over armed-place: while armed, a click that lands on an existing placed object SELECTS + drags it (does not place on top); only empty-canvas clicks place. Armed-drag of a placed object PRESERVES the arm (same-family); cross-family drag disarms via the mode swap (accepted). Selection clears use a separate `_clearAllPlaceableSelections()` helper — selection state and arm state are orthogonal, two helpers, never merged.
-Two structural patterns — left-pane tiers vs wizard steps (do not conflate)
-There are exactly two structural UI patterns in the tool. They are orthogonal. Applying one's rules to the other is a mistake.
-Left-pane 3-tier drill-down (Tier 1/2/3 tiles) = how the user SELECTS a device to place. Tile-based, vertical, lives in the left pane. ALL the tile/tier rules above apply ONLY here.
-Wizard steps (Door Hardware wizard, Security Quote wizard) = a horizontal numbered stepper inside a centered modal. Content is TABLE-based, never tiles. The 3-tier tile rules DO NOT apply to wizard steps; the `.dhw-*` chrome rules (below) do. Never render a wizard step as tiles, and never render a left-pane tier as a horizontal stepper.
-How they interact — the pipeline: left-pane tiers select a device → device is placed on the canvas → placed canvas devices auto-populate the Security Quote wizard's MATERIALS step → MATERIALS lines auto-populate the LABOUR rows → MATERIALS + LABOUR roll up in SUMMARY. One direction: left-pane selects → canvas holds → wizard quotes. The canvas is the join between the two patterns.
-Quote & schedule wizards — shared chrome (Door Hardware + Security Quote)
-Two modals share ONE chrome built on the `.dhw-*` classes:
-Centered `.big-modal` + `.modal-box.big-modal-box.dhw-modal-box`, backdrop, click-outside close, persistent top-right X.
-Horizontal numbered stepper (`.dhw-stepper` / `.dhw-step` / `.dhw-step-dot` / `.dhw-step-label` / `.dhw-step-connector`), free bidirectional nav (click any step), active-step host (`.dhw-step-content`), and a Back/Next nav row (`.dhw-wizard-nav` pattern — Back hidden on first step, Next hidden on last).
-Render pattern to clone: `renderXModal()` → builds `stepper + active-step + nav`; helpers `_xRenderStepper()`, `_xRenderActiveStep()`, `_xGoToStep()`, `_xRenderWizardNav()`; state vars `_xCurrentStep` / `_X_STEP_LABELS`.
-Reuse `.dhw-*` classes verbatim for any new wizard chrome — never author new stepper CSS or new modal-box dimensions. Use a module-scoped state prefix per wizard (`_dhw*` for Door Hardware, `_sq*` for Security Quote) to avoid collision.
-Export CSV button persists on every step (mirrors the persistent X).
-Section numbering restarts per step: each step owns its own `N.x` namespace (Materials = 1.x, Labour = 2.x); Summary unnumbered.
-The two wizards differ only in steps/content:
-Door Hardware wizard = 5 steps: Comparison / Hardware / AC Overlap / Labour / Summary. Multi-supplier (compare & award).
-Security Quote wizard = 3 steps: MATERIALS / LABOUR / SUMMARY. Single price book — NO Comparison, NO AC-Overlap step (those are door-hardware concerns and do not belong in the security quote).
-Security Quote wizard — step contracts
-MATERIALS (step 1): every placed-device class lives here (cameras, access control, intercom, parcel, mailbox, suites, IoT, networking). Auto-populated from canvas placements. Styled like Door Hardware step 2 (Hardware): blue header bar, row striping, columns qty · description · catalog# · unit$ · line$. The tier-filter chips are nested inside this step. Storage Calculator does NOT live here — it lives in the left pane between the Camera Accessories Tier 2 CMVR tile and the Tier 3 CMVR Models grid (see "Embedded tools inside the tier stack" above).
-LABOUR (step 2): mirrors the MATERIALS step — same column model + per-section rule pills + project-default rule strip. Auto rows seeded from MATERIALS lines, same order / grouping / sections. Header strip = `Supply only` toggle + project default labour rule. Columns: SKU · description · Cost · Sell · Qty · Qty×Cost · Qty×Sell · Margin $ · GM % (labour earns its own margin: Sell > Cost). Per-section rule pill + per-line override pill, XOR between two modes:
-Hourly — user enters an Hourly Cost rate + Hourly Sell rate; Qty is interpreted as hours (decoupled from material Qty). Line = Qty × Cost / Qty × Sell.
-Flat — user enters a Flat Cost + Flat Sell per unit; Qty = units. Line = Qty × Cost / Qty × Sell.
-Hourly and Flat are mutually exclusive at the granularity they're set (line or section). Narrower scope wins: per-line override > per-section rule > project default.
-Labour Qty is decoupled from material Qty (seeded from the canvas count as a default; user can overwrite — especially in Hourly mode where Qty = hours, not device count).
-`Supply only` disables all inputs, forces every line total to 0, and shows a badge in SUMMARY.
-Sticky LABOUR SUBTOTAL footer row (Σ Qty×Cost · Σ Qty×Sell · Σ Margin $ · blended GM %).
-SUMMARY (step 3): uses the xlsx Summary column set: SKU · description · Qty · Hardware Ext Cost · Hardware Ext Sell · Labour Ext Cost · Labour Ext Sell · Combined Cost · Combined Sell · Margin $ · GM %. Per-section sub-totals + a grand Sub-Total row. Counts block above the table. There is NO global margin % input — margin is baked per-section/per-line via the Mark-Up/Discount (materials) + Hourly/Flat (labour) rules. Tax % applies to Combined Sell to produce Grand Total.
-BOM section semantics (on-screen Security Quote vs customer PDF)
-CMVR/recording is REQUIRED: when zero CMVR head-ends carry a real sku, the on-screen Security Quote shows a single warning-styled line "No CMVR Present" (amber bold) — there is NO generic auto-NVR/auto-HDD fallback row. The customer-facing PDF OMITS the CMVR section entirely (never prints the warning).
-Network/switches are OPTIONAL: zero switches placed → the Network section emits NOTHING (no generic auto-switch row, no warning).
-Per-SKU roll-up for placed infrastructure: group by sku, qty = count of placements, unit = getUnitPrice(sku). Do NOT pageMultiply (switches/head-ends are per-floor physical).
-Qty is canvas-derived, never user-editable on auto rows. The MATERIALS step locks every auto-row Qty cell; clicking a locked cell shows a notice ("To change equipment quantity, add or remove devices from floorplans so drawings always match takeoffs"). Custom rows (user-added, not placement-derived) keep editable Qty. `bomAutoOverrides[key].qty` is read-side bypassed for auto rows — placement count always wins.
-Visual tokens
-On-screen UI: dark navy #111827 headers, red #c8202c accent, white panels. Use the CSS vars --font-ui (system-ui sans) and --font-mono. (The old "Courier New everywhere" note is stale.)
-PDF export is SMART-MF branded and uses Helvetica, not Courier.
-IDs/classes kebab-case (bom-stat, model-row, tier-chip). Functions camelCase. var at module scope. Section dividers: `// ─── Section Name ───`.
-Catalog & placement conventions (established — follow for new device families)
-Catalog-as-code, prices from the book. A device family is a hardcoded constant keyed by vendor SKU (CAMERA_DB, SWITCH_CATALOG, CMVR_CATALOG, BRIVO_CATALOG) carrying identity + spec metadata + an explicit `code:` field for the Tier-3 label. PRICES come at runtime from getUnitPrice(sku). Never put prices in the catalog. Never derive the Tier-3 code by regex.
-Multi-per-page placeables use an ARRAY, never a page-keyed map. `[{id, page, x, y, sku, label}]`. IDs are `'<prefix>-' + Date.now() + '-' + Math.random().toString(36).slice(2,7)`. Labels via `_nextInfraLabel(PREFIX, existingLabels)` (scans for max trailing N, returns `<PREFIX>-<N+1>`). A page-keyed map silently overwrites a second placement on the same page — that bug already cost a v24→v25 conversion; don't reintroduce it.
-Selection setters carry side-effects — always call select<Family>(id); never bare-assign the SelectedId var. select takes an `opts.keepArm` flag: canvas-drag paths pass `{keepArm:true}` (preserve the arm), sidebar/list/right-click inspect paths do NOT (disarm, strict-inspect).
-markDirty discipline for drags: infrastructure (switch/head-end) drag fires markDirty ONCE on mouseup, not per mousemove tick. (Cameras/readers/smart-apt/suites still fire per-tick — a known asymmetry pending a cleanup pass; match the mouseup-only pattern for any NEW draggable.)
-Lessons learned — codebase gotchas (do not relearn these)
-markDirty() discipline: fire it at the commit point of every user-driven state change (placement, edit, delete, drag-end, rename, calibration, project info). Do NOT fire on read-only nav or view toggles (page switch, tier filter, DORI/blind-spot/heatmap, mode swap, CSV export). Wizard step navigation (Door Hardware or Security Quote) is read-only nav — do NOT fire markDirty() on a step change. Selection and accordion/arm changes are nav, not state — no markDirty.
-Labour rule (Security Quote LABOUR step): per-line OR per-section, Hourly (Hourly Cost + Hourly Sell) XOR Flat (Flat Cost + Flat Sell) — never both on one line/section. Labour earns its own Cost/Sell (it has margin). Math is `Qty × Cost` / `Qty × Sell` either way — Hourly interprets Qty as hours, Flat as units. Labour Qty is decoupled from material Qty (seeded from canvas count as default; user can overwrite). The OLDER `INSTALL HRS XOR LABOUR $` single-global-rate shape applies ONLY to the Door Hardware wizard's Labour step, not to the Security Quote.
-New wizard chrome reuses the existing `.dhw-*` classes and render pattern; never author parallel stepper CSS or new modal-box sizes. Keep a module-scoped state prefix per wizard (`_dhw*`, `_sq*`).
-Selection: always call selectCamera(id) / selectReader(id) (and the opts.keepArm-aware select* setters). Never bare-assign selectedId / acSelectedId — the setters run the right-panel/slider side-effects + the shared clear helpers.
-Model arming vs mutation: tile clicks and init paths use armModel(key) (arm only, no cam.* mutation). Use pickModel(key)/applyModelToSelected(key) only when the user explicitly picks a model for an already-selected device. Tile clicks must never retroactively flip a placed device's model.
-addCamera: increment inp-label.value for the next placement AFTER selectCamera(id), never before. Infrastructure labels increment per-placement inside place* via _nextInfraLabel.
-pixelsPerMeter is PDF-points-per-meter. Do NOT include RENDER_SCALE in the formula (`72 / (0.0254 * ratio)`); render-time consumers apply viewScale. Including it double-applies the 4× upsample.
-Use the existing constants block (RENDER_SCALE, FT_PER_METER, DEFAULT_PIXELS_PER_METER, riser band caps). Don't redefine inline.
-JSON save version: one literal per save site (lite + full — bump BOTH), bump on any shape change. In applyProjectState read all older versions cleanly — default missing fields, MIGRATE old shapes (don't drop data when entries carry real SKUs), never reject a file.
-Reader→controller cable lines are deferred: acDevices[] has no controllerId. AC riser is a placement diagram, not a wiring diagram. Don't fake links from spatial proximity.
-Cabling is interim: cameras cable to the FIRST head-end per page (head-ends are now multi-per-page); proper camera→switch→CMVR routing is a deferred pass. Don't build PoE-budget or topology on the interim model.
-New placeable families: add their reset to ALL of loadImage / loadPDF / rewindToNoPdf / switchPage selection-reset / deletePage cascade. Missing one = stale-position or leak bugs (this class of bug recurred for switches and head-ends).
-Step reports: verify "retained X / kept Y" against the actual diff with grep, not against intent.
-Cache discipline: test only via localhost (python -m http.server 8000), never file://. If a change "didn't take": hard reload (Ctrl+Shift+R), confirm loaded code via console, check server cwd.
-Dev convenience: localStorage 'dev_quiet'='1' suppresses auto-calibration + autosave-recovery prompts.
-Pricing context (active focus area)
-Price book loads via File-menu picker → localStorage key 'pricingBook' (file:// can't auto-load a sibling JSON). Read helpers: getPricingBook(), getUnitPrice(sku), isPricingLoaded(). Vendor books live in gitignored source-data/. The loaded book is keyed by vendor SKU; catalog SKUs must match book keys exactly (no normalization in getUnitPrice).
-The vendor xlsx→pricingBook.json converter (build_pricing_json.py) must NOT drop `-0`-suffixed SKUs — `-0` is real hardware (CMVRs, bridges) AND subscription setup rows; the description filter (Setup/Complete/Monthly/Yearly) handles subscriptions, the suffix filter must be `-(1|12|36|60)$` only.
-HARD DEPENDENCY: the proposal cover Grand Total renders $0.00 until real prices land. Do not ship a client-facing proposal until pricing or the cover-redesign ($0-hide) lands.
-Testing
-node --check on the extracted script block after every edit.
-python -m http.server 8000, then http://localhost:8000/camera_markup_tool.html. Never file:// (Edge caches it aggressively → phantom bugs).
-User runs the browser test, one item at a time on request. Don't claim a browser-verified pass on your own.
-Workflow
-Relay model: planning side produces paste-ready blocks for Claude Code; user pastes CC's responses back. Keep blocks tight. RESPONSE FORMAT to the user: ONLY (a) the exact block to paste to CC and (b) questions that need answering — no recaps, rationale, or summaries unless asked.
-Open every CC block with a resync anchor: `[HEAD: <hash> | branch | tree]`.
-Commit per milestone after each browser review — don't ride uncommitted milestones. Multi-feature arcs may stack on one branch/PR by user choice.
-Direct push to main is BLOCKED by the harness — all merges go via PR. With `gh auth login` done, CC opens PRs via `gh pr create`; otherwise the user opens via the GitHub browser URL, then `git pull` to sync local main.
-Fold the pass-brief filename into that pass's final commit (briefs have dangled untracked otherwise).
-QUEUE.md is the canonical manually-maintained queue. At the end of any chat that changes the queue (items added/removed/reprioritized, milestones shipped, next-session sequence changed), remind the user to update QUEUE.md and offer to regenerate it for paste.
-How to talk to me
-No preamble, affirmations, or restating my question. Go straight to the answer.
-Bullet points. No explanations. Just the points.
-No closing summary unless I ask. No disclaimers unless the topic genuinely needs one.
-Make a recommendation on every open decision — don't hand me a menu.
+# Surveillance Markup Tool
+
+## What this is
+Single-file browser-based tool for security camera placement, coverage analysis, BOM generation, and proposal export. Runs entirely client-side. Used by a security integrator to produce quick quotes and floor plan layouts for prospective customers.
+
+## Files
+- `camera_markup_tool.html` — the entire tool, ~140 KB, ~2700 lines, single file
+- `lib/` — three external libraries (PDF.js + worker, jsPDF), loaded as `<script src>`
+- `setup-windows.bat` / `setup-mac-linux.sh` — one-time scripts that fetch libs from cdnjs
+- `README.md` — end-user deployment guide
+
+## Architecture
+- Vanilla JavaScript, no framework. Plain `<script>` block at the end of the HTML.
+- One canvas element. Camera placements stored in a flat `cameras[]` array, each tagged with `page` index.
+- PDF.js renders each page to an offscreen canvas at 4× scale; that canvas is drawn into the visible canvas at user's zoom level. Retina-aware via `devicePixelRatio`.
+- Save/Load uses JSON files, not localStorage (autosave uses localStorage as recovery only).
+
+## Major features built
+- **PDF or PNG/JPG import** (drag-drop or file picker, multi-page PDFs become tabs)
+- **Camera database** — 25 Eagle Eye + 19 Hanwha Wisenet models with real specs
+- **Six camera styles** — Dome (red), Bullet (blue), Turret (cyan), Fisheye (green), PTZ (purple), LPR (amber). Each has a flat SVG icon and a distinct canvas rendering.
+- **Brand picker UI** — three-tile grid (Custom / EE / HW). Clicking opens a modal with style filter chips and a grouped model list.
+- **Scale calibration** — typed scale (`1/8" = 1'-0"`, `1:100`, etc.) or two-point click reference distance. Per-page calibration persisted in JSON.
+- **DORI zones** (IEC 62676-4 standard) — colored bands inside the FOV cone showing Identification (250 ppm), Recognition (125), Observation (62), Detection (25). Math: `D = horizPx / (2 × targetPPM × tan(FOV/2))`.
+- **Calibration-aware cones** — non-DORI cones reflect real-world coverage based on `cam.reachM` (meters) and page calibration. Slider in right panel adjusts per-camera reach with Reset to spec.
+- **Mounting height + recommended tilt** — auto-calculated based on camera height and detection range.
+- **Visualization modes** — Blind Spots overlay (mutually exclusive with Heatmap).
+- **Cable run planner** — place an NVR head-end per page, cables auto-draw with length labels. Runs over 90 m flagged red (Cat6 PoE limit).
+- **Bill of Materials drawer** — six sections (Cameras, Recording, Network, Cabling, Labor, Other), each with auto-rows + custom add-line. Live margin/tax/grand total. CSV export.
+- **Storage calculator** — retention days × fps × codec × recording mode → Mbps, GB/day, TB needed, recommended drive count.
+- **Multi-tier pricing** — each camera tagged Essential/Recommended/Premium; BOM has tier filter chips.
+- **Site survey fields per camera** — mount type, power source, environment, conduit, hazards.
+- **Project info modal** — client, address, ref number, date, valid-until, salesperson, scope.
+- **Riser diagram** — auto-generated system one-line in proposal PDF. Pages become floor bands stacked by elevation. Head-end renders inside its band. Drag-and-drop tab reorder overrides smart-parse order.
+- **Auto-save with recovery** — localStorage write every 30 s when dirty. Recovery prompt on PDF drop if recent autosave exists. Indicator in top bar shows save status. Beforeunload guard.
+- **Proposal PDF export** — branded cover page, BOM with totals, riser diagram + equipment schedule, then floor plan pages with overlays. Saved with project name as filename.
+- **Typical floor multiplier** — pages can be configured as "typical" representing N identical floors. Camera counts and cable lengths multiply in BOM and riser schedule.
+- **Access control mode** — separate device type (Brivo readers). Mode toggle in top bar. Readers have their own right panel with editable label and notes.
+
+## Pending / known gaps
+- **Pricing fields are blank by default.** User will populate camera and labor pricing in the database when they have updated info from their distributor.
+- **Cable cost line** is a placeholder — user will provide cable cost per foot/meter later.
+- **Head-end is data-only** — no selection, no right panel, no Delete key. Only "Place Head-End" mode + click to delete. Parking lot item for future first-class object treatment.
+
+## Coding conventions used
+- Courier New monospace UI, dark navy `#111827` headers with red `#c8202c` accent, white panels.
+- IDs and class names: kebab-case (`bom-stat`, `model-row`, `tier-chip`).
+- Functions: camelCase. Variables and state are `var` declarations at module scope, no `let`/`const` — keeps the file consistent with what was already there.
+- All CSS in a single `<style>` block at the top. All JS in one `<script>` block at the bottom (plus a small library-detection script).
+- No build step. Edit the HTML directly.
+
+## Things I'd like to keep doing in this style
+- Single-file HTML — must keep working when opened directly from disk by double-click. No frameworks, no bundler, no node_modules in the runtime.
+- Library count stays at PDF.js + jsPDF only. Don't add new dependencies without asking.
+- Every change to the tool gets tested by opening the HTML in a browser and trying it.
+
+## Workflow notes
+- Use `git add . && git commit` after meaningful changes for safe undo.
+- The HTML file is large — favor targeted `str_replace` edits over rewrites.
+- After any significant edit, do a JS syntax check: `node --check` on the script block.
+
+**Local testing protocol.** Run `python -m http.server 8000` from the project folder and open http://localhost:8000/camera_markup_tool.html for testing. Do NOT open the HTML directly via file:// — Edge caches aggressively at file:// origins and creates phantom bugs where on-disk code disagrees with browser behavior. This has bitten us twice during the scale UI pass and cost real session time.
+
+**Pre-commit check.** Before `git push`, verify HEAD is current: `git log -1 --oneline` should show the expected HEAD from the CC block (or the most recent merge). Never push directly to main — all commits go via branch + PR. If you notice a direct push happened, flag it immediately (even if the work is correct).
+
+# General rules
+
+These rules apply to every task in this project unless explicitly overridden.
+
+## Rule 1 — Surgical changes
+
+Touch only what you must. Don't "improve" adjacent code, comments, or formatting.
+Don't refactor what isn't broken. Match existing style.
+
+## Rule 2 — Read before you write
+
+Before adding code, read exports, immediate callers, and shared utilities.
+"Looks orthogonal" is dangerous. If unsure why code is structured a certain way, ask.
+
+## Rule 3 — Match the codebase's conventions
+
+Conformance beats personal taste inside this codebase.
+If you genuinely think a convention is harmful, surface it. Don't fork silently.
+
+## Rule 4 — Fail loud
+
+"Completed" is wrong if anything was skipped silently.
+"Tests pass" is wrong if any were skipped.
+Surface uncertainty, don't hide it.
+
+## Project context
+
+- **Stack:** single-file vanilla HTML/JS/CSS tool. No build step. No framework. No package.json. No tests.
+- **Main file:** `camera_markup_tool.html` — contains all CSS, HTML, and JS in one file.
+- **Verification command:** `node --check` (on extracted script block). Browser-only; no test suite.
+- **Run locally:** Serve via local HTTP — `python -m http.server 8000` from the project folder, then open http://localhost:8000/camera_markup_tool.html. See "Local testing protocol" at top.
+- **Where things live:** Everything is in one file. Convention is `// ─── Section Name ───` comment dividers for navigation.
+- **Conventions worth knowing:**
+  - Vanilla JS, `var` declarations (not `let`/`const`). Match existing style.
+  - No new dependencies. CDN-loaded libs only: pdf.js, jsPDF.
+  - Save files use a single JSON version literal (currently v26). Bump on shape change.
+  - State changes call `markDirty()` for auto-save tracking.
+  - Selection uses `selectCamera(id)` / `selectReader(id)` — never bare assignment to `selectedId` / `acSelectedId`.
+
+## Step report format
+
+At the end of every step, output a single fenced markdown code block containing the complete step report. This is for the user to copy and paste back to their reviewer for verification. Use this exact structure:
+
+Step reports that claim "Retained X" or "Kept Y" must be verified against actual diff, not against intent. If an element is described as retained, grep for it after the edit to confirm it still exists. The exp-warn near-miss in A.6 happened because the report described intended behavior while the code dropped the element — only caught by a follow-up grep.
+
+## Step [N] — [short description]
+
+### Files changed
+- `<filepath>` — [N lines added, M removed]
+
+### Changes
+- Exact `old_str` / `new_str` pairs, or grep results showing what's being edited.
+
+### Notes
+- Retained: [elements/functions/variables that stayed in place]
+- Dropped: [removed, not reachable elsewhere]
+- New: [added]
+
+---
+
+### Calibration math — pixelsPerMeter convention
+
+`calibrations[pageIdx].pixelsPerMeter` is in **PDF-points-per-meter**, not offcanvas-pixels-per-meter. The two-point calibration in `saveCalib` produces this value correctly using `pixelDist / meters` where `pixelDist` is already in PDF points (cssX / viewScale).
+
+Any new code that writes to `pixelsPerMeter` must match this convention. Specifically: do **NOT** include `RENDER_SCALE` in the formula. Render-time consumers (`drawCamCone`, `getCameraReachPx`, `cableLengthM`) multiply by `viewScale` at draw time to convert PDF-points to screen pixels. Including `RENDER_SCALE` in `pixelsPerMeter` double-applies the upsampling factor and produces 4×-too-large results that silently affect cones, DORI bands, and cable length labels.
+
+Correct typed-scale formula:
+    var pxPerM = 72 / (0.0254 * ratio);   // PDF-pts per real meter
+NOT:
+    var pxPerM = RENDER_SCALE * 72 / (0.0254 * ratio);   // WRONG — bug from Pass C
+
+### Selection state — never assign selectedId / acSelectedId directly
+
+When placing or selecting a camera or reader programmatically, always call `selectCamera(id)` or `selectReader(id)`. Never use bare assignment like `selectedId = id;`.
+
+`selectCamera`/`selectReader` run side-effects that the UI depends on:
+- `configureReachSlider(cam)` — sets slider unit/range/value for the new selection
+- `openRightPanelForCamera(cam)` / `openRightPanelForReader(dev)` — populates and slides in the details panel
+- `updateRightPanelDisplay(cam)` — updates Manufacturer/Model/Specs readouts
+- Various redraws and DOM syncs
+
+Bare assignment leaves the right panel desynced from the model. The UI shows stale data; user has to re-click the device for it to refresh. Bug from Pass C step 7.
+
+### Drill-down arming vs model assignment
+
+The Pass Left-Pane drill-down tile clicks ARM the next placement. They must not retroactively mutate the currently-selected camera. Use `armModel(key)` for arming-only paths (`lpPickCamerasBrand`, `lpPickCamerasStyle`, init IIFE). Use `pickModel(key)` only when the user explicitly chooses a model for an already-selected camera (modal click, future right-panel model swap).
+
+Bug from Pass Left-Pane M2: `lpPickCamerasBrand` called `pickModel` and silently flipped a placed camera's model when the user clicked a different brand tile. The placed camera's label stayed `EAG-*` (labels are generated at placement time, not regenerated) while its `cam.model` flipped to a HWA SKU — invisible until the user re-clicked the placed camera and saw the wrong specs in the right panel.
+
+Mental model:
+- `armModel(key)` — arming-only. State + UI repaint. No `cam.*` mutation.
+- `applyModelToSelected(key)` — mutation-only. Updates `selectedId`'s camera fields. No state/UI change.
+- `pickModel(key)` — composite wrapper. Both of the above + closes the legacy modal.
+
+When in doubt: tile-click handlers and init paths use `armModel`. Explicit "I am picking this model for the camera I have selected" gestures use `pickModel`.
+
+### addCamera label increment timing
+
+In `addCamera`, the post-placement increment of `inp-label.value` (for the next placement) must happen AFTER `selectCamera(id)` runs, not before. `selectCamera` populates the right panel's label input from `cam.label`. If the increment fires first, the input shows the next-up label while the just-placed camera holds the previous one — they don't match. Bug from Pass A.7 aux5.
+
+Correct order in addCamera:
+1. cameras.push({...label: label, ...})
+2. selectCamera(id)
+3. markDirty()
+4. redraw(); updateList(); updateDoriInfo()
+5. Then: increment inp-label.value for NEXT placement
+
+### State change tracking — markDirty discipline
+
+Pass D introduced `isDirty` for auto-save. Every user-driven state change must call `markDirty()`:
+
+State changes that DO trigger markDirty:
+- Camera/reader placement, deletion, drag-end, label/notes/mount/angle/FOV/reach/model edits
+- Tab rename, tab typical-config save, tab delete
+- Calibration save (typed or two-point)
+- Head-end placement and deletion
+- BOM custom-line add/edit/remove, BOM auto-override edit, BOM config input changes (when from user, not internal recalc)
+- Project Info save
+- Tab drag-reorder (sets tabOrder, then markDirty)
+
+State changes that do NOT trigger markDirty (read-only navigation):
+- switchPage / tab click
+- Tier filter chip change in BOM
+- BOM CSV export
+- DORI / blind-spot / heatmap toggle
+- Mode swap (cameras ↔ access)
+
+When adding new state-change features, audit whether `markDirty()` should fire and add the call at the commit point of the change (after the data model update, before redraw).
+
+### Cache discipline
+
+The local testing protocol (HTTP server, see top of file) eliminates most cache issues. If you still see "it didn't take" behavior — function returns wrong value, version banner says old number, behavior unchanged after code change — the diagnostic order is:
+
+1. Hard reload in the localhost tab (Ctrl+Shift+R)
+2. Verify the loaded code matches disk via console: `typeof functionName` returns 'function', or paste a function's .toString() and grep for a known recent change
+3. If still wrong, check that the local server is serving from the right folder (the python -m http.server output shows the cwd)
+
+If testing via file:// for any reason (don't, but if forced): close tab, reopen from File Explorer, hard-reload. Edge caches file:// origins aggressively. This cost us two debug rounds during Pass Scale UI.
+
+### Math constants — use existing ones
+
+The codebase has these constants near the top of the script:
+- `RENDER_SCALE` — PDF.js rendering upsample factor (currently 4)
+- `FT_PER_METER` — 3.28084
+- `DEFAULT_PIXELS_PER_METER` — 30 (Pass C; used when getPPM returns null)
+- `RISER_EMPTY_BAND_PT` / `RISER_MAX_BAND_PT` — Pass A.7 band height caps
+
+Don't redefine them inline. If new code needs a similar constant, add it to the constants block, don't sprinkle it.
+
+### JSON version bumps
+
+Each pass that changes the save shape bumps the version literal in saveJSON. Current version chain:
+- v8 — original
+- v9 — pages[i].name (editable tabs, Pass A)
+- v10 — sourceDocument with embedded PDF (Pass A.25)
+- v11 — pages[i].typical multiplier config (Pass A.5)
+- v12 — acDevices[i].notes editable (Pass A.8)
+- v13 — cam.reachM in meters; calibration unit field (Pass C)
+- v14 — tabOrder manual riser order override (Pass A.7)
+- v25 — Pricing Cloud (pricingBook, upload modal, fetch)
+- v26 — Credentials wiring (projectInfo.credentials.brivoSkus)
+
+When bumping the version: read all older versions cleanly in `applyProjectState`. Default missing fields rather than rejecting the file. Add a one-time info banner if the migration is user-visible (e.g., reach values updated in Pass C).
+
+### Dev quiet flag (testing convenience)
+
+To suppress both the auto-calibration prompt and the autosave recovery prompt during development:
+
+    localStorage.setItem('dev_quiet', '1')   // enable
+    localStorage.removeItem('dev_quiet')      // disable
+
+Persists across reloads. Init reads the flag and sets `SUPPRESS_AUTO_CALIBRATION_PROMPT` and `SUPPRESS_AUTOSAVE_RECOVERY` accordingly. Edge case: `loadProjectFromFile`'s finally block resets both flags after a v10+ save load; reload the page to re-enable dev_quiet after loading a project file.
+
+## How to talk to me
+
+- No preamble, affirmations, or restating my question. Go straight to the answer.
+- Bullet points or short prose. No long explanations.
+- No closing summary unless I ask. No disclaimers unless the topic genuinely needs one.
+- Make a recommendation on every open decision — don't hand me a menu.
+- **Output format to user: ONLY (a) the exact paste-ready block for Claude Code in a fenced code block, and (b) blocking questions. No recap, no rationale, no closing summary unless I ask.**
+- **All Claude Code instructions go in fenced code blocks (```), never prose. Every CC block opens with `[HEAD: <hash> | branch | tree]`.**
+- **One question at a time when possible. Three max per turn. Only ask blocking questions — if the answer is in CLAUDE.md, QUEUE.md, prior content, or inferable, just decide.**
+- If I say "give me one instruction to paste" — that's a single self-contained block, no preamble in the box.
+- If I paste something obviously stale or contradictory from another chat, flag it before acting on it.
+- **When CC edits are followed by commands:** Separate the CC block from any follow-up PowerShell/DevTools commands into distinct fenced code blocks. Label each block: "CC block:" and "In PowerShell:" / "In DevTools Console:". Never mix edits and commands in one fenced block.
+- **Secrets never appear in chat.** If a secret leaks, tell me to rotate immediately and walk me through `wrangler secret put` to do so.
+- When diagnosing failures, ask for the SPECIFIC error string + HTTP status + response body. Don't guess from stack traces alone. Network tab Response body and `wrangler tail` are the diagnostic tools.
+- Tell me explicitly when a command goes in PowerShell vs DevTools Console.
+- **EVERY Claude Code instruction is ONE fenced code block, period.** Multi-edit tasks use `old_str: / new_str:` pairs numbered 1–N. No prose scaffolding before the block. Block opens with `[HEAD: <hash> | branch | tree]`. This is default behavior, never ask or wait for permission.
