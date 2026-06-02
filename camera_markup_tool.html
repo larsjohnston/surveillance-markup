@@ -1112,6 +1112,8 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-pill.active { background:#fff3cd; color:#856404; border-color:#d97706; }
 .dhw-awarded  { background:#e8f5e9; font-weight:600; }
 .dhw-cheapest { background:#fff3e0; color:#e65100; font-weight:600; }
+/* DHW Revamp M4: sticky labour subtotal at bottom of Step 3 Labour. */
+.dhw-labour-subtotal { margin-top:16px; padding:12px 16px; background:var(--surface-soft); border:1px solid var(--border); border-radius:5px; font:600 12px var(--font-ui); text-align:right; position:sticky; bottom:0; z-index:10; }
 .dhw-btn-danger { color:#b91c1c; border-color:#fecaca; }
 .dhw-btn-danger:hover { background:#fef2f2; }
 .dhw-btn-primary { color:#fff; background:var(--primary); border-color:var(--primary); }
@@ -7074,6 +7076,93 @@ function _dhwOpenQuoteImport(){
   openHardwareQuotePicker();
 }
 
+// ─── DHW Revamp M4 — Step 3 Labour setters ──────────────────────────────────
+// _dhwSetSupplyOnly (L9074) is reused from the legacy renderer — same
+// flag, same on/off semantics, same persistence under
+// hardwarePricing.supplyOnly. Setters below all write to the new M1
+// shape (projectLabourRule / sectionLabourRule / lineLabourRule).
+
+function _dhwSetProjectLabourMode(mode){
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  if(!doorHardware.hardwarePricing.projectLabourRule) doorHardware.hardwarePricing.projectLabourRule = { mode: 'Hourly', costRate: 0, sellRate: 0 };
+  doorHardware.hardwarePricing.projectLabourRule.mode = (mode === 'Flat') ? 'Flat' : 'Hourly';
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+function _dhwSetSectionLabourCost(mfr, value, mode){
+  var n = parseFloat(value);
+  if(!isFinite(n) || n < 0) n = 0;
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  if(!doorHardware.hardwarePricing.sectionLabourRule) doorHardware.hardwarePricing.sectionLabourRule = {};
+  if(!doorHardware.hardwarePricing.sectionLabourRule[mfr]) doorHardware.hardwarePricing.sectionLabourRule[mfr] = {};
+  doorHardware.hardwarePricing.sectionLabourRule[mfr].costRate = n;
+  if(mode === 'Hourly' || mode === 'Flat') doorHardware.hardwarePricing.sectionLabourRule[mfr].mode = mode;
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+function _dhwSetSectionLabourSell(mfr, value, mode){
+  var n = parseFloat(value);
+  if(!isFinite(n) || n < 0) n = 0;
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  if(!doorHardware.hardwarePricing.sectionLabourRule) doorHardware.hardwarePricing.sectionLabourRule = {};
+  if(!doorHardware.hardwarePricing.sectionLabourRule[mfr]) doorHardware.hardwarePricing.sectionLabourRule[mfr] = {};
+  doorHardware.hardwarePricing.sectionLabourRule[mfr].sellRate = n;
+  if(mode === 'Hourly' || mode === 'Flat') doorHardware.hardwarePricing.sectionLabourRule[mfr].mode = mode;
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+function _dhwSetLineLabourQty(matchKey, value){
+  var s = String(value == null ? '' : value).replace(/^\s+|\s+$/g, '');
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  if(!doorHardware.hardwarePricing.lineLabourRule) doorHardware.hardwarePricing.lineLabourRule = {};
+  if(!doorHardware.hardwarePricing.lineLabourRule[matchKey]) doorHardware.hardwarePricing.lineLabourRule[matchKey] = {};
+  if(s === ''){
+    delete doorHardware.hardwarePricing.lineLabourRule[matchKey].qty;
+  } else {
+    var n = parseFloat(s);
+    if(!isFinite(n) || n < 0) n = 0;
+    doorHardware.hardwarePricing.lineLabourRule[matchKey].qty = n;
+  }
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+function _dhwSetLineLabourCost(matchKey, value){
+  var s = String(value == null ? '' : value).replace(/^\s+|\s+$/g, '');
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  if(!doorHardware.hardwarePricing.lineLabourRule) doorHardware.hardwarePricing.lineLabourRule = {};
+  if(!doorHardware.hardwarePricing.lineLabourRule[matchKey]) doorHardware.hardwarePricing.lineLabourRule[matchKey] = {};
+  if(s === ''){
+    // Blank → unset the override; section/project default applies on next render.
+    delete doorHardware.hardwarePricing.lineLabourRule[matchKey].costRate;
+  } else {
+    var n = parseFloat(s);
+    if(!isFinite(n) || n < 0) n = 0;
+    doorHardware.hardwarePricing.lineLabourRule[matchKey].costRate = n;
+  }
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+function _dhwSetLineLabourSell(matchKey, value){
+  var s = String(value == null ? '' : value).replace(/^\s+|\s+$/g, '');
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  if(!doorHardware.hardwarePricing.lineLabourRule) doorHardware.hardwarePricing.lineLabourRule = {};
+  if(!doorHardware.hardwarePricing.lineLabourRule[matchKey]) doorHardware.hardwarePricing.lineLabourRule[matchKey] = {};
+  if(s === ''){
+    delete doorHardware.hardwarePricing.lineLabourRule[matchKey].sellRate;
+  } else {
+    var n = parseFloat(s);
+    if(!isFinite(n) || n < 0) n = 0;
+    doorHardware.hardwarePricing.lineLabourRule[matchKey].sellRate = n;
+  }
+  markDirty();
+  renderDoorHardwareModal();
+}
+
 // Step 1 — Comparison (LEGACY / unreachable as of DHW Revamp M2). The
 // dispatcher no longer routes to this function; kept in place for one
 // cycle to make the M2 diff reviewable. Slated for deletion in M6.
@@ -7295,28 +7384,42 @@ function _dhwRenderStep3AcOverlap(takeoff){
 //
 // Install-hours input is widened (style="width:80px") so the number-input
 // stepper arrows aren't smooshed and are easily clickable.
-// DHW Revamp M2: renamed from _dhwRenderStep4Labour. Body unchanged; the
-// full Hourly XOR Flat / per-section + per-line rule rewrite lands in M4.
-// Until M4, the existing single-mode hourly UI keeps running off the
-// legacy hardwarePricing.hourlyRate + lineInstallHours fields (which M1
-// migrations also seed into projectLabourRule + lineLabourRule, so M4 can
-// switch read paths without losing data).
+// ─── DHW Revamp M4 — Step 3 Labour renderer ─────────────────────────────────
+// Per-line labour entry, grouped by manufacturer (same grouping as M3
+// Pricing step). Three resolution tiers: project default → section override
+// → line override. Mode is XOR Hourly / Flat at each scope; rates flow as
+// {costRate, sellRate}. Labour qty is decoupled from material qty (hours
+// or units per line — user-entered, seeded blank for new lines).
+//
+// Math: extCost = qty × costRate; extSell = qty × sellRate;
+//       margin = extSell - extCost; marginPct = margin / extCost × 100.
+//
+// Filters: excluded lines (hardwareAward.excluded[key]) DON'T appear here
+// (they get no labour, contribute to no labour total — same rule as the
+// legacy renderer). Unpriced lines also don't appear (labour is only for
+// the lines that survived award resolution as priced — labour on unpriced
+// hardware is meaningless until pricing is set).
+//
+// Supply-only short-circuit: when on, the entire table hides + a notice
+// explains labour is excluded from all totals. Per-line rules stay saved
+// (toggle off restores everything). Same UX as the legacy renderer.
 function _dhwRenderStep3Labour(takeoff, quotes){
-  var award = doorHardware.hardwareAward;
-  var pricing = doorHardware.hardwarePricing;
-  var hourlyRate = (typeof pricing.hourlyRate === 'number') ? pricing.hourlyRate : 0;
-  var hoursMap   = pricing.lineInstallHours || {};
+  var takeoffLines = (takeoff && takeoff.lines) ? takeoff.lines : [];
+  var award      = doorHardware.hardwareAward   || {};
+  var pricing    = doorHardware.hardwarePricing || {};
   var supplyOnly = !!pricing.supplyOnly;
 
-  // W7b: supply-only toggle, always visible at the top of Step 4. Pill
-  // toggle (.dhw-toggle, introduced in W7a-fix). When ON, the rate input
-  // and the per-line labour table both hide; a "Supply Only" notice
-  // explains that labour is excluded from all totals. Mode is meaningful
-  // independent of award state, so the toggle renders whether or not a
-  // basis is set.
+  if(takeoffLines.length === 0){
+    return '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
+      '<div class="dhw-empty">No takeoff lines for labour.</div>' +
+    '</div>';
+  }
+
+  // Supply-only control (always visible at top — mode-independent of award).
   var supplyOnlyTitle = supplyOnly
     ? 'Currently in Supply Only mode. Toggle off to enter install labour for the hardware lines.'
-    : 'Toggle on for supply-only jobs (integrator supplies hardware only; install labour is performed by others). Hides the hourly rate + per-line labour table and excludes labour from every total.';
+    : 'Toggle on for supply-only jobs (integrator supplies hardware only; install labour is performed by others). Hides labour table and excludes labour from every total.';
   var supplyOnlyControl =
     '<div class="dhw-control-row">' +
       '<label class="dhw-toggle" title="' + supplyOnlyTitle + '">' +
@@ -7328,9 +7431,6 @@ function _dhwRenderStep3Labour(takeoff, quotes){
       '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">For jobs where the integrator supplies hardware only &mdash; install labour is performed by others.</span>' +
     '</div>';
 
-  // Supply-only ON: short-circuit. The labour notice stands in for both
-  // the rate input and the per-line table. Award state irrelevant here —
-  // labour is excluded regardless of whether a basis has been picked.
   if(supplyOnly){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
@@ -7338,141 +7438,162 @@ function _dhwRenderStep3Labour(takeoff, quotes){
       '<div class="dhw-supply-notice">' +
         '<b>Supply Only.</b> Install labour is excluded from all totals. ' +
         'Grand Total = hardware only; the Project Totals box hides Labour and Expected Project Hours. ' +
-        'Per-line install hours stay saved &mdash; toggle off to restore.' +
+        'Per-line labour settings stay saved &mdash; toggle off to restore.' +
       '</div>' +
     '</div>';
   }
 
-  // Top control: hourly rate only (other toggles moved to Step 5).
-  var controls =
+  // Project labour rule defaults. M1 backfill seeded these from legacy
+  // hourlyRate. typeof checks honour an explicit 0 vs missing field.
+  var projectRule = pricing.projectLabourRule || { mode: 'Hourly', costRate: 0, sellRate: 0 };
+  var projectMode     = (projectRule.mode === 'Flat') ? 'Flat' : 'Hourly';
+  var projectCostRate = (typeof projectRule.costRate === 'number') ? projectRule.costRate : 0;
+  var projectSellRate = (typeof projectRule.sellRate === 'number') ? projectRule.sellRate : 0;
+
+  // Project-level mode selector.
+  var modeControl =
     '<div class="dhw-control-row">' +
-      '<label><b>Hourly rate:</b> $ ' +
-        '<input type="number" class="dhw-input" min="0" step="1"' +
-          ' value="' + _dhwEsc(Number(hourlyRate).toFixed(2)) + '"' +
-          ' onchange="_dhwSetHourlyRate(this.value)"> /hr' +
+      '<label><b>Labour mode:</b> ' +
+        '<select onchange="_dhwSetProjectLabourMode(this.value)" style="padding:4px 8px; border:1.5px solid var(--border); border-radius:4px; font:500 12px var(--font-ui);">' +
+          '<option value="Hourly"' + (projectMode === 'Hourly' ? ' selected' : '') + '>Hourly</option>' +
+          '<option value="Flat"'   + (projectMode === 'Flat'   ? ' selected' : '') + '>Flat (per unit)</option>' +
+        '</select>' +
       '</label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every line\'s install hours.</span>' +
+      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">How labour is billed: by hours or per unit. Sections can override.</span>' +
     '</div>';
 
-  if(!award || !award.basis){
+  // resolveAward with the FULL takeoff object (it reads takeoff.lines
+  // internally). Filter to priced + non-excluded — labour only attaches to
+  // hardware that's actually going on the order.
+  var resolved = resolveAward(takeoff, quotes, award) || [];
+  var activeLines = resolved.filter(function(r){
+    return r.priced && !(award.excluded && award.excluded[r.matchKey]);
+  });
+
+  if(activeLines.length === 0){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
       supplyOnlyControl +
-      controls +
-      '<div class="dhw-empty" style="margin-top:12px;">Award a basis on the Comparison step to enter labour for the hardware lines.</div>' +
+      modeControl +
+      '<div class="dhw-empty" style="margin-top:12px;">No priced lines yet. Return to Materials (Step 2) to select suppliers and price hardware.</div>' +
     '</div>';
   }
 
-  var resolved = resolveAward(takeoff, quotes, award);
-  // W7a: drop excluded lines from the labour table entirely (they get no
-  // labour, contribute to no labour total). The brief: "Dropped from the
-  // Step 4 labour table (no labour on an excluded line) and labour totals."
-  var activeResolved = resolved.filter(function(r){ return !_dhwIsExcluded(r.matchKey); });
-  var totalHrs = 0;
-  // W7c: count priced non-excluded lines with no labour entered. The
-  // supply-only branch returns before this loop, so we never reach here
-  // under supply-only — no explicit guard needed. Excluded lines are
-  // already filtered out via activeResolved. Gaps (!r.priced) are NOT
-  // counted — they have no hardware so they need no labour, per the
-  // brief. "No labour entered" = hours <= 0 (covers blank, 0, and any
-  // legacy negative which the setter clamps anyway).
-  var noLabourCount = 0;
-  var trs = activeResolved.map(function(r){
-    var t = r.takeoffLine || {};
-    var key = r.matchKey;
-    var qty = (typeof t.qty === 'number') ? t.qty : 0;
-    var hoursVal = hoursMap[key];
-    var hasHoursOverride = (typeof hoursVal === 'number' && isFinite(hoursVal));
-    var hours = hasHoursOverride ? hoursVal : 0;
-    totalHrs += hours;
-    var lineLabour = hours * hourlyRate;
-    // W7c: per-row no-labour state — priced lines with no positive hours.
-    var noLabour = r.priced && hours <= 0;
-    if(noLabour) noLabourCount++;
-    // W7c: row-class priority — no-labour amber tint wins over gap-flagged
-    // cream for priced zero-hours lines; gaps stay flagged-cream. A line
-    // can't be both priced-no-labour AND a gap (priced=false → noLabour=
-    // false), so the cases are disjoint; the ternary makes priority
-    // explicit for any future contributor.
-    var rowCls = noLabour ? ' class="dhw-row-nolabour"' :
-                 (!r.priced ? ' class="dhw-row-flagged"' : '');
-    var gapMark = !r.priced
-      ? '<span class="dhw-warn" title="No awarded supplier priced this line">&#9888;</span> '
-      : '';
-    var supplierLabel = r.awardedSupplierName
-      ? _dhwEsc(r.awardedSupplierName)
-      : '<span class="dhw-gap">&mdash;</span>';
-    var keyAttr = _dhwAttrJs(key);
-    // Widened input (style="width:80px") so the stepper arrows are clickable.
-    // W6+++++: data-dhw-colnav wires Tab/Enter column-down nav.
-    var hoursInput = '<input type="number" class="dhw-input-inline" style="width:80px;" min="0" step="0.25"' +
-      ' value="' + _dhwEsc(hasHoursOverride ? hoursVal : '') + '"' +
-      ' placeholder="0"' +
-      ' title="Install hours for this line (NOT per unit). Quantity is not a multiplier."' +
-      ' data-dhw-colnav="hours" data-dhw-colnav-key="' + _dhwEsc(key) + '"' +
-      ' onkeydown="_dhwColNavKey(event)"' +
-      ' onchange="_dhwSetLineHours(' + keyAttr + ', this.value)">';
-    var labourCell = hasHoursOverride
-      ? _dhwFmtMoney(lineLabour)
-      : '<span class="dhw-gap">&mdash;</span>';
-    return '<tr' + rowCls + '>' +
-      '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
-      '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
-      '<td>' + _dhwEsc(t.description || '') + '</td>' +
-      '<td>' + _dhwEsc(t.finish || '') + '</td>' +
-      '<td>' + supplierLabel + '</td>' +
-      '<td class="dhw-num">' + hoursInput + '</td>' +
-      '<td class="dhw-num">' + labourCell + '</td>' +
-    '</tr>';
-  }).join('');
-  // W7a: feed the engine an excluded-key-filtered hoursMap so the labour
-  // subtotal mirrors the displayed rows. Equivalent to totalHrs * hourlyRate
-  // but routes through dhwLabourTotal so the engine call stays meaningful.
-  var activeHoursMap = {};
-  Object.keys(hoursMap).forEach(function(k){
-    if(!_dhwIsExcluded(k)) activeHoursMap[k] = hoursMap[k];
+  // Group by manufacturer (same grouping as M3 Pricing).
+  var mfrGroups = {};
+  activeLines.forEach(function(r){
+    var mfr = (r.takeoffLine && r.takeoffLine.manufacturer) || 'OTHER';
+    if(!mfrGroups[mfr]) mfrGroups[mfr] = [];
+    mfrGroups[mfr].push(r);
   });
-  var labourTotal = dhwLabourTotal(activeHoursMap, hourlyRate);
-  var subtotalRow = '<tr>' +
-    '<td colspan="5" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Labour subtotal:</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(labourTotal) + '</td>' +
-  '</tr>';
-  var header = '<tr>' +
-    '<th class="dhw-num">Qty</th>' +
-    '<th>SKU</th>' +
-    '<th>Description</th>' +
-    '<th>Finish</th>' +
-    '<th>Supplier</th>' +
-    '<th class="dhw-num">Install hrs</th>' +
-    '<th class="dhw-num">Labour</th>' +
-  '</tr>';
-  // W7c: zero-labour warning banner, rendered only when there's at least
-  // one qualifying priced non-excluded line with no hours entered. Live —
-  // _dhwSetLineHours re-renders the modal, so entering hours decrements
-  // N and clears the row tint automatically; reaching zero hides the
-  // banner. Suppressed under supply-only structurally (this code path
-  // is unreachable when supply-only is ON).
-  var noLabourWarn = '';
-  if(noLabourCount > 0){
-    var verb = noLabourCount === 1 ? 'has' : 'have';
-    var lineWord = noLabourCount === 1 ? 'line' : 'lines';
-    noLabourWarn = '<div class="dhw-nolabour-warn">' +
-      '&#9888; ' + noLabourCount + ' ' + lineWord + ' ' + verb + ' no labour entered' +
+
+  // Per-section render. Each section resolves its own mode (sectionRule
+  // .mode wins over projectMode); per-line costs/sells fall back through
+  // section → project. The table header label ("Hours" vs "Units") flips
+  // per-section to match the resolved mode.
+  var sectionLabourRule = pricing.sectionLabourRule || {};
+  var sections = [];
+  var labourSubtotal = 0;  // running across all sections, uses resolved rates.
+
+  Object.keys(mfrGroups).sort().forEach(function(mfr){
+    var mfrLines   = mfrGroups[mfr];
+    var sectRule   = (sectionLabourRule[mfr] && typeof sectionLabourRule[mfr] === 'object') ? sectionLabourRule[mfr] : null;
+    var sectMode   = sectRule && sectRule.mode === 'Flat' ? 'Flat' :
+                     sectRule && sectRule.mode === 'Hourly' ? 'Hourly' :
+                     projectMode;
+    var sectCost   = (sectRule && typeof sectRule.costRate === 'number') ? sectRule.costRate : projectCostRate;
+    var sectSell   = (sectRule && typeof sectRule.sellRate === 'number') ? sectRule.sellRate : projectSellRate;
+    var modeLabel  = (sectMode === 'Hourly') ? 'per hour' : 'per unit';
+    var qtyHeading = (sectMode === 'Hourly') ? 'Hours'    : 'Units';
+
+    var sectionHeader =
+      '<div class="dhw-section" style="margin-top:16px;">' +
+        '<div class="dhw-section-hdr">' +
+          '<span class="dhw-section-hdr-title">' + _dhwEsc(mfr) + '</span>' +
+        '</div>' +
+        '<div class="dhw-control-row" style="margin:12px 0;">' +
+          '<label><b>Cost rate (' + modeLabel + '):</b> $ ' +
+            '<input type="number" class="dhw-input" min="0" step="0.01"' +
+              ' value="' + Number(sectCost).toFixed(2) + '"' +
+              ' onchange="_dhwSetSectionLabourCost(\'' + _dhwEsc(mfr) + '\', this.value, \'' + sectMode + '\')"' +
+              ' title="Cost per ' + (sectMode === 'Hourly' ? 'hour' : 'unit') + ' for this manufacturer section.">' +
+          '</label>' +
+          '<label><b>Sell rate (' + modeLabel + '):</b> $ ' +
+            '<input type="number" class="dhw-input" min="0" step="0.01"' +
+              ' value="' + Number(sectSell).toFixed(2) + '"' +
+              ' onchange="_dhwSetSectionLabourSell(\'' + _dhwEsc(mfr) + '\', this.value, \'' + sectMode + '\')"' +
+              ' title="Sell rate per ' + (sectMode === 'Hourly' ? 'hour' : 'unit') + ' for this manufacturer section.">' +
+          '</label>' +
+        '</div>';
+
+    var headerCells = ['Qty', 'Description', 'Catalog #', 'Finish', qtyHeading, 'Cost rate', 'Sell rate', 'Ext Cost', 'Ext Sell', 'Margin $', 'GM %'];
+    var header = '<tr>' + headerCells.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr>';
+
+    var trs = mfrLines.map(function(r){
+      var line = r.takeoffLine || {};
+      var key  = r.matchKey;
+      var matQty = (typeof line.qty === 'number') ? line.qty : 0;
+      var lineRule = (pricing.lineLabourRule && pricing.lineLabourRule[key]) || {};
+
+      var labourQty = (typeof lineRule.qty      === 'number') ? lineRule.qty      : 0;
+      var lineCost  = (typeof lineRule.costRate === 'number') ? lineRule.costRate : sectCost;
+      var lineSell  = (typeof lineRule.sellRate === 'number') ? lineRule.sellRate : sectSell;
+
+      var extCost   = labourQty * lineCost;
+      var extSell   = labourQty * lineSell;
+      var margin    = extSell - extCost;
+      var marginPct = extCost > 0 ? (margin / extCost * 100) : 0;
+
+      labourSubtotal += extSell;
+
+      var qtyInput = '<input type="number" class="dhw-input-inline" style="width:70px;" min="0" step="0.25"' +
+        ' value="' + (typeof lineRule.qty === 'number' ? lineRule.qty : '') + '"' +
+        ' placeholder="0"' +
+        ' onchange="_dhwSetLineLabourQty(\'' + _dhwEsc(key) + '\', this.value)"' +
+        ' title="Labour ' + (sectMode === 'Hourly' ? 'hours' : 'units') + ' for this line. Decoupled from material qty.">';
+
+      var costInput = '<input type="number" class="dhw-input-inline" style="width:80px;" min="0" step="0.01"' +
+        ' value="' + (typeof lineRule.costRate === 'number' ? Number(lineRule.costRate).toFixed(2) : '') + '"' +
+        ' placeholder="' + Number(sectCost).toFixed(2) + '"' +
+        ' onchange="_dhwSetLineLabourCost(\'' + _dhwEsc(key) + '\', this.value)"' +
+        ' title="Override section cost rate for this line. Blank = use section default.">';
+
+      var sellInput = '<input type="number" class="dhw-input-inline" style="width:80px;" min="0" step="0.01"' +
+        ' value="' + (typeof lineRule.sellRate === 'number' ? Number(lineRule.sellRate).toFixed(2) : '') + '"' +
+        ' placeholder="' + Number(sectSell).toFixed(2) + '"' +
+        ' onchange="_dhwSetLineLabourSell(\'' + _dhwEsc(key) + '\', this.value)"' +
+        ' title="Override section sell rate for this line. Blank = use section default.">';
+
+      return '<tr>' +
+        '<td class="dhw-num">' + matQty + '</td>' +
+        '<td>' + _dhwEsc(line.description   || '') + '</td>' +
+        '<td>' + _dhwEsc(line.catalogNumber || '') + '</td>' +
+        '<td>' + _dhwEsc(line.finish        || '') + '</td>' +
+        '<td class="dhw-num">' + qtyInput  + '</td>' +
+        '<td class="dhw-num">' + costInput + '</td>' +
+        '<td class="dhw-num">' + sellInput + '</td>' +
+        '<td class="dhw-num">' + _dhwFmtMoney(extCost) + '</td>' +
+        '<td class="dhw-num">' + _dhwFmtMoney(extSell) + '</td>' +
+        '<td class="dhw-num">' + _dhwFmtMoney(margin)  + '</td>' +
+        '<td class="dhw-num">' + Number(marginPct).toFixed(1) + '%</td>' +
+      '</tr>';
+    }).join('');
+
+    sections.push(
+      sectionHeader +
+      '<div style="margin-top:12px; overflow-x:auto;">' +
+        '<table class="dhw-table"><thead>' + header + '</thead><tbody>' + trs + '</tbody></table>' +
+      '</div>' +
+      '</div>'
+    );
+  });
+
+  var subtotalRow =
+    '<div class="dhw-labour-subtotal">' +
+      '<b>Labour Subtotal (Ext Sell across all sections):</b> ' + _dhwFmtMoney(labourSubtotal) +
     '</div>';
-  }
-  return '<div class="dhw-section">' +
-    '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
-    supplyOnlyControl +
-    controls +
-    '<div style="margin-top:12px;">' +
-      '<table class="dhw-table">' +
-        '<thead>' + header + '</thead>' +
-        '<tbody>' + trs + subtotalRow + '</tbody>' +
-      '</table>' +
-    '</div>' +
-    noLabourWarn +
-  '</div>';
+
+  return supplyOnlyControl + modeControl + sections.join('') + subtotalRow;
 }
 
 // W4 setter _dhwSetLabourDisplay removed in W6. The (repurposed)
