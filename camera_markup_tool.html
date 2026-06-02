@@ -9631,15 +9631,37 @@ var _currentCredentialSku = null;
 
 function lpSelectCredential(sku){
   if(!sku || !BRIVO_CRED_CATALOG[sku]) return;
-  _currentCredentialSku = sku;
-  updateRightPanelDisplayForCredential(sku);
   var rp = document.getElementById('right-panel');
   if(!rp) return;
+  // Toggle off: re-clicking the armed tile WHILE the panel is open clears
+  // the arm + closes the panel. Re-clicking while the panel is closed
+  // (e.g. after a prior Add) re-opens it instead — the user expects to
+  // re-edit the same credential without two clicks.
+  var panelOpen = rp.classList.contains('open');
+  if(sku === _currentCredentialSku && panelOpen){
+    _currentCredentialSku = null;
+    _repaintCredentialsTier3();
+    closeRightPanel();
+    return;
+  }
+  _currentCredentialSku = sku;
+  _repaintCredentialsTier3();
+  updateRightPanelDisplayForCredential(sku);
   rp.setAttribute('data-mode', 'credential');
   var title = document.getElementById('rp-title');
   if(title) title.textContent = 'Brivo Credential';
   rp.classList.add('open');
   rp.setAttribute('aria-hidden', 'false');
+}
+
+// Credentials qty display pass: re-render the AC Tier-3 credentials grid
+// in place. Cheap (rebuilds one container's innerHTML); no-op when the
+// credentials drill-in isn't currently open (acCredentialsView false).
+function _repaintCredentialsTier3(){
+  if(typeof acCredentialsView !== 'undefined' && !acCredentialsView) return;
+  var t3 = document.getElementById('lp-ac-tier3');
+  if(!t3) return;
+  t3.innerHTML = _renderCredentialsTier3();
 }
 
 function updateRightPanelDisplayForCredential(sku){
@@ -9671,17 +9693,19 @@ function updateRightPanelDisplayForCredential(sku){
   var warning = document.getElementById('rp-credential-warning');
   if(warning) warning.style.display = isCustomOrPunch ? 'block' : 'none';
 
-  // Credentials-wiring v26 follow-up: prefill the qty input with the
-  // currently-stored qty for this SKU (or 1 if not yet added) and flip the
-  // button label to "Update" when editing an existing row, "Add to Quote"
-  // when this is the first add. addCredentialToBom REPLACES the stored qty
-  // (not incremental) — so the input value reflects what's about to land.
+  // Credentials qty display pass: prefill the qty input with the current
+  // stored qty for this SKU (0 when not on the quote yet — the input is the
+  // canonical "how many are on the quote" readout for this credential).
+  // Button label flips: "Add to Quote" while qty=0, "Update" once a row
+  // exists. addCredentialToBom REPLACES the stored qty (input value = what
+  // lands on the quote). qty<1 still clamps to 1 in the Add path so an
+  // accidental Add at 0 produces a real row.
   var qtyInp  = document.getElementById('inp-credential-qty');
   var btnAdd  = document.getElementById('btn-credential-add');
   var current = (projectInfo.credentials && projectInfo.credentials.brivoSkus &&
                  typeof projectInfo.credentials.brivoSkus[sku] === 'number')
                   ? projectInfo.credentials.brivoSkus[sku] : 0;
-  if(qtyInp) qtyInp.value = current > 0 ? String(current) : '1';
+  if(qtyInp) qtyInp.value = String(current);
   if(btnAdd) btnAdd.textContent = current > 0 ? 'Update' : 'Add to Quote';
 }
 
@@ -9728,7 +9752,13 @@ function _renderCredentialsTier3(){
     html += '<div class="cred-family-label" style="grid-column:1/-1; margin:8px 0 2px; font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);">' + escapeHtml(fam) + '</div>';
     list.forEach(function(sku){
       var cat = BRIVO_CRED_CATALOG[sku];
-      html += '<div class="tier3-tile" data-cred-sku="' + escapeHtml(sku) + '" onclick="lpSelectCredential(\'' + sku + '\')" title="' + escapeHtml(cat.description) + '">' +
+      // Credentials qty display pass: armed tile gets .active (light fill
+      // + accent outline via shared tier-3 styling). _currentCredentialSku
+      // is the single arm var — set/cleared by lpSelectCredential +
+      // _cancelAllPlacement. Repaint after any arm change via
+      // _repaintCredentialsTier3.
+      var activeCls = (sku === _currentCredentialSku) ? ' active' : '';
+      html += '<div class="tier3-tile' + activeCls + '" data-cred-sku="' + escapeHtml(sku) + '" onclick="lpSelectCredential(\'' + sku + '\')" title="' + escapeHtml(cat.description) + '">' +
               '<div class="t3-name">' + escapeHtml(cat.code) + '</div>' +
               '</div>';
     });
@@ -14440,6 +14470,14 @@ function _cancelAllPlacement(){
   currentIntercomModel = null;
   currentParcelModel   = null;
   currentMailboxModel  = null;
+  // Credentials qty display pass: clear credential arm so Esc + cross-mode
+  // swaps drop the tier-3 highlight along with everything else. Tier-3
+  // repaint runs below via _repaintCredentialsTier3 (gated on the
+  // credentials drill-in being open).
+  if(typeof _currentCredentialSku !== 'undefined' && _currentCredentialSku){
+    _currentCredentialSku = null;
+    if(typeof _repaintCredentialsTier3 === 'function') _repaintCredentialsTier3();
+  }
   // Banner-mode flags
   switchMode  = false;
   headendMode = false;
