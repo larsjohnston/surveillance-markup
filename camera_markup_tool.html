@@ -2793,7 +2793,7 @@ input[type="number"]::-webkit-outer-spin-button {
           </div>
         </div>
         <div style="margin-top:12px;">
-          <button class="btn btn-green" onclick="addCredentialToBom()" style="width:100%;">Add to Quote</button>
+          <button id="btn-credential-add" class="btn btn-green" onclick="addCredentialToBom()" style="width:100%;">Add to Quote</button>
         </div>
       </div>
 
@@ -9671,8 +9671,18 @@ function updateRightPanelDisplayForCredential(sku){
   var warning = document.getElementById('rp-credential-warning');
   if(warning) warning.style.display = isCustomOrPunch ? 'block' : 'none';
 
-  var qtyInp = document.getElementById('inp-credential-qty');
-  if(qtyInp) qtyInp.value = '1';
+  // Credentials-wiring v26 follow-up: prefill the qty input with the
+  // currently-stored qty for this SKU (or 1 if not yet added) and flip the
+  // button label to "Update" when editing an existing row, "Add to Quote"
+  // when this is the first add. addCredentialToBom REPLACES the stored qty
+  // (not incremental) — so the input value reflects what's about to land.
+  var qtyInp  = document.getElementById('inp-credential-qty');
+  var btnAdd  = document.getElementById('btn-credential-add');
+  var current = (projectInfo.credentials && projectInfo.credentials.brivoSkus &&
+                 typeof projectInfo.credentials.brivoSkus[sku] === 'number')
+                  ? projectInfo.credentials.brivoSkus[sku] : 0;
+  if(qtyInp) qtyInp.value = current > 0 ? String(current) : '1';
+  if(btnAdd) btnAdd.textContent = current > 0 ? 'Update' : 'Add to Quote';
 }
 
 function addCredentialToBom(){
@@ -9688,9 +9698,10 @@ function addCredentialToBom(){
   if(!projectInfo.credentials.brivoSkus || typeof projectInfo.credentials.brivoSkus !== 'object'){
     projectInfo.credentials.brivoSkus = {};
   }
-  var existing = projectInfo.credentials.brivoSkus[sku];
-  if(typeof existing !== 'number' || !isFinite(existing)) existing = 0;
-  projectInfo.credentials.brivoSkus[sku] = existing + qty;
+  // Credentials-wiring v26 follow-up: REPLACE the stored qty (was: increment).
+  // The right panel now prefills the input with the current stored qty so the
+  // user sees what they're editing; Add/Update writes the input value as-is.
+  projectInfo.credentials.brivoSkus[sku] = qty;
   markDirty();
   recalcBom();
   closeRightPanel();
