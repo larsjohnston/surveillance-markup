@@ -1630,15 +1630,17 @@ input[type="number"]::-webkit-outer-spin-button {
 #right-panel .rp-mailbox-fields,
 #right-panel .rp-suite-fields,
 #right-panel .rp-headend-fields,
-#right-panel .rp-switch-fields { display:none; }
-#right-panel[data-mode="camera"]   .rp-camera-fields   { display:block; }
-#right-panel[data-mode="reader"]   .rp-reader-fields   { display:block; }
-#right-panel[data-mode="intercom"] .rp-intercom-fields { display:block; }
-#right-panel[data-mode="parcel"]   .rp-parcel-fields   { display:block; }
-#right-panel[data-mode="mailbox"]  .rp-mailbox-fields  { display:block; }
-#right-panel[data-mode="suite"]    .rp-suite-fields    { display:block; }
-#right-panel[data-mode="headend"]  .rp-headend-fields  { display:block; }
-#right-panel[data-mode="switch"]   .rp-switch-fields   { display:block; }
+#right-panel .rp-switch-fields,
+#right-panel .rp-credential-fields { display:none; }
+#right-panel[data-mode="camera"]     .rp-camera-fields     { display:block; }
+#right-panel[data-mode="reader"]     .rp-reader-fields     { display:block; }
+#right-panel[data-mode="intercom"]   .rp-intercom-fields   { display:block; }
+#right-panel[data-mode="parcel"]     .rp-parcel-fields     { display:block; }
+#right-panel[data-mode="mailbox"]    .rp-mailbox-fields    { display:block; }
+#right-panel[data-mode="suite"]      .rp-suite-fields      { display:block; }
+#right-panel[data-mode="headend"]    .rp-headend-fields    { display:block; }
+#right-panel[data-mode="switch"]     .rp-switch-fields     { display:block; }
+#right-panel[data-mode="credential"] .rp-credential-fields { display:block; }
 .phdr { font:700 10px var(--font-ui); letter-spacing:.08em; text-transform:uppercase; padding:12px 16px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); }
 
 #controls { padding:10px 13px; border-bottom:1px solid var(--border); }
@@ -2744,6 +2746,57 @@ input[type="number"]::-webkit-outer-spin-button {
         </div>
       </div>
 
+      <!-- Credentials-wiring v26: per-SKU credential right-panel block.
+           Mirrors the readers/switch readout pattern (.rp-field rows with
+           .rp-label + .rp-readout). Opened by lpSelectCredential(sku) →
+           updateRightPanelDisplayForCredential(sku) populates from
+           BRIVO_CRED_CATALOG[sku] + getListPrice/getUnitPrice. Add to Quote
+           writes projectInfo.credentials.brivoSkus[sku] += qty; row appears
+           in BOM 2.1 via computeAutoRows emitter. Custom/Punch SKUs surface
+           a warning badge (manual fulfillment via Brivo order form). -->
+      <div class="rp-credential-fields">
+        <div class="rp-field">
+          <label class="rp-label">SKU</label>
+          <div class="rp-readout" id="rp-credential-sku-code">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Manufacturer</label>
+          <div class="rp-readout" id="rp-credential-manufacturer">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Description</label>
+          <div class="rp-readout" id="rp-credential-description">
+            <div class="rp-model-name">&mdash;</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">List Price</label>
+          <div class="rp-readout" id="rp-credential-list">
+            <div class="rp-model-name">$0.00</div>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label">Cost Price</label>
+          <div class="rp-readout" id="rp-credential-cost">
+            <div class="rp-model-name">$0.00</div>
+          </div>
+        </div>
+        <div id="rp-credential-warning" style="display:none; margin:8px 0; padding:8px 10px; background:#fff3cd; border-left:3px solid #d97706; border-radius:4px; font:600 11px var(--font-ui); color:#856404;">&#9888; Custom Order Form Required</div>
+        <div class="rp-field">
+          <label class="rp-label">Quantity</label>
+          <div class="rp-slot">
+            <input type="number" id="inp-credential-qty" min="1" step="1" value="1" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono);">
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-green" onclick="addCredentialToBom()" style="width:100%;">Add to Quote</button>
+        </div>
+      </div>
+
       <!-- Network switch right-panel block (Switch Topology Phase 1).
            Visible when data-mode is "switch" — opened on tier-3 model arm
            by openRightPanelForSwitch. Read-only readouts; placement is
@@ -3797,6 +3850,25 @@ var tabOrder = null;
 // startup assertion (_verifyBrivoSchemas) catches drift and console.errors
 // if a BRIVO_READERS key is missing from BRIVO_CATALOG or has a mismatched
 // subcategory.
+// Credentials-wiring v26: Brivo physical credential SKUs. Catalog-as-code
+// (no prices — getUnitPrice/getListPrice read at runtime). tier2_family
+// drives the visual grouping label within the AC Tier-3 credentials grid
+// (Cards / Fobs / Dual-Tech / Pre-Punch Service). code = short Tier-3 tile
+// label (NO icon — code IS the identifier, mirrors CAMERA_DB pattern).
+var BRIVO_CRED_CATALOG = {
+  'B-BUC3-37-SC50':  { manufacturer: 'Brivo', description: 'Brivo Unified Smart Card EV3 37-Bit',                            code: 'UC3-37-SC50',  tier2_family: 'Cards' },
+  'B-BUC3-37-SF25':  { manufacturer: 'Brivo', description: 'Brivo Unified Smart Keyfob EV3 37-Bit',                          code: 'UC3-37-SF25',  tier2_family: 'Fobs' },
+  'B-BUC3-37-SCP50': { manufacturer: 'Brivo', description: 'Brivo Unified Dual-Tech Smart Card + Prox EV3 37-Bit',           code: 'UC3-37-SCP50', tier2_family: 'Dual-Tech' },
+  'B-BUC3-56-SC50':  { manufacturer: 'Brivo', description: 'Brivo Unified Smart Card EV3 56-Bit',                            code: 'UC3-56-SC50',  tier2_family: 'Cards' },
+  'B-BUC3-56-SF25':  { manufacturer: 'Brivo', description: 'Brivo Unified Smart Keyfob EV3 56-Bit',                          code: 'UC3-56-SF25',  tier2_family: 'Fobs' },
+  'B-BUC3-56-SCP50': { manufacturer: 'Brivo', description: 'Brivo Unified Dual-Tech Smart Card + Prox EV3 56-Bit',           code: 'UC3-56-SCP50', tier2_family: 'Dual-Tech' },
+  'B-SC-Custom':     { manufacturer: 'Brivo', description: 'Brivo Smart Card — Customer Specified Encryption / Lk Num',      code: 'SC-Custom',    tier2_family: 'Cards' },
+  'B-SF-Custom':     { manufacturer: 'Brivo', description: 'Brivo Smart Keyfob — Customer Specified Encryption',             code: 'SF-Custom',    tier2_family: 'Fobs' },
+  'B-SCP-Custom':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Dual-Tech — Customer Specified Encryption',     code: 'SCP-Custom',   tier2_family: 'Dual-Tech' },
+  'B-SC-Punch-V':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Pre-Punch Service (vertical)',                  code: 'SC-Punch-V',   tier2_family: 'Pre-Punch Service' },
+  'B-SC-Punch-H':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Pre-Punch Service (horizontal)',                code: 'SC-Punch-H',   tier2_family: 'Pre-Punch Service' }
+};
+
 var BRIVO_READERS = {
   'B-BSPMF-B': {model:'B-BSPMF-B', mount:'mullion',    keypad:false, tech:'tri',  desc:'Mullion · Tri-tech (Mobile + Smart + Prox 125 kHz) · OSDP · Black'},
   'B-BSMF-B':  {model:'B-BSMF-B',  mount:'mullion',    keypad:false, tech:'dual', desc:'Mullion · Dual-tech (Mobile + Smart 13.56 MHz) · OSDP · Black'},
@@ -9547,6 +9619,112 @@ function saveCredentialsQty(){
   closeCredentialsQtyModal();
 }
 
+// ─── Credentials-wiring v26: SKU select / right-panel / Add-to-Quote ────────
+// New flow replaces the v19 5-tile placeholder. Tier-3 tiles call
+// lpSelectCredential(sku) → opens the right panel in "credential" mode →
+// user sets qty → Add to Quote writes projectInfo.credentials.brivoSkus[sku]
+// (incremented if already present) → recalcBom + markDirty. computeAutoRows
+// emits one auto-row per non-zero qty into §2.1 (auto-ac-cred-brivo-<SKU>).
+// markDirty fires ONLY on Add (state mutation); not on tile click, panel
+// open/close, or qty input change.
+var _currentCredentialSku = null;
+
+function lpSelectCredential(sku){
+  if(!sku || !BRIVO_CRED_CATALOG[sku]) return;
+  _currentCredentialSku = sku;
+  updateRightPanelDisplayForCredential(sku);
+  var rp = document.getElementById('right-panel');
+  if(!rp) return;
+  rp.setAttribute('data-mode', 'credential');
+  var title = document.getElementById('rp-title');
+  if(title) title.textContent = 'Brivo Credential';
+  rp.classList.add('open');
+  rp.setAttribute('aria-hidden', 'false');
+}
+
+function updateRightPanelDisplayForCredential(sku){
+  var cat = BRIVO_CRED_CATALOG[sku];
+  if(!cat) return;
+  var listPrice = getListPrice(sku);
+  var costPrice = getUnitPrice(sku);
+  if(typeof listPrice !== 'number' || !isFinite(listPrice)) listPrice = 0;
+  if(typeof costPrice !== 'number' || !isFinite(costPrice)) costPrice = 0;
+  // Warning badge for SKUs that need a Brivo manual order form
+  // (custom-encryption + pre-punch services). Pattern match on the SKU
+  // suffix — the catalog itself doesn't carry a flag so adding a new
+  // warning-class SKU only requires the SKU name to match this regex.
+  var isCustomOrPunch = /-(Custom|Punch-)/.test(sku);
+
+  var nodes = {
+    code:        document.querySelector('#rp-credential-sku-code .rp-model-name'),
+    mfg:         document.querySelector('#rp-credential-manufacturer .rp-model-name'),
+    desc:        document.querySelector('#rp-credential-description .rp-model-name'),
+    list:        document.querySelector('#rp-credential-list .rp-model-name'),
+    cost:        document.querySelector('#rp-credential-cost .rp-model-name')
+  };
+  if(nodes.code) nodes.code.textContent = cat.code;
+  if(nodes.mfg)  nodes.mfg.textContent  = cat.manufacturer;
+  if(nodes.desc) nodes.desc.textContent = cat.description;
+  if(nodes.list) nodes.list.textContent = '$' + listPrice.toFixed(2);
+  if(nodes.cost) nodes.cost.textContent = '$' + costPrice.toFixed(2);
+
+  var warning = document.getElementById('rp-credential-warning');
+  if(warning) warning.style.display = isCustomOrPunch ? 'block' : 'none';
+
+  var qtyInp = document.getElementById('inp-credential-qty');
+  if(qtyInp) qtyInp.value = '1';
+}
+
+function addCredentialToBom(){
+  var sku = _currentCredentialSku;
+  if(!sku || !BRIVO_CRED_CATALOG[sku]) return;
+  var qtyInp = document.getElementById('inp-credential-qty');
+  var raw = qtyInp ? (qtyInp.value || '').trim() : '';
+  var qty = raw === '' ? 1 : parseInt(raw, 10);
+  if(!isFinite(qty) || qty < 1) qty = 1;
+  if(!projectInfo.credentials || typeof projectInfo.credentials !== 'object'){
+    projectInfo.credentials = {};
+  }
+  if(!projectInfo.credentials.brivoSkus || typeof projectInfo.credentials.brivoSkus !== 'object'){
+    projectInfo.credentials.brivoSkus = {};
+  }
+  var existing = projectInfo.credentials.brivoSkus[sku];
+  if(typeof existing !== 'number' || !isFinite(existing)) existing = 0;
+  projectInfo.credentials.brivoSkus[sku] = existing + qty;
+  markDirty();
+  recalcBom();
+  closeRightPanel();
+}
+
+// Builds the Tier-3 grid HTML for the AC Credentials drill-in. Groups
+// the 11 BRIVO_CRED_CATALOG SKUs by tier2_family with a small section
+// label above each group; SKU tiles render as standard .tier3-tile
+// (text-only, code label, no icon — per universal tier-3 rules).
+// Returns a string for assignment to the t3 container's innerHTML.
+function _renderCredentialsTier3(){
+  var families = {};
+  Object.keys(BRIVO_CRED_CATALOG).forEach(function(sku){
+    var cat = BRIVO_CRED_CATALOG[sku];
+    var fam = cat.tier2_family;
+    if(!families[fam]) families[fam] = [];
+    families[fam].push(sku);
+  });
+  var FAMILY_ORDER = ['Cards', 'Fobs', 'Dual-Tech', 'Pre-Punch Service'];
+  var html = '';
+  FAMILY_ORDER.forEach(function(fam){
+    var list = families[fam];
+    if(!list || list.length === 0) return;
+    html += '<div class="cred-family-label" style="grid-column:1/-1; margin:8px 0 2px; font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);">' + escapeHtml(fam) + '</div>';
+    list.forEach(function(sku){
+      var cat = BRIVO_CRED_CATALOG[sku];
+      html += '<div class="tier3-tile" data-cred-sku="' + escapeHtml(sku) + '" onclick="lpSelectCredential(\'' + sku + '\')" title="' + escapeHtml(cat.description) + '">' +
+              '<div class="t3-name">' + escapeHtml(cat.code) + '</div>' +
+              '</div>';
+    });
+  });
+  return html;
+}
+
 // Panel-cleanup P5: lpChangeAcVariant() removed along with its inline
 // dropdown. The right-panel variant control (updateReaderVariant) is now
 // the only path to override a Brivo device's Technology / Form factor —
@@ -9627,24 +9805,17 @@ function _renderAcDrillDown(){
   // credentials mode so the 5 small tiles sit cleanly in one row.
   var t3Html = '';
   if(acCredentialsView){
-    // 5 placeholder credential type tiles. Type keys mirror
-    // projectInfo.credentials field names (added in M2). Click handler is
-    // an M1 silent no-op; M2 swaps it for an opens-quantity-modal call.
-    // Style matches camera tier-3 (.tier3-tile + .t3-name) — small tiles
-    // so all 5 fit in a single row.
-    var CRED_TILES = [
-      { type:'fobs',           label:'Fobs' },
-      { type:'cards',          label:'Cards' },
-      { type:'mobilePasses',   label:'Mobile Passes' },
-      { type:'ohTransmitters', label:'OH Transmitters' },
-      { type:'ohReceiver',     label:'OH Receiver' }
-    ];
-    CRED_TILES.forEach(function(ct){
-      t3Html += '<div class="tier3-tile" data-ac-cred-type="' + escapeHtml(ct.type) + '" onclick="lpEditCredential(\'' + ct.type + '\')" title="' + escapeHtml(ct.label) + '">' +
-                '<div class="t3-name">' + escapeHtml(ct.label) + '</div>' +
-                '</div>';
-    });
-    t3.style.gridTemplateColumns = 'repeat(5, 1fr)';
+    // Credentials-wiring v26: render the 11 BRIVO_CRED_CATALOG SKUs grouped
+    // by tier2_family (Cards / Fobs / Dual-Tech / Pre-Punch Service). Group
+    // header rows span the full grid; SKU tiles are standard .tier3-tile
+    // text-only (code label, no icon). Reuses the shared 5-col grid — no
+    // per-mode gridTemplateColumns override (the family-label uses
+    // grid-column:1/-1 to span the full row). Replaces the v19 5-tile
+    // placeholder (fobs/cards/mobilePasses/ohTransmitters/ohReceiver →
+    // lpEditCredential modal); orphaned modal kept dead this pass for
+    // diff focus, slated for cleanup in a follow-up.
+    t3Html = _renderCredentialsTier3();
+    t3.style.gridTemplateColumns = '';
   } else {
     // Default: BRIVO_CATALOG subcategory leaves for currentACCategory.
     var subs = currentACCategory ? subcategoriesFor(currentACCategory) : [];
@@ -15201,7 +15372,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 25,             // generation tag — v25 headends is an ARRAY [{id,page,x,y,sku,label}] (was a map keyed by pageIdx). Multi-per-page CMVR support.
+      version: 26,             // generation tag — v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -15419,7 +15590,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 25,            // v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 26,            // v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -15731,6 +15902,19 @@ function applyProjectState(data){
   if(typeof projectInfo.credentials.mobilePasses   !== 'number') projectInfo.credentials.mobilePasses   = 0;
   if(typeof projectInfo.credentials.ohTransmitters !== 'number') projectInfo.credentials.ohTransmitters = 0;
   if(typeof projectInfo.credentials.ohReceiver     !== 'number') projectInfo.credentials.ohReceiver     = 0;
+  // Credentials-wiring v26: brivoSkus map { [sku]: qty }. Missing-map and
+  // non-object both default to {}; non-number / non-finite per-SKU values
+  // are normalized to 0 (whole-table rebuild on load — entries with 0 stay
+  // but emit no BOM row via the computeAutoRows guard). Older v25 saves
+  // load cleanly with an empty brivoSkus map.
+  if(!projectInfo.credentials.brivoSkus || typeof projectInfo.credentials.brivoSkus !== 'object'){
+    projectInfo.credentials.brivoSkus = {};
+  } else {
+    Object.keys(projectInfo.credentials.brivoSkus).forEach(function(sku){
+      var v = projectInfo.credentials.brivoSkus[sku];
+      if(typeof v !== 'number' || !isFinite(v) || v < 0) projectInfo.credentials.brivoSkus[sku] = 0;
+    });
+  }
   // Suites Polish M1: backfill per-unit-type iotCounts. Pre-pass saves
   // (every save before this milestone) lack iotCounts entirely; we seed
   // each unit type with 1 for currently-true flags, 0 for false. This
@@ -18864,19 +19048,36 @@ function computeAutoRows(){
     }
     acRows.push(row);
   });
-  // Credentials rows — combines manual entries (projectInfo.credentials)
-  // with the derived reader-count estimate. D1 (tightened): the derived
-  // auto-ac-credentials row is SUPPRESSED only when a 2.1-type manual
-  // entry exists (fobs/cards/mobilePasses > 0). OH-only manual entries
-  // (ohTransmitters/ohReceiver) leave the derived 2.1 row intact because
-  // OH credentials don't substitute for the building's reader credentials.
+  // Credentials rows — manual per-type entries from projectInfo.credentials
+  // (kept dead this pass; see Credentials-wiring v26 note in _renderAcDrillDown).
+  // Credentials-wiring v26 removed the derived "auto-ac-credentials" reader-
+  // count estimate row — manual SKU entry via BRIVO_CRED_CATALOG is now the
+  // sole source of building credential rows in §2.1 (see brivoSkus emitter
+  // below). readerCountForCredentials + CREDENTIAL_MULTIPLIER are now unused
+  // by computeAutoRows; pending cleanup once the orphaned per-type path is
+  // removed.
   var credResult = bomCredentialRows();
   credResult.rows.forEach(function(r){ acRows.push(r); });
-  if(readerCountForCredentials > 0 && !credResult.anyManual_2_1_Entered){
-    acRows.push({
-      auto: true, src: 'accessControl', key: 'auto-ac-credentials',
-      desc: 'Smart Credentials — sized for ' + readerCountForCredentials + ' reader' + (readerCountForCredentials === 1 ? '' : 's'),
-      qty: readerCountForCredentials * CREDENTIAL_MULTIPLIER, unit: 0, sectionAuto: true
+  // Credentials-wiring v26: per-SKU manual credential rows.
+  // projectInfo.credentials.brivoSkus is a { [sku]: qty } map populated by
+  // the right-panel Add to Quote button. Each non-zero qty emits one auto
+  // row with key 'auto-ac-cred-brivo-<SKU>' and r.section:'2.1' so
+  // computeBomTree routes it to §2.1 Access Control via the existing
+  // r.section branch (no new routing wired). r.sku carries the catalog SKU
+  // for the Materials SKU column; r.desc carries the catalog description.
+  if(projectInfo.credentials && projectInfo.credentials.brivoSkus && typeof projectInfo.credentials.brivoSkus === 'object'){
+    Object.keys(projectInfo.credentials.brivoSkus).forEach(function(sku){
+      var qty = projectInfo.credentials.brivoSkus[sku];
+      if(typeof qty !== 'number' || !isFinite(qty) || qty <= 0) return;
+      var cat = BRIVO_CRED_CATALOG[sku];
+      if(!cat) return;
+      acRows.push({
+        auto: true, src: 'accessControl',
+        key: 'auto-ac-cred-brivo-' + sku,
+        sku: sku, desc: cat.description,
+        qty: qty, unit: 0,
+        sectionAuto: true, section: '2.1'
+      });
     });
   }
 
