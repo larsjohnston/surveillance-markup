@@ -1106,6 +1106,12 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-colmap-hint { font:500 11px var(--font-ui); color:var(--text-muted); margin:0 0 4px; line-height:1.5; }
 .dhw-btn-small { padding:4px 10px; font:600 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; border-radius:3px; border:1px solid var(--border); background:#fff; color:var(--text); cursor:pointer; }
 .dhw-btn-small:hover { background:var(--surface-soft); }
+/* DHW Revamp M3: Pricing-step pills + vendor-cell highlights. */
+.dhw-pill { padding:4px 10px; border:1px solid var(--border); background:#fff; color:#666; border-radius:4px; cursor:pointer; font:600 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; transition:background .15s, border-color .15s, color .15s; }
+.dhw-pill:hover { border-color:#999; }
+.dhw-pill.active { background:#fff3cd; color:#856404; border-color:#d97706; }
+.dhw-awarded  { background:#e8f5e9; font-weight:600; }
+.dhw-cheapest { background:#fff3e0; color:#e65100; font-weight:600; }
 .dhw-btn-danger { color:#b91c1c; border-color:#fecaca; }
 .dhw-btn-danger:hover { background:#fef2f2; }
 .dhw-btn-primary { color:#fff; background:var(--primary); border-color:var(--primary); }
@@ -4818,7 +4824,49 @@ function dhwEmptyState(){
       // Filter layer on top of dhwLabourTotal — the engine stays untouched.
       // Per-line install hours stay in lineInstallHours so toggling supply-
       // only OFF restores everything.
-      supplyOnly: false
+      supplyOnly: false,
+      // DHW Revamp M1: new pricing-rule shape introduced for the upcoming
+      // 4-step wizard (Import / Pricing / Labour / Summary). These fields
+      // are additive — the legacy `hourlyRate` + `lineInstallHours` above
+      // stay in place for one cycle; dhwNormalizeState migrates them into
+      // `projectLabourRule` / `lineLabourRule` on first load when the new
+      // fields are missing. Empty defaults below describe a fresh project
+      // (no per-section or per-line overrides; all rates 0 until the user
+      // sets them via the new wizard's inputs).
+      //
+      //   projectLabourRule  — { mode, costRate, sellRate }. Mode is
+      //                        'Hourly' XOR 'Flat'. Rates apply when
+      //                        neither a section override nor a line
+      //                        override is present.
+      //   sectionLabourRule  — { [sectionKey]: { mode?, costRate?,
+      //                        sellRate? } }. Section keys are
+      //                        manufacturer codes (Allegion / Stanley /
+      //                        Norton / Other) keyed by takeoff group;
+      //                        any missing field falls back to the
+      //                        project default.
+      //   lineLabourRule     — { [matchKey]: { mode?, costRate?,
+      //                        sellRate?, qty? } }. Narrowest scope —
+      //                        wins over section + project defaults.
+      //                        `qty` decouples labour qty from material
+      //                        qty (Hourly mode → hours; Flat mode →
+      //                        units; default seeded from
+      //                        lineInstallHours on first migration).
+      //   sectionMarkupRule  — { [sectionKey]: pct }. Per-manufacturer
+      //                        markup % overriding defaultMarkupPct;
+      //                        per-line lineMarkupOverrides still wins.
+      //   taxPct             — Summary-step tax %. Project-scoped (the
+      //                        wizard may sync from bomConfig.taxPct on
+      //                        first open, but is independent after).
+      //   lineSell           — { [matchKey]: sellPrice }. Manual sell
+      //                        override per line (bypasses markup-rule
+      //                        derivation). Empty = derive from cost ×
+      //                        (1 + markupPct/100) as today.
+      projectLabourRule: { mode: 'Hourly', costRate: 0, sellRate: 0 },
+      sectionLabourRule: {},
+      lineLabourRule:    {},
+      sectionMarkupRule: {},
+      taxPct:            0,
+      lineSell:          {}
     },
     doorScheduleRef: null
   };
@@ -4883,6 +4931,67 @@ function dhwNormalizeState(obj){
     // are gone; the (repurposed) includeLabour toggle is now the single
     // source of truth for separate-vs-combined Summary columns. Any
     // legacy labourDisplay value in older saves is silently dropped here.
+
+    // ─── DHW Revamp M1 — additive backfill ───────────────────────────────
+    // Six new pricing-rule fields + the per-line AC overlap pill (latter
+    // attaches to hardwareAward, handled below). All fields are additive;
+    // old saves (no key present) inherit the migrations below. Saves that
+    // already carry the new keys (round-trip after M1 lands) keep their
+    // stored values via the same shape-guards used everywhere else here.
+    //
+    // Migrations from legacy fields:
+    //   hourlyRate        → projectLabourRule (Hourly mode + costRate=oldRate)
+    //   lineInstallHours  → lineLabourRule[matchKey].qty
+    // Legacy fields stay populated for one cycle (read by the existing
+    // Step 4 renderer) — they get deleted in M6 once the new wizard ships.
+    if(p.projectLabourRule && typeof p.projectLabourRule === 'object'){
+      var plr = p.projectLabourRule;
+      empty.hardwarePricing.projectLabourRule = {
+        mode:     (plr.mode === 'Flat') ? 'Flat' : 'Hourly',
+        costRate: (typeof plr.costRate === 'number' && isFinite(plr.costRate)) ? plr.costRate : 0,
+        sellRate: (typeof plr.sellRate === 'number' && isFinite(plr.sellRate)) ? plr.sellRate : 0
+      };
+    } else {
+      // First-load migration: lift the old single hourlyRate into the new
+      // shape as the project default (Hourly + costRate=oldRate). sellRate
+      // starts at 0 — the user picks a sell-side rate in the new wizard.
+      empty.hardwarePricing.projectLabourRule = {
+        mode:     'Hourly',
+        costRate: empty.hardwarePricing.hourlyRate,
+        sellRate: 0
+      };
+    }
+    empty.hardwarePricing.sectionLabourRule = (p.sectionLabourRule && typeof p.sectionLabourRule === 'object') ? p.sectionLabourRule : {};
+    if(p.lineLabourRule && typeof p.lineLabourRule === 'object'){
+      empty.hardwarePricing.lineLabourRule = p.lineLabourRule;
+    } else {
+      // First-load migration: every lineInstallHours[key] becomes a
+      // lineLabourRule[key].qty entry. Mode/rates inherit from
+      // section/project defaults at compute time — the migration only
+      // preserves the per-line numeric.
+      var migrated = {};
+      var lih = empty.hardwarePricing.lineInstallHours;
+      if(lih && typeof lih === 'object'){
+        Object.keys(lih).forEach(function(k){
+          var v = lih[k];
+          if(typeof v === 'number' && isFinite(v)) migrated[k] = { qty: v };
+        });
+      }
+      empty.hardwarePricing.lineLabourRule = migrated;
+    }
+    empty.hardwarePricing.sectionMarkupRule = (p.sectionMarkupRule && typeof p.sectionMarkupRule === 'object') ? p.sectionMarkupRule : {};
+    empty.hardwarePricing.taxPct            = (typeof p.taxPct === 'number' && isFinite(p.taxPct)) ? p.taxPct : 0;
+    empty.hardwarePricing.lineSell          = (p.lineSell && typeof p.lineSell === 'object') ? p.lineSell : {};
+  } else {
+    // No hardwarePricing on the loaded object at all — the empty-state
+    // defaults already populate the new fields, nothing to migrate.
+  }
+  // DHW Revamp M1: per-line AC overlap pill state. Lives on hardwareAward
+  // since it shapes how each awarded line surfaces in the Pricing step +
+  // customer-facing pages. Only seeded when an award exists (matches the
+  // existing W1/W7a/W8c backfill pattern for award sub-maps).
+  if(empty.hardwareAward && (!empty.hardwareAward.acOverlapPill || typeof empty.hardwareAward.acOverlapPill !== 'object')){
+    empty.hardwareAward.acOverlapPill = {};
   }
   empty.doorScheduleRef = obj.doorScheduleRef || null;
   return empty;
@@ -6519,7 +6628,12 @@ function _dhwApplyPendingFocus(){
 //   4 = Labour (W4 placeholder for W1)
 //   5 = Summary (W5 placeholder for W1)
 var _dhwCurrentStep = 1;
-var _DHW_STEP_LABELS = ['Comparison', 'Hardware', 'AC Overlap', 'Labour', 'Summary'];
+// DHW Revamp M2: 5-step wizard collapses to 4 steps. The old Comparison +
+// Hardware steps merge into Step 1 Import (upload + parse review). AC
+// Overlap becomes a per-row pill in the future Step 2 Pricing renderer
+// (M3). Step 3 Labour + Step 4 Summary inherit the old Step 4/5 renderers
+// renamed in place (full Labour/Summary refresh comes in M4/M5).
+var _DHW_STEP_LABELS = ['Import', 'Pricing', 'Labour', 'Summary'];
 
 // Main render dispatcher. Builds the modal body + wizard nav from current
 // state. Idempotent — safe to call any number of times.
@@ -6536,7 +6650,7 @@ function renderDoorHardwareModal(){
     return;
   }
   // Defensive clamp (shouldn't happen through normal nav).
-  if(_dhwCurrentStep < 1 || _dhwCurrentStep > 5) _dhwCurrentStep = 1;
+  if(_dhwCurrentStep < 1 || _dhwCurrentStep > 4) _dhwCurrentStep = 1;
   var quotes = doorHardware.hardwareQuotes || [];
   body.innerHTML =
     '<div class="dhw-project-info">' + _dhwRenderTakeoffSummary(takeoff) + '</div>' +
@@ -6568,25 +6682,401 @@ function _dhwRenderStepper(){
   return '<div class="dhw-stepper" role="navigation" aria-label="Door Hardware wizard steps">' + parts.join('') + '</div>';
 }
 
-// W1: dispatch to the per-step content renderer. Step 1 is full; the rest
-// are placeholders this milestone (W2–W5 will fill them).
+// DHW Revamp M2: dispatch to the per-step content renderer for the new
+// 4-step wizard. Step 1 Import + Step 3 Labour + Step 4 Summary are
+// renderable this milestone; Step 2 Pricing is a placeholder (M3 fills
+// it). The old _dhwRenderStep1Comparison / _dhwRenderStep2Hardware /
+// _dhwRenderStep3AcOverlap functions remain in place but unreachable —
+// scheduled for deletion in M6 once the new wizard is fully validated.
 function _dhwRenderActiveStep(takeoff, quotes){
   switch(_dhwCurrentStep){
-    case 1: return _dhwRenderStep1Comparison(takeoff, quotes);
-    case 2: return _dhwRenderStep2Hardware(takeoff, quotes);
-    case 3: return _dhwRenderStep3AcOverlap(takeoff);
-    case 4: return _dhwRenderStep4Labour(takeoff, quotes);
-    case 5: return _dhwRenderStep5Summary(takeoff, quotes);
+    case 1: return _dhwRenderStep1Import(takeoff, quotes);
+    case 2: return _dhwRenderStep2Pricing(takeoff, quotes);
+    case 3: return _dhwRenderStep3Labour(takeoff, quotes);
+    case 4: return _dhwRenderStep4Summary(takeoff, quotes);
   }
   return '';
 }
 
-// Step 1 — Comparison. The quote list (with filenames + delete) sits at the
-// top so the user can manage quotes in the same view as the analysis. Below
-// it, the Comparison & Award section: tabbed views (By Supplier / Best by
-// Line), Awarded/Unawarded status pill (M3-polish), info-icon tooltip
-// (M3-polish), and the award action(s). Per-line supplier overrides live
-// in View 2's Best column.
+// ─── DHW Revamp M2 — Step 1 Import + Step 2 Pricing placeholder ──────────
+// New 4-step wizard's entry point. Step 1 Import replaces the old
+// Comparison + Hardware upload chrome: no takeoff yet → upload UI; takeoff
+// present → review grid (Qty · Mfr · Description · Catalog # · Finish) +
+// "Use these lines" (→ Step 2) / "Re-upload" (reset + stay).
+//
+// Parse pipeline: _dhwHandleImportFile delegates to the existing
+// _handleHardwareTakeoffFile (single source of truth) — same parse, same
+// error modal, same "replacing existing takeoff" confirm, same downstream
+// reset, same toast. Wizard re-renders via the existing
+// _dhwRefreshManagerIfOpen path triggered by that handler.
+//
+// matchKey is NOT stamped onto line objects — every consumer recomputes
+// it via dhwMatchKey(line.catalogNumber, line.finish) at use-site
+// (resolveAward, dhwBomRows, etc.). Stamping would duplicate data; the
+// existing pattern stays unchanged.
+function _dhwRenderStep1Import(takeoff, quotes){
+  if(!takeoff || !takeoff.lines || takeoff.lines.length === 0){
+    return _dhwRenderImportUpload();
+  }
+  return _dhwRenderImportReview(takeoff);
+}
+
+function _dhwRenderImportUpload(){
+  return '<div class="dhw-section">' +
+    '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Upload Hardware Schedule CSV</span></div>' +
+    '<div style="margin:12px 0;">' +
+      '<input type="file" id="dhw-import-file" accept=".csv,text/csv" onchange="_dhwHandleImportFile(this)" ' +
+        'style="padding:8px; border:1px solid var(--border); border-radius:4px; font:12px var(--font-ui);">' +
+    '</div>' +
+    '<div style="font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
+      'Select a hardware schedule CSV exported from Allegion (or compatible). ' +
+      'Expected columns: Extended Qty, UoM, Description, Catalog #, (Cut Sheet), Finish, ' +
+      '(optional pricing: LIST / COST / TOTAL).' +
+    '</div>' +
+  '</div>';
+}
+
+function _dhwRenderImportReview(takeoff){
+  var lines  = (takeoff && takeoff.lines) ? takeoff.lines : [];
+  var header = (takeoff && takeoff.header) ? takeoff.header : {};
+  var trs = lines.map(function(line){
+    return '<tr>' +
+      '<td class="dhw-num">' + _dhwEsc(line.qty) + '</td>' +
+      '<td>' + _dhwEsc(line.manufacturer || 'OTHER') + '</td>' +
+      '<td>' + _dhwEsc(line.description   || '') + '</td>' +
+      '<td>' + _dhwEsc(line.catalogNumber || '') + '</td>' +
+      '<td>' + _dhwEsc(line.finish        || '') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var headerInfo = [];
+  if(header.projectName)   headerInfo.push('<div class="dhw-summary-line"><span class="lbl">Project</span>'     + _dhwEsc(header.projectName)   + '</div>');
+  if(header.architectName) headerInfo.push('<div class="dhw-summary-line"><span class="lbl">Architect</span>'   + _dhwEsc(header.architectName) + '</div>');
+  if(header.reportDate)    headerInfo.push('<div class="dhw-summary-line"><span class="lbl">Report Date</span>' + _dhwEsc(header.reportDate)    + '</div>');
+  var headerBlock = headerInfo.length
+    ? '<div class="dhw-section" style="border-top:0; padding-top:0; margin-top:0;">' + headerInfo.join('') + '</div>'
+    : '';
+
+  return headerBlock +
+    '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Parsed Lines (' + lines.length + ')</span></div>' +
+      '<div style="margin-top:12px; overflow-x:auto;">' +
+        '<table class="dhw-table">' +
+          '<thead><tr><th class="dhw-num">Qty</th><th>Manufacturer</th><th>Description</th><th>Catalog #</th><th>Finish</th></tr></thead>' +
+          '<tbody>' + trs + '</tbody>' +
+        '</table>' +
+      '</div>' +
+      '<div style="margin-top:12px; display:flex; gap:8px;">' +
+        '<button class="btn btn-blue" onclick="_dhwConfirmImport()">Use these lines &rarr;</button>' +
+        '<button class="btn btn-dark" onclick="_dhwResetImport()">Re-upload</button>' +
+      '</div>' +
+    '</div>';
+}
+
+function _dhwHandleImportFile(fileInput){
+  var file = fileInput && fileInput.files && fileInput.files[0];
+  if(!file) return;
+  // Reuse the canonical takeoff-import handler — it parses, validates,
+  // prompts on replace, resets downstream state, marks dirty, toasts, and
+  // calls _dhwRefreshManagerIfOpen which re-renders this wizard. No
+  // duplication.
+  _handleHardwareTakeoffFile(file);
+}
+
+function _dhwConfirmImport(){
+  // The takeoff is already committed by _dhwHandleImportFile → the
+  // canonical handler. Just advance to Step 2 (Pricing).
+  _dhwGoToStep(2);
+}
+
+function _dhwResetImport(){
+  // Mirror the canonical replacement reset (_handleHardwareTakeoffFile
+  // path): drop takeoff + quotes + award + per-line maps. Stay on Step 1
+  // so the upload UI re-renders.
+  doorHardware.importedTakeoff = null;
+  doorHardware.hardwareQuotes  = [];
+  doorHardware.hardwareAward   = null;
+  if(doorHardware.hardwarePricing){
+    doorHardware.hardwarePricing.lineMarkupOverrides = {};
+    doorHardware.hardwarePricing.lineInstallHours    = {};
+  }
+  markDirty();
+  renderDoorHardwareModal();
+  _dhwRefreshHomeIfVisible();
+}
+
+// ─── DHW Revamp M3 — Step 2 Pricing renderer ────────────────────────────────
+// Materials grid grouped by manufacturer. Each section has its own markup
+// input; each row carries per-line markup override + per-vendor inline cost
+// cells + AC Overlap pill + Exclude checkbox. All math via resolveAward +
+// dhwUnitSell (project helpers — markup is integer percent, e.g. 50 = 50%).
+//
+// Award basis:
+//   `award.basis` must be 'whole' or 'bestLine' for resolveAward to return
+//   priced rows. The old 5-step Comparison step set basis via explicit
+//   Award buttons; M3 commits 'bestLine' implicitly on first vendor-cell
+//   click via _dhwSetLineSupplier (mirrors the old _dhwConfirmAwardOnContinue
+//   hook that lived at the Comparison→Hardware transition).
+//
+// Unpriced rows render "not priced" / "—" rather than $0.00 (existing
+// project convention, mirrors _dhwRenderStep2Hardware at L6873-6904).
+//
+// Vendor columns: always inline regardless of count. Table scrolls
+// horizontally via the existing `overflow-x:auto` wrapper for 4+ vendors.
+function _dhwRenderStep2Pricing(takeoff, quotes){
+  var takeoffLines = (takeoff && takeoff.lines) ? takeoff.lines : [];
+  var award   = doorHardware.hardwareAward   || {};
+  var pricing = doorHardware.hardwarePricing || {};
+  var hasQuotes = !!(quotes && quotes.length > 0);
+  var vendors   = quotes || [];
+
+  if(takeoffLines.length === 0){
+    return '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Materials</span></div>' +
+      '<div class="dhw-empty">No takeoff lines to price. Go back to Step 1 to import a hardware schedule.</div>' +
+    '</div>';
+  }
+
+  // resolveAward takes the FULL takeoff object (it reads takeoff.lines
+  // internally). Returns [{ matchKey, takeoffLine, awardedUnitCost,
+  // awardedSupplierName, priced }] per takeoff line.
+  var resolved = resolveAward(takeoff, quotes, award) || [];
+
+  // Group resolved rows by manufacturer. Empty mfr falls back to 'OTHER'
+  // (matches parseHardwareCSV's currentMfr default at L5003).
+  var mfrGroups = {};
+  resolved.forEach(function(r){
+    var mfr = (r.takeoffLine && r.takeoffLine.manufacturer) || 'OTHER';
+    if(!mfrGroups[mfr]) mfrGroups[mfr] = [];
+    mfrGroups[mfr].push(r);
+  });
+
+  // Project Markup default — typeof check (M3-polish set fresh default
+  // to 50, not 0; a `|| 0` coerces an intentional 0 setting incorrectly).
+  var projectMarkup = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 50;
+
+  // Top-level controls: Materials section header + Import Quotes button +
+  // Project Markup default input.
+  var topControls =
+    '<div class="dhw-section">' +
+      '<div class="dhw-section-hdr">' +
+        '<span class="dhw-section-hdr-title">Materials</span>' +
+        '<button class="dhw-btn-small" onclick="_dhwOpenQuoteImport()" style="margin-left:auto;">Import Quotes</button>' +
+      '</div>' +
+      (hasQuotes ? '' : '<div class="dhw-empty" style="margin:12px 0;">No supplier quotes imported. Click "Import Quotes" to add pricing.</div>') +
+      '<div style="margin:12px 0;">' +
+        '<label><b>Project Markup:</b> ' +
+          '<span class="dhw-pct-wrap">' +
+            '<input type="number" class="dhw-input" min="0" step="5"' +
+              ' value="' + Number(projectMarkup).toFixed(1) + '"' +
+              ' onchange="_dhwSetDefaultMarkup(this.value)">' +
+            '<span>%</span>' +
+          '</span>' +
+        '</label>' +
+        '<span style="font:500 11px var(--font-ui); color:var(--text-muted); margin-left:8px;">Default applies to any line without a per-line override or section override.</span>' +
+      '</div>' +
+    '</div>';
+
+  // Per-manufacturer sections.
+  var sections = [];
+  Object.keys(mfrGroups).sort().forEach(function(mfr){
+    var mfrLines = mfrGroups[mfr];
+    var mfrMarkup = (pricing.sectionMarkupRule && typeof pricing.sectionMarkupRule[mfr] === 'number')
+      ? pricing.sectionMarkupRule[mfr]
+      : projectMarkup;
+
+    // Section header: manufacturer + per-section markup input.
+    var sectionHeader =
+      '<div class="dhw-section" style="margin-top:16px;">' +
+        '<div class="dhw-section-hdr">' +
+          '<span class="dhw-section-hdr-title">' + _dhwEsc(mfr) + '</span>' +
+          '<label style="margin-left:auto; font:500 11px var(--font-ui); display:inline-flex; align-items:center; gap:4px;">' +
+            'Section markup:' +
+            '<span class="dhw-pct-wrap">' +
+              '<input type="number" class="dhw-input" min="0" step="5"' +
+                ' value="' + Number(mfrMarkup).toFixed(1) + '"' +
+                ' onchange="_dhwSetSectionMarkup(\'' + _dhwEsc(mfr) + '\', this.value)"' +
+                ' title="Override default for this manufacturer section.">' +
+              '<span>%</span>' +
+            '</span>' +
+          '</label>' +
+        '</div>';
+
+    // Table header (always 4 left columns + vendor columns + 5 right columns).
+    var headerCells = ['Qty', 'Description', 'Catalog #', 'Finish'];
+    vendors.forEach(function(v){ headerCells.push(_dhwEsc(v.supplierName || 'Vendor')); });
+    headerCells.push('Markup %', 'Margin $', 'GM %', 'AC', 'Exclude');
+    var header = '<tr>' + headerCells.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr>';
+
+    // Rows.
+    var trs = mfrLines.map(function(r){
+      var line = r.takeoffLine || {};
+      var key  = r.matchKey;
+      var qty  = (typeof line.qty === 'number') ? line.qty : 0;
+      // Unpriced rows: unitCost=null + render gap text (not $0.00).
+      var unitCost = r.priced ? r.awardedUnitCost : null;
+      var lineMarkup = (pricing.lineMarkupOverrides && typeof pricing.lineMarkupOverrides[key] === 'number')
+        ? pricing.lineMarkupOverrides[key]
+        : mfrMarkup;
+      var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, lineMarkup);
+      var extCost  = (unitCost == null) ? null : qty * unitCost;
+      var extSell  = (unitSell == null) ? null : qty * unitSell;
+      var margin   = (extSell == null || extCost == null) ? null : (extSell - extCost);
+      var marginPct = (margin == null || !extCost) ? null : (margin / extCost * 100);
+
+      var isExcluded     = !!(award.excluded     && award.excluded[key]);
+      var acOverlapState = !!(award.acOverlapPill && award.acOverlapPill[key]);
+
+      // Vendor price cells.
+      var vendorCells = vendors.map(function(v){
+        var quoteLine = (v.lines || []).find(function(ql){
+          return dhwMatchKey(ql.catalogNumber, ql.finish) === key;
+        });
+        var cost = (quoteLine && typeof quoteLine.unitCost === 'number') ? quoteLine.unitCost : null;
+        var isAwarded  = r.awardedSupplierName === v.supplierName;
+        var isCheapest = _dhwIsCheapestVendor(key, v.supplierName, vendors);
+        // Awarded wins visually over cheapest.
+        var cellCls = isAwarded ? ' class="dhw-awarded"' : (isCheapest ? ' class="dhw-cheapest"' : '');
+        var costText = (cost == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(cost);
+        return '<td' + cellCls +
+          ' onclick="_dhwSetLineSupplier(\'' + _dhwEsc(key) + '\', \'' + _dhwEsc(v.supplierName) + '\')"' +
+          ' style="cursor:pointer; text-align:center;">' + costText + '</td>';
+      }).join('');
+
+      // Markup input (per-line override).
+      var markupInput = '<input type="number" class="dhw-input-inline" min="0" step="5"' +
+        ' value="' + Number(lineMarkup).toFixed(1) + '"' +
+        ' onchange="_dhwSetLineMarkup(\'' + _dhwEsc(key) + '\', this.value)">';
+
+      // AC Overlap pill (XOR Normal / Overlap).
+      var acPill = '<button class="dhw-pill' + (acOverlapState ? ' active' : '') + '"' +
+        ' onclick="_dhwSetAcOverlapPill(\'' + _dhwEsc(key) + '\', ' + (!acOverlapState) + ')"' +
+        ' title="Toggle AC Overlap flag (line covered by Access Control system)">' +
+        (acOverlapState ? 'Overlap' : 'Normal') + '</button>';
+
+      // Exclude checkbox (by-others; filters from customer Hardware Schedule).
+      var excludeChk = '<input type="checkbox" ' + (isExcluded ? 'checked' : '') +
+        ' onchange="_dhwSetLineExcluded(\'' + _dhwEsc(key) + '\', this.checked)"' +
+        ' title="Mark as by-others (excluded from hardware schedule and totals).">';
+
+      // Cell renderers — unpriced + excluded both render as "—" / gap.
+      function priceCell(val){
+        if(isExcluded) return '<span style="color:var(--text-muted);">&mdash;</span>';
+        if(val == null) return '<span class="dhw-gap">not priced</span>';
+        return _dhwFmtMoney(val);
+      }
+      function pctCell(val){
+        if(isExcluded || val == null) return '<span class="dhw-gap">&mdash;</span>';
+        return Number(val).toFixed(1) + '%';
+      }
+
+      var rowCls = isExcluded ? ' class="dhw-row-excluded"' : (!r.priced ? ' class="dhw-row-flagged"' : '');
+      return '<tr' + rowCls + '>' +
+        '<td class="dhw-num">' + qty + '</td>' +
+        '<td>' + _dhwEsc(line.description   || '') + '</td>' +
+        '<td>' + _dhwEsc(line.catalogNumber || '') + '</td>' +
+        '<td>' + _dhwEsc(line.finish        || '') + '</td>' +
+        vendorCells +
+        '<td class="dhw-num"><span class="dhw-pct-wrap" style="justify-content:flex-end;">' + markupInput + '<span>%</span></span></td>' +
+        '<td class="dhw-num">' + priceCell(margin)    + '</td>' +
+        '<td class="dhw-num">' + pctCell(marginPct)   + '</td>' +
+        '<td style="text-align:center;">' + acPill    + '</td>' +
+        '<td style="text-align:center;">' + excludeChk + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var table = '<table class="dhw-table" style="margin-top:12px;">' +
+      '<thead>' + header + '</thead>' +
+      '<tbody>' + trs + '</tbody>' +
+    '</table>';
+
+    sections.push(sectionHeader + '<div style="margin-top:12px; overflow-x:auto;">' + table + '</div>' + '</div>');
+  });
+
+  return topControls + sections.join('');
+}
+
+// ─── DHW Revamp M3 — Step 2 Pricing setters + helpers ───────────────────────
+
+// _dhwSetLineSupplier (L8709) and _dhwSetLineMarkup (L9091) are reused
+// from the legacy 5-step wizard as-is. The vendor-click basis-commit
+// (award.basis='bestLine') was added to the existing _dhwSetLineSupplier
+// in this pass so the new wizard's vendor selections actually price rows
+// (without basis, resolveAward returns every line unpriced).
+//
+// _dhwSetDefaultMarkup (L9060) is also reused — the Project Markup input
+// in this renderer calls it directly.
+
+function _dhwSetSectionMarkup(mfr, value){
+  var pct = parseFloat(value);
+  if(!isFinite(pct) || pct < 0) pct = 0;
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  if(!doorHardware.hardwarePricing.sectionMarkupRule) doorHardware.hardwarePricing.sectionMarkupRule = {};
+  doorHardware.hardwarePricing.sectionMarkupRule[mfr] = pct;
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+// _dhwSetDefaultMarkup already exists from the legacy Step 2 Hardware
+// renderer (project-wide default markup). The new wizard reuses it as-is.
+
+function _dhwSetAcOverlapPill(matchKey, state){
+  if(!doorHardware.hardwareAward){
+    doorHardware.hardwareAward = {
+      basis:        'bestLine',
+      lineSupplier: {},
+      excluded:     {},
+      acOverlapPill:{},
+      lineNotes:    {}
+    };
+  }
+  if(!doorHardware.hardwareAward.acOverlapPill) doorHardware.hardwareAward.acOverlapPill = {};
+  doorHardware.hardwareAward.acOverlapPill[matchKey] = !!state;
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+function _dhwSetLineExcluded(matchKey, excluded){
+  if(!doorHardware.hardwareAward){
+    doorHardware.hardwareAward = {
+      basis:        'bestLine',
+      lineSupplier: {},
+      excluded:     {},
+      acOverlapPill:{},
+      lineNotes:    {}
+    };
+  }
+  if(!doorHardware.hardwareAward.excluded) doorHardware.hardwareAward.excluded = {};
+  doorHardware.hardwareAward.excluded[matchKey] = !!excluded;
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+// Returns true iff this supplier offers the lowest unitCost for matchKey
+// across all quotes (ties: first quote wins). Visual highlight only — not
+// part of award state.
+function _dhwIsCheapestVendor(matchKey, supplierName, quotes){
+  var cheapest = null;
+  var cheapestCost = Infinity;
+  (quotes || []).forEach(function(q){
+    var line = (q.lines || []).find(function(ql){ return dhwMatchKey(ql.catalogNumber, ql.finish) === matchKey; });
+    if(line && typeof line.unitCost === 'number' && line.unitCost < cheapestCost){
+      cheapestCost = line.unitCost;
+      cheapest = q.supplierName;
+    }
+  });
+  return cheapest === supplierName;
+}
+
+// Delegates to the canonical quote picker (colmap modal → supplier prompt
+// → commit). Single source of truth for quote imports.
+function _dhwOpenQuoteImport(){
+  openHardwareQuotePicker();
+}
+
+// Step 1 — Comparison (LEGACY / unreachable as of DHW Revamp M2). The
+// dispatcher no longer routes to this function; kept in place for one
+// cycle to make the M2 diff reviewable. Slated for deletion in M6.
 function _dhwRenderStep1Comparison(takeoff, quotes){
   var hasQuotes = !!(quotes && quotes.length > 0);
   return _dhwRenderQuoteList(quotes) +
@@ -6805,7 +7295,13 @@ function _dhwRenderStep3AcOverlap(takeoff){
 //
 // Install-hours input is widened (style="width:80px") so the number-input
 // stepper arrows aren't smooshed and are easily clickable.
-function _dhwRenderStep4Labour(takeoff, quotes){
+// DHW Revamp M2: renamed from _dhwRenderStep4Labour. Body unchanged; the
+// full Hourly XOR Flat / per-section + per-line rule rewrite lands in M4.
+// Until M4, the existing single-mode hourly UI keeps running off the
+// legacy hardwarePricing.hourlyRate + lineInstallHours fields (which M1
+// migrations also seed into projectLabourRule + lineLabourRule, so M4 can
+// switch read paths without losing data).
+function _dhwRenderStep3Labour(takeoff, quotes){
   var award = doorHardware.hardwareAward;
   var pricing = doorHardware.hardwarePricing;
   var hourlyRate = (typeof pricing.hourlyRate === 'number') ? pricing.hourlyRate : 0;
@@ -7003,7 +7499,10 @@ function _dhwRenderStep4Labour(takeoff, quotes){
 // All math via M1 engine (resolveAward, dhwUnitSell, dhwLabourTotal).
 // Gaps shown as "not priced" (never $0.00); flagged-supplier markers
 // preserved.
-function _dhwRenderStep5Summary(takeoff, quotes){
+// DHW Revamp M2: renamed from _dhwRenderStep5Summary. Body unchanged; the
+// SQ-style Summary refresh (HW + Labour + Combined + Tax columns) lands
+// in M5. Until then the existing summary table renders unchanged.
+function _dhwRenderStep4Summary(takeoff, quotes){
   var award = doorHardware.hardwareAward;
   var pricing = doorHardware.hardwarePricing;
   var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 50;
@@ -7544,7 +8043,8 @@ function _dhwRenderWizardNav(){
   var back = (_dhwCurrentStep > 1)
     ? '<button class="btn btn-dark" onclick="_dhwStepBack()" style="background:#fff; color:var(--text); border:1px solid var(--border);">&larr; Back</button>'
     : '';
-  var forward = (_dhwCurrentStep < 5)
+  // DHW Revamp M2: 4 steps total. Forward on steps 1-3, Save on step 4.
+  var forward = (_dhwCurrentStep < 4)
     ? '<button class="btn btn-dark" onclick="_dhwStepNext()">Continue &rarr;</button>'
     : '<button class="btn btn-dark" onclick="closeDoorHardwareModal()">Save</button>';
   return back + '<div class="dhw-nav-spacer"></div>' + forward;
@@ -7560,13 +8060,18 @@ function _dhwRenderWizardNav(){
 // Explicit confirmation paths remain: the "Award whole package" /
 // "Award best line" buttons in View 1 / View 2.
 function _dhwGoToStep(n){
-  if(typeof n !== 'number' || n < 1 || n > 5) return;
+  // DHW Revamp M2: 4 steps (Import / Pricing / Labour / Summary).
+  if(typeof n !== 'number' || n < 1 || n > 4) return;
   _dhwCurrentStep = n;
   renderDoorHardwareModal();
 }
 function _dhwStepNext(){
-  if(_dhwCurrentStep < 5){
-    if(_dhwCurrentStep === 1) _dhwConfirmAwardOnContinue();
+  if(_dhwCurrentStep < 4){
+    // DHW Revamp M2: the old Comparison-step award-commit-on-Continue hook
+    // (_dhwConfirmAwardOnContinue) was wired to step 1 in the 5-step
+    // wizard. Step 1 is now Import (no award staging happens here), so
+    // the call is dropped. M3 may re-wire award commit at the new
+    // Pricing→Labour transition once the Pricing renderer ships.
     _dhwCurrentStep++;
     renderDoorHardwareModal();
   }
@@ -8198,6 +8703,13 @@ function _dhwSetLineSupplier(matchKey, supplierName){
     delete award.lineSupplier[matchKey];
   } else {
     award.lineSupplier[matchKey] = s;
+    // DHW Revamp M3: the new Step 2 Pricing UI commits award.basis to
+    // 'bestLine' on first vendor-cell click. Without a basis, resolveAward
+    // returns every row as priced:false (the old 5-step wizard set basis
+    // via explicit Award buttons in the deleted Comparison step). The
+    // staging-shell pattern above stays — basis is only committed on a
+    // real supplier pick, not on a click-to-clear.
+    if(!award.basis) award.basis = 'bestLine';
   }
   markDirty();
   renderDoorHardwareModal();
