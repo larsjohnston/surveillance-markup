@@ -4850,24 +4850,18 @@ function dhwEmptyState(){
       // total ALWAYS includes labour regardless of this flag. Default
       // false = separate columns (Ext sell + Labour + Total visible).
       includeLabour: false,
-      hourlyRate: 0,
-      lineInstallHours: {},
-      // W7b: supply-only mode. When true, the Step 4 labour UI (hourly rate
-      // input + per-line table) hides and labour is excluded from ALL totals
-      // (Step 5 grand total = hardware only; Project Totals' Labour line
-      // and Expected Project Hours hidden; margin math uses hardware only).
-      // Filter layer on top of dhwLabourTotal — the engine stays untouched.
-      // Per-line install hours stay in lineInstallHours so toggling supply-
-      // only OFF restores everything.
+      // W7b / DHW Revamp M6: supply-only mode. When true, the Step 3 Labour
+      // UI hides labour rule inputs and labour is excluded from ALL totals
+      // (Step 4 Summary grand total = hardware only; margin math uses
+      // hardware only). Filter layer on top of the labour resolver — the
+      // saved `lineLabourRule` map is preserved so toggling supply-only
+      // OFF restores everything.
       supplyOnly: false,
-      // DHW Revamp M1: new pricing-rule shape introduced for the upcoming
-      // 4-step wizard (Import / Pricing / Labour / Summary). These fields
-      // are additive — the legacy `hourlyRate` + `lineInstallHours` above
-      // stay in place for one cycle; dhwNormalizeState migrates them into
-      // `projectLabourRule` / `lineLabourRule` on first load when the new
-      // fields are missing. Empty defaults below describe a fresh project
-      // (no per-section or per-line overrides; all rates 0 until the user
-      // sets them via the new wizard's inputs).
+      // DHW Revamp M1: pricing-rule shape for the 4-step wizard
+      // (Import / Pricing / Labour / Summary). M6 dropped the legacy
+      // `hourlyRate` + `lineInstallHours` fields — `projectLabourRule` +
+      // `lineLabourRule` are now the sole labour shape. Older v25/v26
+      // saves load via dhwNormalizeState with defaults; no migration.
       //
       //   projectLabourRule  — { mode, costRate, sellRate }. Mode is
       //                        'Hourly' XOR 'Flat'. Rates apply when
@@ -4884,8 +4878,7 @@ function dhwEmptyState(){
       //                        wins over section + project defaults.
       //                        `qty` decouples labour qty from material
       //                        qty (Hourly mode → hours; Flat mode →
-      //                        units; default seeded from
-      //                        lineInstallHours on first migration).
+      //                        units; user-entered, seeded blank).
       //   sectionMarkupRule  — { [sectionKey]: pct }. Per-manufacturer
       //                        markup % overriding defaultMarkupPct;
       //                        per-line lineMarkupOverrides still wins.
@@ -4956,8 +4949,6 @@ function dhwNormalizeState(obj){
     empty.hardwarePricing.defaultMarkupPct    = (typeof p.defaultMarkupPct    === 'number') ? p.defaultMarkupPct    : 50;
     empty.hardwarePricing.lineMarkupOverrides = (p.lineMarkupOverrides && typeof p.lineMarkupOverrides === 'object') ? p.lineMarkupOverrides : {};
     empty.hardwarePricing.includeLabour       = !!p.includeLabour;
-    empty.hardwarePricing.hourlyRate          = (typeof p.hourlyRate === 'number') ? p.hourlyRate : 0;
-    empty.hardwarePricing.lineInstallHours    = (p.lineInstallHours && typeof p.lineInstallHours === 'object') ? p.lineInstallHours : {};
     // W7b: additive backfill for supply-only mode. Missing → false, matching
     // empty-state. Boolean coerce via !! so any truthy legacy value is
     // captured but no other values are interpreted.
@@ -4967,18 +4958,12 @@ function dhwNormalizeState(obj){
     // source of truth for separate-vs-combined Summary columns. Any
     // legacy labourDisplay value in older saves is silently dropped here.
 
-    // ─── DHW Revamp M1 — additive backfill ───────────────────────────────
-    // Six new pricing-rule fields + the per-line AC overlap pill (latter
-    // attaches to hardwareAward, handled below). All fields are additive;
-    // old saves (no key present) inherit the migrations below. Saves that
-    // already carry the new keys (round-trip after M1 lands) keep their
-    // stored values via the same shape-guards used everywhere else here.
-    //
-    // Migrations from legacy fields:
-    //   hourlyRate        → projectLabourRule (Hourly mode + costRate=oldRate)
-    //   lineInstallHours  → lineLabourRule[matchKey].qty
-    // Legacy fields stay populated for one cycle (read by the existing
-    // Step 4 renderer) — they get deleted in M6 once the new wizard ships.
+    // ─── M1–M5: Labour rule + markup rule fields (no legacy backfill in M6+) ───
+    // New fields (projectLabourRule, sectionLabourRule, lineLabourRule,
+    // sectionMarkupRule, taxPct, lineSell, acOverlapPill) initialize from
+    // the loaded save when present, else default to empty/{Hourly,0,0}.
+    // Legacy hourlyRate + lineInstallHours are NO LONGER backfilled (v27+).
+    // Old v25/v26 saves load with defaults; new shape on next save (v27).
     if(p.projectLabourRule && typeof p.projectLabourRule === 'object'){
       var plr = p.projectLabourRule;
       empty.hardwarePricing.projectLabourRule = {
@@ -4986,45 +4971,12 @@ function dhwNormalizeState(obj){
         costRate: (typeof plr.costRate === 'number' && isFinite(plr.costRate)) ? plr.costRate : 0,
         sellRate: (typeof plr.sellRate === 'number' && isFinite(plr.sellRate)) ? plr.sellRate : 0
       };
-    } else {
-      // First-load migration: lift the old single hourlyRate into the new
-      // shape as the project default (Hourly + costRate=oldRate). sellRate
-      // starts at 0 — the user picks a sell-side rate in the new wizard.
-      empty.hardwarePricing.projectLabourRule = {
-        mode:     'Hourly',
-        costRate: empty.hardwarePricing.hourlyRate,
-        sellRate: 0
-      };
     }
     empty.hardwarePricing.sectionLabourRule = (p.sectionLabourRule && typeof p.sectionLabourRule === 'object') ? p.sectionLabourRule : {};
-    if(p.lineLabourRule && typeof p.lineLabourRule === 'object'){
-      empty.hardwarePricing.lineLabourRule = p.lineLabourRule;
-    } else {
-      // First-load migration: every lineInstallHours[key] becomes a
-      // lineLabourRule[key].qty entry. Mode/rates inherit from
-      // section/project defaults at compute time — the migration only
-      // preserves the per-line numeric.
-      var migrated = {};
-      var lih = empty.hardwarePricing.lineInstallHours;
-      if(lih && typeof lih === 'object'){
-        Object.keys(lih).forEach(function(k){
-          var v = lih[k];
-          if(typeof v === 'number' && isFinite(v)) migrated[k] = { qty: v };
-        });
-      }
-      empty.hardwarePricing.lineLabourRule = migrated;
-    }
+    empty.hardwarePricing.lineLabourRule    = (p.lineLabourRule    && typeof p.lineLabourRule    === 'object') ? p.lineLabourRule    : {};
     empty.hardwarePricing.sectionMarkupRule = (p.sectionMarkupRule && typeof p.sectionMarkupRule === 'object') ? p.sectionMarkupRule : {};
     empty.hardwarePricing.taxPct            = (typeof p.taxPct === 'number' && isFinite(p.taxPct)) ? p.taxPct : 0;
     empty.hardwarePricing.lineSell          = (p.lineSell && typeof p.lineSell === 'object') ? p.lineSell : {};
-    // ─── DEPRECATION NOTICE (M5) ───────────────────────────────────────────
-    // Legacy fields from the pre-M1 labour model (preserved here for round-
-    // trip compatibility):
-    //   - hardwarePricing.hourlyRate       (replaced by projectLabourRule.costRate)
-    //   - hardwarePricing.lineInstallHours (replaced by lineLabourRule[key].qty)
-    // These fields are left intact on load. On next DHW wizard save, the new
-    // fields populate. Deletion + save-version bump deferred to the M6
-    // cleanup pass.
   } else {
     // No hardwarePricing on the loaded object at all — the empty-state
     // defaults already populate the new fields, nothing to migrate.
@@ -5467,20 +5419,9 @@ function dhwUnitSell(unitCost, markupPct){
   return c * (1 + m / 100);
 }
 
-// Labour math: Σ (per-line install hours) × hourlyRate. The line install
-// hours object is keyed by matchKey; each value is hours PER LINE (not per
-// unit — qty is NOT a multiplier).
-function dhwLabourTotal(lineInstallHours, hourlyRate){
-  var rate = (typeof hourlyRate === 'number' && isFinite(hourlyRate)) ? hourlyRate : 0;
-  var totalHours = 0;
-  if(lineInstallHours && typeof lineInstallHours === 'object'){
-    Object.keys(lineInstallHours).forEach(function(k){
-      var h = lineInstallHours[k];
-      if(typeof h === 'number' && isFinite(h)) totalHours += h;
-    });
-  }
-  return totalHours * rate;
-}
+// DHW Revamp M6: legacy dhwLabourTotal deleted. Labour math is now resolved
+// per-section + per-line via projectLabourRule / sectionLabourRule /
+// lineLabourRule (see _dhwRenderStep3Labour and _dhwRenderStep4Summary).
 
 // Group lines by manufacturer in conventional order. Known mfrs go first
 // (DHW_KNOWN_MFRS order), then any unknown codes sorted alphabetically,
@@ -5786,12 +5727,12 @@ function _handleHardwareTakeoffFile(file){
     if(existing && (quoteCount > 0 || hasAward)){
       var msg = 'Re-importing the takeoff will clear ' + quoteCount + ' existing quote' + (quoteCount === 1 ? '' : 's') +
                 (hasAward ? ' and the current award' : '') +
-                ', plus any per-line markup overrides and install-hours entries (their matchKeys may no longer be valid).\n\nContinue?';
+                ', plus any per-line markup overrides and labour rules (their matchKeys may no longer be valid).\n\nContinue?';
       if(!confirm(msg)) return;
       doorHardware.hardwareQuotes = [];
       doorHardware.hardwareAward = null;
       doorHardware.hardwarePricing.lineMarkupOverrides = {};
-      doorHardware.hardwarePricing.lineInstallHours    = {};
+      doorHardware.hardwarePricing.lineLabourRule      = {};
     }
     doorHardware.importedTakeoff = { header: parsed.header, lines: parsed.lines };
     markDirty();
@@ -6841,7 +6782,7 @@ function _dhwResetImport(){
   doorHardware.hardwareAward   = null;
   if(doorHardware.hardwarePricing){
     doorHardware.hardwarePricing.lineMarkupOverrides = {};
-    doorHardware.hardwarePricing.lineInstallHours    = {};
+    doorHardware.hardwarePricing.lineLabourRule      = {};
   }
   markDirty();
   renderDoorHardwareModal();
@@ -7263,8 +7204,9 @@ function _dhwRenderStep3Labour(takeoff, quotes){
     '</div>';
   }
 
-  // Project labour rule defaults. M1 backfill seeded these from legacy
-  // hourlyRate. typeof checks honour an explicit 0 vs missing field.
+  // Project labour rule defaults. M6 dropped the legacy hourlyRate
+  // backfill — old v25/v26 saves load with rates at 0; user re-enters
+  // them in the wizard. typeof checks honour an explicit 0 vs missing field.
   var projectRule = pricing.projectLabourRule || { mode: 'Hourly', costRate: 0, sellRate: 0 };
   var projectMode     = (projectRule.mode === 'Flat') ? 'Flat' : 'Hourly';
   var projectCostRate = (typeof projectRule.costRate === 'number') ? projectRule.costRate : 0;
@@ -8498,156 +8440,8 @@ function _dhwBuildFlaggedMap(award, takeoff, quotes){
   return map;
 }
 
-function _dhwRenderPricingAndLabour(takeoff, quotes){
-  var award = doorHardware.hardwareAward;
-  var pricing = doorHardware.hardwarePricing;
-  var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 0;
-  var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
-  var includeLabour = !!pricing.includeLabour;
-  // Polish items 8/9/10: reordered controls (markup → hourly rate →
-  // include-labour toggle each on their own row); markup renamed to
-  // "Project Markup" with ±5% stepper while still accepting any typed value.
-  var controls =
-    // Line 1: Project Markup (renamed, step=5, default surfaced via state).
-    '<div class="dhw-control-row">' +
-      '<label><b>Project Markup:</b> ' +
-        '<input type="number" class="dhw-input" min="0" step="5"' +
-          ' value="' + _dhwEsc(Number(markupDefault).toFixed(1)) + '"' +
-          ' onchange="_dhwSetDefaultMarkup(this.value)"> %' +
-      '</label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Applies to every awarded line unless a per-line override is set below. Steppers move ±5%; type any value directly.</span>' +
-    '</div>' +
-    // Line 2: Hourly rate alone on its own row.
-    '<div class="dhw-control-row">' +
-      '<label><b>Hourly rate:</b> $ ' +
-        '<input type="number" class="dhw-input" min="0" step="1"' +
-          ' value="' + _dhwEsc(Number(hourlyRate).toFixed(2)) + '"' +
-          ' onchange="_dhwSetHourlyRate(this.value)"> /hr' +
-      '</label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">Per-line install hours editable in the table below (hours are per line, not per unit).</span>' +
-    '</div>' +
-    // Line 3: Include-labour toggle alone on its own row.
-    '<div class="dhw-control-row">' +
-      '<label><input type="checkbox" ' + (includeLabour ? 'checked' : '') +
-        ' onchange="_dhwSetIncludeLabour(this.checked)"> <b>Include install labour in totals</b></label>' +
-    '</div>';
-  if(!award || !award.basis){
-    return '<div class="dhw-section">' +
-      '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Pricing &amp; Labour</span></div>' +
-      controls +
-      '<div class="dhw-empty" style="margin-top:12px;">Award a supplier or best-line basis above to enable per-line pricing and labour.</div>' +
-    '</div>';
-  }
-  var resolved = resolveAward(takeoff, quotes, award);
-  var flaggedByKey = _dhwBuildFlaggedMap(award, takeoff, quotes);
-  var overrides = pricing.lineMarkupOverrides || {};
-  var hoursMap  = pricing.lineInstallHours    || {};
-  var totalSell = 0;
-  var totalHrs  = 0;
-  var trs = resolved.map(function(r){
-    var t = r.takeoffLine || {};
-    var key = r.matchKey;
-    var qty = (typeof t.qty === 'number') ? t.qty : 0;
-    var unitCost = r.priced ? r.awardedUnitCost : null;
-    var override = overrides[key];
-    var hasOverride = (typeof override === 'number' && isFinite(override));
-    var effectiveMarkup = hasOverride ? override : markupDefault;
-    var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, effectiveMarkup);
-    var extSell  = (unitSell == null) ? null : qty * unitSell;
-    if(extSell != null) totalSell += extSell;
-    var hoursVal = hoursMap[key];
-    var hasHoursOverride = (typeof hoursVal === 'number' && isFinite(hoursVal));
-    var hours = hasHoursOverride ? hoursVal : 0;
-    totalHrs += hours;
-    var lineLabour = hours * hourlyRate;
-    var flagged = !!flaggedByKey[key];
-    var rowCls = !r.priced ? ' class="dhw-row-flagged"' : '';
-    var flagMark = flagged
-      ? ' <span class="dhw-warn" title="Supplier TOTAL disagreed with qty x unit cost">&#9888;</span>'
-      : '';
-    var gapMark = !r.priced
-      ? '<span class="dhw-warn" title="No awarded supplier priced this line">&#9888;</span> '
-      : '';
-    var supplierLabel = r.awardedSupplierName
-      ? _dhwEsc(r.awardedSupplierName)
-      : '<span class="dhw-gap">&mdash;</span>';
-    var unitCostCell = (unitCost == null)
-      ? '<span class="dhw-gap">not priced</span>'
-      : (_dhwFmtMoney(unitCost) + flagMark);
-    var unitSellCell = (unitSell == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(unitSell);
-    var extSellCell  = (extSell  == null) ? '<span class="dhw-gap">&mdash;</span>' : _dhwFmtMoney(extSell);
-    var keyAttr = _dhwAttrJs(key);
-    var markupInput = '<input type="number" class="dhw-input-inline" min="0" step="0.1"' +
-      ' value="' + _dhwEsc(hasOverride ? Number(override).toFixed(1) : '') + '"' +
-      ' placeholder="' + _dhwEsc(Number(markupDefault).toFixed(1)) + '"' +
-      ' title="Per-line override; blank = use project default (' + _dhwEsc(Number(markupDefault).toFixed(1)) + '%)"' +
-      ' onchange="_dhwSetLineMarkup(' + keyAttr + ', this.value)">';
-    var hoursInput = '<input type="number" class="dhw-input-inline" min="0" step="0.25"' +
-      ' value="' + _dhwEsc(hasHoursOverride ? hoursVal : '') + '"' +
-      ' placeholder="0"' +
-      ' title="Install hours for this line (NOT per unit)"' +
-      ' onchange="_dhwSetLineHours(' + keyAttr + ', this.value)">';
-    var labourCell = hasHoursOverride
-      ? _dhwFmtMoney(lineLabour)
-      : '<span class="dhw-gap">&mdash;</span>';
-    return '<tr' + rowCls + '>' +
-      '<td class="dhw-num">' + gapMark + _dhwEsc(qty) + '</td>' +
-      '<td>' + _dhwEsc(t.description || '') + '</td>' +
-      '<td>' + _dhwEsc(t.catalogNumber || '') + '</td>' +
-      '<td>' + _dhwEsc(t.finish || '') + '</td>' +
-      '<td>' + supplierLabel + '</td>' +
-      '<td class="dhw-num">' + unitCostCell + '</td>' +
-      '<td class="dhw-num">' + markupInput + ' %</td>' +
-      '<td class="dhw-num">' + unitSellCell + '</td>' +
-      '<td class="dhw-num">' + extSellCell  + '</td>' +
-      '<td class="dhw-num">' + hoursInput + '</td>' +
-      '<td class="dhw-num">' + labourCell + '</td>' +
-    '</tr>';
-  }).join('');
-  var labourTotal = dhwLabourTotal(hoursMap, hourlyRate);
-  var grandTotal  = totalSell + (includeLabour ? labourTotal : 0);
-  var subtotalRow = '<tr>' +
-    '<td colspan="8" style="text-align:right; font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">Hardware sell subtotal:</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(totalSell) + '</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + totalHrs.toFixed(2) + ' hr</td>' +
-    '<td class="dhw-num" style="font-weight:700; padding-top:12px; border-top:1.5px solid var(--border);">' + _dhwFmtMoney(labourTotal) + '</td>' +
-  '</tr>';
-  var grandLabel = includeLabour
-    ? 'Hardware + labour total:'
-    : 'Hardware total (labour excluded):';
-  var grandRow = '<tr>' +
-    '<td colspan="8" style="text-align:right; font-weight:800; padding-top:6px;">' + grandLabel + '</td>' +
-    '<td class="dhw-num" colspan="3" style="font-weight:800; font-size:13px; color:var(--primary); padding-top:6px;">' + _dhwFmtMoney(grandTotal) + '</td>' +
-  '</tr>';
-  var header = '<tr>' +
-    '<th class="dhw-num">Qty</th>' +
-    '<th>Description</th>' +
-    '<th>Catalog #</th>' +
-    '<th>Finish</th>' +
-    '<th>Supplier</th>' +
-    '<th class="dhw-num">Unit cost</th>' +
-    '<th class="dhw-num">Markup %</th>' +
-    '<th class="dhw-num">Unit sell</th>' +
-    '<th class="dhw-num">Ext sell</th>' +
-    '<th class="dhw-num">Install hrs</th>' +
-    '<th class="dhw-num">Labour</th>' +
-  '</tr>';
-  return '<div class="dhw-section">' +
-    '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Pricing &amp; Labour</span></div>' +
-    controls +
-    '<div style="margin-top:12px;">' +
-      '<table class="dhw-table">' +
-        '<thead>' + header + '</thead>' +
-        '<tbody>' + trs + subtotalRow + grandRow + '</tbody>' +
-      '</table>' +
-    '</div>' +
-    '<p style="margin-top:8px; font:500 11px var(--font-ui); color:var(--text-muted); line-height:1.5;">' +
-      'Per-line markup override blanks fall back to the project default. ' +
-      'Install hours are per line, not per unit. ' +
-      'Sell totals are internal &mdash; the proposal will show sell prices only, never cost or markup.' +
-    '</p>' +
-  '</div>';
-}
+// DHW Revamp M6: legacy _dhwRenderPricingAndLabour deleted. Step 2 Pricing
+// (M3) and Step 3 Labour (M4) are the canonical pricing + labour surfaces.
 
 // Setters use onchange (blur), not oninput, so the re-render doesn't
 // steal keystroke focus. All mutations go through markDirty().
@@ -8659,24 +8453,15 @@ function _dhwSetDefaultMarkup(raw){
   markDirty();
   renderDoorHardwareModal();
 }
-function _dhwSetHourlyRate(raw){
-  // SQ + DHW polish: hourly rate is money — cap at 2dp.
-  var n = _sqRound2(raw);
-  doorHardware.hardwarePricing.hourlyRate = n;
-  markDirty();
-  renderDoorHardwareModal();
-}
-function _dhwSetIncludeLabour(checked){
-  doorHardware.hardwarePricing.includeLabour = !!checked;
-  markDirty();
-  renderDoorHardwareModal();
-}
-// W7b: supply-only mode setter. Mirrors _dhwSetIncludeLabour. When true,
-// Step 4's labour UI hides and Step 5 treats labour as zero across the
-// Sums row, Grand Total, and Project Totals box (the Labour and Expected
-// Project Hours rows are also hidden in Project Totals). Persisted under
-// hardwarePricing.supplyOnly; round-trips through dhwNormalizeState
-// (additive, no save-format version bump).
+// DHW Revamp M6: legacy _dhwSetHourlyRate + _dhwSetIncludeLabour deleted —
+// the old single-rate / single-toggle pricing UI was orphaned in M2 when
+// the wizard split labour into its own step. Project labour rates now
+// live on projectLabourRule (see _dhwSetProjectLabour* setters used by
+// the M4 Step 3 Labour renderer).
+// W7b: supply-only mode setter. When true, the Step 3 Labour UI hides
+// labour rule inputs and Step 4 Summary treats labour as zero across the
+// per-section subtotal and grand total. Persisted under
+// hardwarePricing.supplyOnly; round-trips through dhwNormalizeState.
 function _dhwSetSupplyOnly(checked){
   doorHardware.hardwarePricing.supplyOnly = !!checked;
   markDirty();
@@ -8734,20 +8519,8 @@ function _dhwSetLineUnitSell(matchKey, raw, unitCost){
   markDirty();
   renderDoorHardwareModal();
 }
-function _dhwSetLineHours(matchKey, raw){
-  var pricing = doorHardware.hardwarePricing;
-  if(!pricing.lineInstallHours) pricing.lineInstallHours = {};
-  var s = String(raw == null ? '' : raw).replace(/^\s+|\s+$/g,'');
-  if(s === ''){
-    delete pricing.lineInstallHours[matchKey];
-  } else {
-    var n = parseFloat(s);
-    if(!isFinite(n) || n < 0) n = 0;
-    pricing.lineInstallHours[matchKey] = n;
-  }
-  markDirty();
-  renderDoorHardwareModal();
-}
+// DHW Revamp M6: legacy _dhwSetLineHours deleted — install hours moved to
+// lineLabourRule[key].qty in M1, written by _dhwSetLineLabourQty in M4.
 
 // ─── AC-overlap advisory (M3e) ─────────────────────────────────────────────
 // Read-only panel listing takeoff lines whose description / catalog # hit
@@ -15761,7 +15534,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 26,             // generation tag — v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
+      version: 27,             // generation tag — v27 DHW Revamp M6: legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -15979,7 +15752,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 26,            // v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 27,            // v27 DHW Revamp M6: legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -18757,13 +18530,18 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
 
   var takeoff = doorHardware.importedTakeoff;
   var quotes  = doorHardware.hardwareQuotes || [];
-  var award   = doorHardware.hardwareAward;
+  var award   = doorHardware.hardwareAward || {};
   var pricing = doorHardware.hardwarePricing || {};
   var markupDefault = (typeof pricing.defaultMarkupPct === 'number') ? pricing.defaultMarkupPct : 50;
-  var hourlyRate    = (typeof pricing.hourlyRate       === 'number') ? pricing.hourlyRate       : 0;
   var supplyOnly    = !!pricing.supplyOnly;
   var overrides     = pricing.lineMarkupOverrides || {};
-  var hoursMap      = pricing.lineInstallHours    || {};
+  // DHW Revamp M6: labour math reads the M1+ shape (projectLabourRule +
+  // sectionLabourRule + lineLabourRule). Legacy hourlyRate/lineInstallHours
+  // were dropped from save shape in v27.
+  var projectRule    = pricing.projectLabourRule || { mode: 'Hourly', costRate: 0, sellRate: 0 };
+  var sectionRules   = pricing.sectionLabourRule || {};
+  var lineRules      = pricing.lineLabourRule    || {};
+  var acOverlapPill  = award.acOverlapPill       || {};
 
   var leftX  = 40;
   var rightX = W - 40;
@@ -18781,11 +18559,15 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
     return;
   }
 
-  // Build per-line rows. Same math as _dhwRenderStep5Summary, stripped of
+  // Build per-line rows. Same math as the wizard Summary, stripped of
   // anything the customer shouldn't see (cost, markup, supplier name, flag,
   // override-marker, install hours). isShown=false → render "—" in price
   // columns AND skip from totals (excluded OR unresolved/missed line).
-  var resolved = resolveAward(takeoff, quotes, award);
+  // DHW Revamp M6: AC-overlap lines (per award.acOverlapPill[matchKey]) are
+  // OMITTED entirely from the customer schedule — they're billed under
+  // Access Control, not hardware, so the customer shouldn't see them.
+  var resolvedAll = resolveAward(takeoff, quotes, award);
+  var resolved = resolvedAll.filter(function(r){ return !acOverlapPill[r.matchKey]; });
   var rows = resolved.map(function(r){
     var t = r.takeoffLine || {};
     var qty = (typeof t.qty === 'number') ? t.qty : 0;
@@ -18799,17 +18581,25 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
     var unitSell = (unitCost == null) ? null : dhwUnitSell(unitCost, markup);
     var extSell  = (unitSell == null) ? null : qty * unitSell;
 
-    var hoursVal = hoursMap[r.matchKey];
-    var hasHours = !supplyOnly && (typeof hoursVal === 'number' && isFinite(hoursVal));
-    var hours    = hasHours ? hoursVal : 0;
-    var labour   = hours * hourlyRate;
+    // Per-line labour SELL — line → section → project hierarchy. Customer
+    // page is sell-only; cost rates are not consulted.
+    var mfr = t.manufacturer || 'OTHER';
+    var sectionRule = sectionRules[mfr] || null;
+    var lineRule    = lineRules[r.matchKey] || null;
+    var labourQty = (lineRule && typeof lineRule.qty === 'number' && isFinite(lineRule.qty)) ? lineRule.qty : 0;
+    var labourSellRate =
+      (lineRule    && typeof lineRule.sellRate    === 'number') ? lineRule.sellRate    :
+      (sectionRule && typeof sectionRule.sellRate === 'number') ? sectionRule.sellRate :
+      (typeof projectRule.sellRate === 'number') ? projectRule.sellRate : 0;
+    var hasLabour = !supplyOnly && labourQty > 0 && labourSellRate > 0;
+    var labour    = hasLabour ? labourQty * labourSellRate : 0;
 
     return {
       qty: qty,
       description: t.description || '',
       finish:      t.finish      || '',
       hardwareSell: shown && extSell != null ? extSell : null,
-      labourSell:   shown && hasHours        ? labour  : null,
+      labourSell:   shown && hasLabour       ? labour  : null,
       isShown:      shown
     };
   });
