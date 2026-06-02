@@ -1094,6 +1094,16 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-warn { color:#b45309; font-weight:700; }
 .dhw-gap  { color:#b45309; font-style:italic; }
 .dhw-num  { font:600 11px var(--font-mono); text-align:right; }
+/* Column-map modal — hardware quote import */
+.dhw-colmap-grid { display:grid; grid-template-columns:160px 1fr; gap:6px 14px; align-items:center; margin:14px 0; }
+.dhw-colmap-grid label { font:600 11px var(--font-ui); letter-spacing:.02em; text-transform:uppercase; color:var(--text-muted); }
+.dhw-colmap-select { padding:5px 8px; border:1.5px solid var(--border); border-radius:4px; font:500 12px var(--font-ui); background:#fff; color:var(--text); width:100%; }
+.dhw-colmap-select:focus { outline:none; border-color:var(--primary); }
+.dhw-colmap-preview { width:100%; border-collapse:collapse; font:500 11px var(--font-mono); margin-top:14px; overflow-x:auto; display:block; max-height:120px; }
+.dhw-colmap-preview th { background:var(--surface-soft); padding:4px 8px; border:1px solid var(--border); font:700 10px var(--font-ui); text-align:left; white-space:nowrap; }
+.dhw-colmap-preview td { padding:3px 8px; border:1px solid var(--border); white-space:nowrap; max-width:180px; overflow:hidden; text-overflow:ellipsis; }
+.dhw-colmap-req { color:var(--primary); }
+.dhw-colmap-hint { font:500 11px var(--font-ui); color:var(--text-muted); margin:0 0 4px; line-height:1.5; }
 .dhw-btn-small { padding:4px 10px; font:600 10px var(--font-ui); letter-spacing:.04em; text-transform:uppercase; border-radius:3px; border:1px solid var(--border); background:#fff; color:var(--text); cursor:pointer; }
 .dhw-btn-small:hover { background:var(--surface-soft); }
 .dhw-btn-danger { color:#b91c1c; border-color:#fecaca; }
@@ -3405,6 +3415,24 @@ input[type="number"]::-webkit-outer-spin-button {
   </div>
 </div>
 
+<!-- Column-map modal: fires during hardware quote import when the user
+     needs to confirm which CSV columns map to which fields.
+     Populated by _dhwShowColMapModal(); confirmed by _dhwConfirmColMap(). -->
+<div id="dhw-colmap-modal" class="big-modal" onclick="if(event.target===this) _dhwCloseColMapModal()">
+  <div class="modal-box dhw-modal-box" style="min-width:600px; max-width:780px;">
+    <div class="dhw-header">
+      <h3>Confirm Column Mapping</h3>
+      <button class="dhw-close-x" onclick="_dhwCloseColMapModal()" title="Cancel" aria-label="Cancel">&times;</button>
+    </div>
+    <p class="dhw-colmap-hint">We found the columns below in your supplier CSV. Match each field to the correct column. <span class="dhw-colmap-req">Required fields</span> must be set.</p>
+    <div id="dhw-colmap-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-dark" onclick="_dhwCloseColMapModal()">Cancel</button>
+      <button class="btn btn-blue" onclick="_dhwConfirmColMap()">Confirm &amp; Import</button>
+    </div>
+  </div>
+</div>
+
 <!-- Door Hardware M3 / W1: manager modal. Reuses .big-modal scaffolding.
      Body populated imperatively by renderDoorHardwareModal(); the 5-step
      wizard stepper, active-step content, and Back/Continue/Save nav all
@@ -4996,7 +5024,23 @@ function _dhwParseMoney(raw){
 //     isPriced: boolean }
 // Tolerant: blank rows skipped, qty-0 rows kept (not dropped), missing
 // finish/uom allowed, unknown manufacturer codes preserved.
-function parseHardwareCSV(csvText){
+function parseHardwareCSV(csvText, colMap){
+  // colMap overrides Allegion fixed column positions. Allegion defaults:
+  //   qty=0, uom=1, description=2, catalogNumber=3, finish=5, list=6, cost=7, total=8
+  // Any field set to -1 is treated as absent (no value extracted).
+  // Cut-sheet detection stays hardcoded at position 4 (Allegion-only,
+  // outside the configurable colMap). For non-Allegion CSVs this may
+  // false-positive flag, which is harmless tagging.
+  var cm = {
+    qty:           (colMap && colMap.qty           != null) ? colMap.qty           : 0,
+    uom:           (colMap && colMap.uom           != null) ? colMap.uom           : 1,
+    description:   (colMap && colMap.description   != null) ? colMap.description   : 2,
+    catalogNumber: (colMap && colMap.catalogNumber != null) ? colMap.catalogNumber : 3,
+    finish:        (colMap && colMap.finish        != null) ? colMap.finish        : 5,
+    list:          (colMap && colMap.list          != null) ? colMap.list          : 6,
+    cost:          (colMap && colMap.cost          != null) ? colMap.cost          : 7,
+    total:         (colMap && colMap.total         != null) ? colMap.total         : 8
+  };
   var header = { projectName:'', architectName:'', projectId:'', allegionId:'', version:'', reportDate:'' };
   var lines = [];
   var isPriced = false;
@@ -5032,23 +5076,23 @@ function parseHardwareCSV(csvText){
     // template doesn't label COST on column-header rows, but the per-row
     // layout is consistent. Trailing-empty rows (fewer than 9 fields)
     // simply parseFloat-to-NaN for the missing cols and stay unpriced.
-    var qty = parseFloat(fields[0]);
+    var qty = parseFloat(fields[cm.qty]);
     if(!isFinite(qty)) continue;  // not a data row
     var line = {
       manufacturer:  currentMfr,
       qty:           qty,
-      uom:           fields[1] || '',
-      description:   fields[2] || '',
-      catalogNumber: fields[3] || '',
-      finish:        fields[5] || '',
+      uom:           (cm.uom           >= 0 && fields[cm.uom])           ? fields[cm.uom]           : '',
+      description:   (cm.description   >= 0 && fields[cm.description])   ? fields[cm.description]   : '',
+      catalogNumber: (cm.catalogNumber >= 0 && fields[cm.catalogNumber]) ? fields[cm.catalogNumber] : '',
+      finish:        (cm.finish        >= 0 && fields[cm.finish])        ? fields[cm.finish]        : '',
       hasCutSheet:   !!(fields[4] && fields[4].length > 0)
     };
     // M2 follow-up #2: Excel "Save As CSV" puts $ and thousands commas in
     // price cells (e.g. "$49.11", "\"$2,562.00\""). _dhwParseMoney strips
     // them. Bare numbers (the M1 synthetic shape) pass through unchanged.
-    var listVal  = _dhwParseMoney(fields[6]);
-    var costVal  = _dhwParseMoney(fields[7]);
-    var totalVal = _dhwParseMoney(fields[8]);
+    var listVal  = (cm.list  >= 0) ? _dhwParseMoney(fields[cm.list])  : undefined;
+    var costVal  = (cm.cost  >= 0) ? _dhwParseMoney(fields[cm.cost])  : undefined;
+    var totalVal = (cm.total >= 0) ? _dhwParseMoney(fields[cm.total]) : undefined;
     if(listVal  !== undefined) line.list          = listVal;
     if(costVal  !== undefined){ line.unitCost      = costVal; isPriced = true; }
     if(totalVal !== undefined) line.supplierTotal = totalVal;
@@ -5614,6 +5658,216 @@ function _handleHardwareTakeoffFile(file){
   reader.readAsText(file);
 }
 
+// ─── Column-map modal (hardware quote import) ─────────────────────────────
+// State held between modal open and confirm.
+var _dhwColMapCsvText = null;
+var _dhwColMapFile    = null;
+
+// Scan the raw CSV for the first row that looks like column headers.
+// Returns { headers: string[], rows: string[][] } where rows = first 4
+// data-looking rows for the preview table. Header sniffing looks for a
+// row where the majority of cells are non-numeric strings.
+function _dhwSniffCsvColumns(csvText){
+  var rawLines = csvText.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  var allRows = [];
+  for(var i = 0; i < rawLines.length; i++){
+    var f = _dhwSplitCsvLine(rawLines[i]);
+    if(f.some(function(x){ return x && x.length > 0; })) allRows.push(f);
+  }
+  // Find the header row: the first row where ≥3 cells are non-empty
+  // non-numeric strings (i.e. column labels, not data values or blanks).
+  var headerIdx = -1;
+  for(var r = 0; r < Math.min(allRows.length, 20); r++){
+    var row = allRows[r];
+    var textCells = row.filter(function(c){
+      if(!c || !c.length) return false;
+      if(_dhwParseMoney(c) !== undefined) return false;
+      if(isFinite(parseFloat(c))) return false;
+      return true;
+    });
+    if(textCells.length >= 3){ headerIdx = r; break; }
+  }
+  var headers = (headerIdx >= 0) ? allRows[headerIdx] : [];
+  // Preview: up to 4 rows after the detected header row.
+  var previewStart = (headerIdx >= 0) ? headerIdx + 1 : 0;
+  var rows = [];
+  for(var j = previewStart; j < allRows.length && rows.length < 4; j++){
+    var pr = allRows[j];
+    if(pr.some(function(c){ return c && c.length > 0; })) rows.push(pr);
+  }
+  return { headers: headers, rows: rows };
+}
+
+// Keyword-based best-guess for each canonical field given the detected
+// header labels. Returns an object of colIndex values (-1 = not found).
+function _dhwGuessColMap(headers){
+  var norm = headers.map(function(h){ return (h||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim(); });
+  function find(tests){
+    for(var t = 0; t < tests.length; t++){
+      for(var i = 0; i < norm.length; i++){
+        if(norm[i].indexOf(tests[t]) !== -1) return i;
+      }
+    }
+    return -1;
+  }
+  return {
+    qty:           find(['qty','quantity','extended qty','ext qty']),
+    catalogNumber: find(['catalog','cat no','cat #','item no','item number','part no','part #','sku','model']),
+    description:   find(['description','desc','product','item desc']),
+    finish:        find(['finish']),
+    list:          find(['list','msrp','list price']),
+    cost:          find(['cost','unit cost','price','net','your price','dealer']),
+    total:         find(['total','ext','extended cost','ext cost','extended price'])
+  };
+}
+
+// Build the modal body HTML: mapping grid + preview table.
+function _dhwBuildColMapHtml(sniff){
+  var headers = sniff.headers;
+  var rows    = sniff.rows;
+  var guesses = _dhwGuessColMap(headers);
+
+  // Build <option> list for each dropdown. Always include "— not present —"
+  // as the first option (value=-1) for optional fields.
+  function opts(selectedIdx, required){
+    var out = required ? '' : '<option value="-1">— not present —</option>';
+    for(var i = 0; i < headers.length; i++){
+      var label = headers[i] ? _dhwEsc(headers[i]) : ('Column ' + i);
+      out += '<option value="' + i + '"' + (i === selectedIdx ? ' selected' : '') + '>' + i + ': ' + label + '</option>';
+    }
+    // If no header detected, offer raw column numbers up to max seen in rows.
+    if(headers.length === 0){
+      var maxCols = rows.reduce(function(m,r){ return Math.max(m,r.length); }, 9);
+      for(var c = 0; c < maxCols; c++){
+        out += '<option value="' + c + '"' + (c === selectedIdx ? ' selected' : '') + '>Column ' + c + '</option>';
+      }
+    }
+    return out;
+  }
+
+  function row(id, label, guessIdx, required){
+    var reqMark = required ? ' <span class="dhw-colmap-req">*</span>' : '';
+    return '<label for="' + id + '">' + label + reqMark + '</label>' +
+           '<select id="' + id + '" class="dhw-colmap-select">' + opts(guessIdx, required) + '</select>';
+  }
+
+  var grid = '<div class="dhw-colmap-grid">' +
+    row('_cmi-qty',    'Quantity',       guesses.qty,           true)  +
+    row('_cmi-cat',    'Catalog #',      guesses.catalogNumber, true)  +
+    row('_cmi-desc',   'Description',    guesses.description,   false) +
+    row('_cmi-finish', 'Finish',         guesses.finish,        false) +
+    row('_cmi-cost',   'Unit Cost',      guesses.cost,          true)  +
+    row('_cmi-list',   'List Price',     guesses.list,          false) +
+    row('_cmi-total',  'Supplier Total', guesses.total,         false) +
+  '</div>';
+
+  // Preview table.
+  var colCount = Math.max(headers.length, rows.reduce(function(m,r){ return Math.max(m,r.length); }, 0));
+  var preview = '';
+  if(colCount > 0){
+    var thead = '<tr>';
+    for(var h = 0; h < colCount; h++){
+      thead += '<th>' + (headers[h] ? _dhwEsc(headers[h]) : h) + '</th>';
+    }
+    thead += '</tr>';
+    var tbody = rows.map(function(r){
+      var cells = '';
+      for(var c = 0; c < colCount; c++){
+        cells += '<td>' + _dhwEsc(r[c] || '') + '</td>';
+      }
+      return '<tr>' + cells + '</tr>';
+    }).join('');
+    preview = '<p style="font:600 10px var(--font-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);margin:14px 0 4px;">Preview (first rows)</p>' +
+              '<div style="overflow-x:auto;"><table class="dhw-colmap-preview"><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table></div>';
+  }
+
+  return grid + preview;
+}
+
+function _dhwShowColMapModal(csvText, file){
+  _dhwColMapCsvText = csvText;
+  _dhwColMapFile    = file;
+  var sniff = _dhwSniffCsvColumns(csvText);
+  var body = document.getElementById('dhw-colmap-body');
+  if(body) body.innerHTML = _dhwBuildColMapHtml(sniff);
+  var modal = document.getElementById('dhw-colmap-modal');
+  if(modal) modal.classList.add('show');
+}
+
+function _dhwCloseColMapModal(){
+  var modal = document.getElementById('dhw-colmap-modal');
+  if(modal) modal.classList.remove('show');
+  _dhwColMapCsvText = null;
+  _dhwColMapFile    = null;
+}
+
+function _dhwConfirmColMap(){
+  function getIdx(id){ var el = document.getElementById(id); return el ? parseInt(el.value, 10) : -1; }
+  var colMap = {
+    qty:           getIdx('_cmi-qty'),
+    catalogNumber: getIdx('_cmi-cat'),
+    description:   getIdx('_cmi-desc'),
+    finish:        getIdx('_cmi-finish'),
+    cost:          getIdx('_cmi-cost'),
+    list:          getIdx('_cmi-list'),
+    total:         getIdx('_cmi-total'),
+    uom:           -1   // no mapping UI for UoM — non-essential
+  };
+  // Validate required fields.
+  var missing = [];
+  if(colMap.qty < 0)           missing.push('Quantity');
+  if(colMap.catalogNumber < 0) missing.push('Catalog #');
+  if(colMap.cost < 0)          missing.push('Unit Cost');
+  if(missing.length > 0){
+    showHardwareError(
+      'Column mapping incomplete',
+      'The following required columns are not mapped:',
+      missing
+    );
+    return;
+  }
+  var csvText = _dhwColMapCsvText;
+  var file    = _dhwColMapFile;
+  _dhwCloseColMapModal();
+  // Run the rest of the original quote import flow with the confirmed colMap.
+  var parsed;
+  try { parsed = parseHardwareCSV(String(csvText || ''), colMap); }
+  catch(parseErr){
+    showHardwareError("Couldn't import hardware quote", 'Parser failed.', [String(parseErr && parseErr.message || parseErr)]);
+    return;
+  }
+  if(!parsed.lines || parsed.lines.length === 0){
+    showHardwareError(
+      "Couldn't read this as a hardware quote CSV",
+      "The file parsed but no line rows were found.",
+      ['Check that the Quantity column contains numbers and the Catalog # column is not empty.']
+    );
+    return;
+  }
+  if(!parsed.isPriced){
+    showHardwareError(
+      'No prices found in this CSV',
+      'The file parsed but no line has a Unit Cost value.',
+      ['Confirm the Unit Cost column is mapped correctly and that cost cells contain numbers (not text or dashes).']
+    );
+    return;
+  }
+  var supplierName = window.prompt('Supplier name for this quote:', '');
+  if(supplierName == null) return;
+  supplierName = supplierName.replace(/^\s+|\s+$/g, '');
+  if(supplierName.length === 0) return;
+  recomputeQuoteLines(parsed.lines);
+  var rec = buildQuoteRecord(supplierName, parsed, file && file.name);
+  doorHardware.hardwareQuotes.push(rec);
+  markDirty();
+  _dhwRefreshManagerIfOpen();
+  _dhwRefreshHomeIfVisible();
+  var pricedCount  = parsed.lines.filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
+  var flaggedCount = parsed.lines.filter(function(l){ return l.flagged; }).length;
+  showToast('Quote imported: ' + supplierName + ', ' + pricedCount + ' priced line' + (pricedCount === 1 ? '' : 's') +
+            (flaggedCount > 0 ? ', ' + flaggedCount + ' flagged' : '') + '.');
+}
+
 // File → Import Hardware Quote (CSV)
 function openHardwareQuotePicker(){
   // Guard: no takeoff yet.
@@ -5631,49 +5885,10 @@ function _handleHardwareQuoteFile(file){
   var reader = new FileReader();
   reader.onload = function(ev){
     var text = ev.target && ev.target.result;
-    var parsed;
-    try { parsed = parseHardwareCSV(String(text || '')); }
-    catch(parseErr){
-      showHardwareError(
-        "Couldn't import hardware quote",
-        'Parser failed.',
-        [String(parseErr && parseErr.message || parseErr)]
-      );
-      return;
-    }
-    if(!parsed.lines || parsed.lines.length === 0){
-      showHardwareError(
-        "Couldn't read this as a hardware quote CSV",
-        "The file parsed but no line rows were found.",
-        ['Expected the same Allegion template shape as the takeoff, plus filled-in COST (and optionally LIST / TOTAL) columns on the priced lines.']
-      );
-      return;
-    }
-    if(!parsed.isPriced){
-      showHardwareError(
-        'No prices found in this CSV',
-        'The file parsed but no line has a COST column value.',
-        ['It looks like an unpriced takeoff, not a supplier quote.',
-         'If this is the takeoff, import it via the Door Hardware home canvas (row 2 — Import Hardware Schedule) instead.',
-         'If this is meant to be a quote, ask the supplier to fill the COST column and re-export.']
-      );
-      return;
-    }
-    // Prompt for supplier name. Cancel/blank → abort silently.
-    var supplierName = window.prompt('Supplier name for this quote:', '');
-    if(supplierName == null) return;
-    supplierName = supplierName.replace(/^\s+|\s+$/g, '');
-    if(supplierName.length === 0) return;
-    recomputeQuoteLines(parsed.lines);
-    var rec = buildQuoteRecord(supplierName, parsed, file && file.name);
-    doorHardware.hardwareQuotes.push(rec);
-    markDirty();
-    _dhwRefreshManagerIfOpen();
-    _dhwRefreshHomeIfVisible();
-    var pricedCount = parsed.lines.filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
-    var flaggedCount = parsed.lines.filter(function(l){ return l.flagged; }).length;
-    showToast('Quote imported: ' + supplierName + ', ' + pricedCount + ' priced line' + (pricedCount === 1 ? '' : 's') +
-              (flaggedCount > 0 ? ', ' + flaggedCount + ' flagged' : '') + '.');
+    // Show column-map confirmation modal before committing any parse.
+    // _dhwConfirmColMap() runs the rest of the import flow after the user
+    // verifies the column assignments.
+    _dhwShowColMapModal(String(text || ''), file);
   };
   reader.onerror = function(){
     showHardwareError(
@@ -12579,6 +12794,8 @@ document.addEventListener('keydown',function(e){
     if(document.getElementById('export-modal').classList.contains('show')){ closeExportModal(); return; }
     // Pricing Cloud P3: Pricing manager modal dismiss.
     if(document.getElementById('pricing-modal').classList.contains('show')){ closePricingModal(); return; }
+    // DHW column-map confirmation modal: Esc cancels (same as backdrop / Cancel button).
+    if(document.getElementById('dhw-colmap-modal').classList.contains('show')){ _dhwCloseColMapModal(); return; }
     // Pass N+1 M5: Escape closes the Unit Types modal — same dismiss
     // semantics as Skip (modal-shown flag flips, no commit).
     if(document.getElementById('unit-types-modal').classList.contains('show')){ closeUnitTypesModal(); return; }
