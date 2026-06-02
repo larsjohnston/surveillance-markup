@@ -9752,12 +9752,17 @@ function _renderCredentialsTier3(){
     html += '<div class="cred-family-label" style="grid-column:1/-1; margin:8px 0 2px; font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);">' + escapeHtml(fam) + '</div>';
     list.forEach(function(sku){
       var cat = BRIVO_CRED_CATALOG[sku];
-      // Credentials qty display pass: armed tile gets .active (light fill
-      // + accent outline via shared tier-3 styling). _currentCredentialSku
-      // is the single arm var — set/cleared by lpSelectCredential +
-      // _cancelAllPlacement. Repaint after any arm change via
-      // _repaintCredentialsTier3.
-      var activeCls = (sku === _currentCredentialSku) ? ' active' : '';
+      // Credentials qty display pass: a tile gets .active when EITHER it's
+      // the currently-armed SKU (light fill + accent outline) OR it has a
+      // non-zero qty on the quote — so the user can scan the grid and see
+      // at a glance which credentials are on the BOM. addCredentialToBom
+      // calls _repaintCredentialsTier3 (via the existing close path) so
+      // tiles update right after Add/Update.
+      var isArmed = (sku === _currentCredentialSku);
+      var qty     = (projectInfo.credentials && projectInfo.credentials.brivoSkus &&
+                     typeof projectInfo.credentials.brivoSkus[sku] === 'number')
+                      ? projectInfo.credentials.brivoSkus[sku] : 0;
+      var activeCls = (isArmed || qty > 0) ? ' active' : '';
       html += '<div class="tier3-tile' + activeCls + '" data-cred-sku="' + escapeHtml(sku) + '" onclick="lpSelectCredential(\'' + sku + '\')" title="' + escapeHtml(cat.description) + '">' +
               '<div class="t3-name">' + escapeHtml(cat.code) + '</div>' +
               '</div>';
