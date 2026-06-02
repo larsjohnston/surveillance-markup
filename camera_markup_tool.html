@@ -4818,7 +4818,49 @@ function dhwEmptyState(){
       // Filter layer on top of dhwLabourTotal — the engine stays untouched.
       // Per-line install hours stay in lineInstallHours so toggling supply-
       // only OFF restores everything.
-      supplyOnly: false
+      supplyOnly: false,
+      // DHW Revamp M1: new pricing-rule shape introduced for the upcoming
+      // 4-step wizard (Import / Pricing / Labour / Summary). These fields
+      // are additive — the legacy `hourlyRate` + `lineInstallHours` above
+      // stay in place for one cycle; dhwNormalizeState migrates them into
+      // `projectLabourRule` / `lineLabourRule` on first load when the new
+      // fields are missing. Empty defaults below describe a fresh project
+      // (no per-section or per-line overrides; all rates 0 until the user
+      // sets them via the new wizard's inputs).
+      //
+      //   projectLabourRule  — { mode, costRate, sellRate }. Mode is
+      //                        'Hourly' XOR 'Flat'. Rates apply when
+      //                        neither a section override nor a line
+      //                        override is present.
+      //   sectionLabourRule  — { [sectionKey]: { mode?, costRate?,
+      //                        sellRate? } }. Section keys are
+      //                        manufacturer codes (Allegion / Stanley /
+      //                        Norton / Other) keyed by takeoff group;
+      //                        any missing field falls back to the
+      //                        project default.
+      //   lineLabourRule     — { [matchKey]: { mode?, costRate?,
+      //                        sellRate?, qty? } }. Narrowest scope —
+      //                        wins over section + project defaults.
+      //                        `qty` decouples labour qty from material
+      //                        qty (Hourly mode → hours; Flat mode →
+      //                        units; default seeded from
+      //                        lineInstallHours on first migration).
+      //   sectionMarkupRule  — { [sectionKey]: pct }. Per-manufacturer
+      //                        markup % overriding defaultMarkupPct;
+      //                        per-line lineMarkupOverrides still wins.
+      //   taxPct             — Summary-step tax %. Project-scoped (the
+      //                        wizard may sync from bomConfig.taxPct on
+      //                        first open, but is independent after).
+      //   lineSell           — { [matchKey]: sellPrice }. Manual sell
+      //                        override per line (bypasses markup-rule
+      //                        derivation). Empty = derive from cost ×
+      //                        (1 + markupPct/100) as today.
+      projectLabourRule: { mode: 'Hourly', costRate: 0, sellRate: 0 },
+      sectionLabourRule: {},
+      lineLabourRule:    {},
+      sectionMarkupRule: {},
+      taxPct:            0,
+      lineSell:          {}
     },
     doorScheduleRef: null
   };
@@ -4883,6 +4925,67 @@ function dhwNormalizeState(obj){
     // are gone; the (repurposed) includeLabour toggle is now the single
     // source of truth for separate-vs-combined Summary columns. Any
     // legacy labourDisplay value in older saves is silently dropped here.
+
+    // ─── DHW Revamp M1 — additive backfill ───────────────────────────────
+    // Six new pricing-rule fields + the per-line AC overlap pill (latter
+    // attaches to hardwareAward, handled below). All fields are additive;
+    // old saves (no key present) inherit the migrations below. Saves that
+    // already carry the new keys (round-trip after M1 lands) keep their
+    // stored values via the same shape-guards used everywhere else here.
+    //
+    // Migrations from legacy fields:
+    //   hourlyRate        → projectLabourRule (Hourly mode + costRate=oldRate)
+    //   lineInstallHours  → lineLabourRule[matchKey].qty
+    // Legacy fields stay populated for one cycle (read by the existing
+    // Step 4 renderer) — they get deleted in M6 once the new wizard ships.
+    if(p.projectLabourRule && typeof p.projectLabourRule === 'object'){
+      var plr = p.projectLabourRule;
+      empty.hardwarePricing.projectLabourRule = {
+        mode:     (plr.mode === 'Flat') ? 'Flat' : 'Hourly',
+        costRate: (typeof plr.costRate === 'number' && isFinite(plr.costRate)) ? plr.costRate : 0,
+        sellRate: (typeof plr.sellRate === 'number' && isFinite(plr.sellRate)) ? plr.sellRate : 0
+      };
+    } else {
+      // First-load migration: lift the old single hourlyRate into the new
+      // shape as the project default (Hourly + costRate=oldRate). sellRate
+      // starts at 0 — the user picks a sell-side rate in the new wizard.
+      empty.hardwarePricing.projectLabourRule = {
+        mode:     'Hourly',
+        costRate: empty.hardwarePricing.hourlyRate,
+        sellRate: 0
+      };
+    }
+    empty.hardwarePricing.sectionLabourRule = (p.sectionLabourRule && typeof p.sectionLabourRule === 'object') ? p.sectionLabourRule : {};
+    if(p.lineLabourRule && typeof p.lineLabourRule === 'object'){
+      empty.hardwarePricing.lineLabourRule = p.lineLabourRule;
+    } else {
+      // First-load migration: every lineInstallHours[key] becomes a
+      // lineLabourRule[key].qty entry. Mode/rates inherit from
+      // section/project defaults at compute time — the migration only
+      // preserves the per-line numeric.
+      var migrated = {};
+      var lih = empty.hardwarePricing.lineInstallHours;
+      if(lih && typeof lih === 'object'){
+        Object.keys(lih).forEach(function(k){
+          var v = lih[k];
+          if(typeof v === 'number' && isFinite(v)) migrated[k] = { qty: v };
+        });
+      }
+      empty.hardwarePricing.lineLabourRule = migrated;
+    }
+    empty.hardwarePricing.sectionMarkupRule = (p.sectionMarkupRule && typeof p.sectionMarkupRule === 'object') ? p.sectionMarkupRule : {};
+    empty.hardwarePricing.taxPct            = (typeof p.taxPct === 'number' && isFinite(p.taxPct)) ? p.taxPct : 0;
+    empty.hardwarePricing.lineSell          = (p.lineSell && typeof p.lineSell === 'object') ? p.lineSell : {};
+  } else {
+    // No hardwarePricing on the loaded object at all — the empty-state
+    // defaults already populate the new fields, nothing to migrate.
+  }
+  // DHW Revamp M1: per-line AC overlap pill state. Lives on hardwareAward
+  // since it shapes how each awarded line surfaces in the Pricing step +
+  // customer-facing pages. Only seeded when an award exists (matches the
+  // existing W1/W7a/W8c backfill pattern for award sub-maps).
+  if(empty.hardwareAward && (!empty.hardwareAward.acOverlapPill || typeof empty.hardwareAward.acOverlapPill !== 'object')){
+    empty.hardwareAward.acOverlapPill = {};
   }
   empty.doorScheduleRef = obj.doorScheduleRef || null;
   return empty;
