@@ -944,6 +944,8 @@ input[type="number"]::-webkit-outer-spin-button {
   padding:0 0 0 4px; margin-top:-2px;
 }
 #reminder-toast .toast-close:hover { color:var(--text); }
+#reminder-toast[data-kind="warning"] { border-left:4px solid #d97706; padding-left:14px; }
+#reminder-toast[data-kind="success"] { border-left:4px solid #059669; padding-left:14px; }
 
 /* Big modal for project info */
 .big-modal { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; align-items:center; justify-content:center; z-index:30; }
@@ -2026,6 +2028,11 @@ input[type="number"]::-webkit-outer-spin-button {
              behavior. No prompt; no Save As. -->
         <button class="menu-item" id="btn-save" onclick="saveJSON()" data-shortcut="S" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Save</span></button>
         <button class="menu-item" id="btn-load" onclick="document.getElementById('json-input').click()"><span class="menu-check">&#10003;</span><span class="menu-label">Load Project&hellip;</span></button>
+        <div class="menu-divider"></div>
+        <!-- Pricing Cloud P3: opens the unified Pricing modal (Status /
+             Actions / Advanced). Replaces the previous Load/Clear-pricing
+             entries removed in Menu-cleanup C1. -->
+        <button class="menu-item" onclick="openPricingModal()"><span class="menu-check">&#10003;</span><span class="menu-label">Pricing&hellip;</span></button>
         <!-- Menu-cleanup C1: Load Pricing / Clear Pricing menu entries
              removed. Their handlers (openPricingFilePicker,
              confirmClearPricing) remain in the JS for a future price-book
@@ -2087,9 +2094,11 @@ input[type="number"]::-webkit-outer-spin-button {
   </nav>
   <!-- Pass D: auto-save status. updateSaveIndicator() controls visibility/text. -->
   <span id="save-indicator" class="save-indicator" style="display:none" onclick="saveJSON()" title="Click to save (Ctrl+S)"></span>
-  <!-- Pricing Data Foundation M1+M2: pricing-status indicator. Click opens
-       the Load Pricing file picker (same as File → Load Pricing…). -->
-  <span id="pricing-status" class="pricing-status not-loaded" onclick="openPricingFilePicker()" title="Pricing data status (click to load)">Pricing · not loaded</span>
+  <!-- Pricing Data Foundation M1+M2: pricing-status indicator.
+       Pricing Cloud P3: click now opens the unified Pricing modal
+       (Status / Actions / Advanced) instead of jumping straight to a
+       local-file picker. -->
+  <span id="pricing-status" class="pricing-status not-loaded" onclick="openPricingModal()" title="Pricing data status (click for Pricing manager)">Pricing · not loaded</span>
   <div class="topbar-spacer"></div>
   <!-- Visibility Toggles UX pass: eye icon + dropdown. Mirrors the View menu's
        five toggles in a click-anywhere surface. setViewToggle() drives both
@@ -3241,6 +3250,81 @@ input[type="number"]::-webkit-outer-spin-button {
   </div>
 </div>
 
+<!-- Pricing Cloud P3: Pricing manager modal. Three sections — Status,
+     Actions, Advanced. Click-outside + top-right × close. Auth token
+     auto-focuses when missing. Module-scope flags _pricingInFlight and
+     _pricingLastFetchFailed gate Sync/Upload buttons + offline badge. -->
+<div id="pricing-modal" class="big-modal" onclick="if(event.target===this) closePricingModal()">
+  <div class="modal-box" style="min-width:560px; max-width:720px; position:relative;">
+    <button class="modal-close-x" onclick="closePricingModal()" title="Close" aria-label="Close">&times;</button>
+    <h3>&#128176; Pricing</h3>
+
+    <!-- SECTION 1 — STATUS -->
+    <section style="margin-bottom:16px;">
+      <h4 style="margin:8px 0 6px;">Status</h4>
+      <div id="pricing-modal-status" style="line-height:1.6;"></div>
+    </section>
+
+    <!-- SECTION 2 — ACTIONS -->
+    <section style="margin-bottom:16px;">
+      <h4 style="margin:8px 0 6px;">Actions</h4>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-blue"  id="pm-sync-btn"   onclick="_pricingModalSync()">Sync now</button>
+        <button class="btn btn-blue"  id="pm-upload-btn" onclick="openPricingUploadPicker()">Upload new pricing file</button>
+        <button class="btn btn-dark"  id="pm-cache-btn"  onclick="_pricingModalReloadCache()">Reload from cache</button>
+      </div>
+    </section>
+
+    <!-- SECTION 3 — ADVANCED -->
+    <section>
+      <h4 style="margin:8px 0 6px;">Advanced</h4>
+
+      <!-- Auth token -->
+      <div style="margin-bottom:10px;">
+        <label style="display:block; font-size:12px; margin-bottom:3px;">Auth token</label>
+        <div id="pm-token-hint" style="font-size:11px; color:#d97706; margin-bottom:4px; display:none;">
+          Set your auth token to enable cloud sync.
+        </div>
+        <div style="display:flex; gap:6px;">
+          <input type="password" id="pm-token-input" style="flex:1;" autocomplete="off" />
+          <button class="btn btn-blue" onclick="_pricingModalSaveToken()">Save</button>
+          <button class="btn btn-dark" onclick="_pricingModalClearToken()">Clear</button>
+        </div>
+      </div>
+
+      <!-- Worker URL -->
+      <div style="margin-bottom:10px;">
+        <label style="display:block; font-size:12px; margin-bottom:3px;">Worker URL</label>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <input type="text" id="pm-url-input" style="flex:1;" readonly />
+          <label style="font-size:11px; display:flex; gap:4px; align-items:center;">
+            <input type="checkbox" id="pm-url-override" onchange="_pricingModalToggleUrlOverride()" />
+            Override
+          </label>
+        </div>
+        <div id="pm-url-actions" style="display:none; margin-top:4px; gap:6px;">
+          <button class="btn btn-blue" onclick="_pricingModalSaveUrl()">Save URL</button>
+          <button class="btn btn-dark" onclick="_pricingModalResetUrl()">Reset to default</button>
+        </div>
+      </div>
+
+      <!-- Use local file -->
+      <div style="margin-bottom:10px;">
+        <button class="btn btn-dark" onclick="openPricingFilePicker()">Use local file&hellip;</button>
+      </div>
+
+      <!-- Clear local cache -->
+      <div>
+        <button class="btn btn-dark" onclick="_pricingModalClearCache()">Clear local cache</button>
+      </div>
+    </section>
+
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn btn-dark" onclick="closePricingModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="pricing-error-modal" class="big-modal" onclick="if(event.target===this) closePricingErrorModal()">
   <div class="modal-box" style="min-width:480px;">
     <h3>Couldn't load pricing</h3>
@@ -3356,7 +3440,7 @@ input[type="number"]::-webkit-outer-spin-button {
        message is visible regardless of active step. -->
   <div id="pricing-banner" class="pricing-banner">
     <span>Pricing data not loaded. Load a pricing file (File → Load Pricing) to enable quote totals on BOM and Take-Off pages.</span>
-    <button id="pricing-banner-load-btn" class="pricing-banner-btn" onclick="openPricingFilePicker()">Load Now</button>
+    <button id="pricing-banner-load-btn" class="pricing-banner-btn" onclick="openPricingModal()">Load Now</button>
   </div>
   <!-- SQ-wizard M1: 3-step stepper host. Populated imperatively by
        _sqRenderStepper(); reuses the HW wizard's .dhw-stepper /
@@ -3918,6 +4002,12 @@ var PRICING_SOURCE_KEY         = 'pricingSource';
 var PRICING_WORKER_URL_DEFAULT = 'https://pricing.mf-quoting-tool.workers.dev';
 var PRICING_TENANT_DEFAULT     = 'smartmf';
 
+// Pricing Cloud P3: in-flight gate for Sync + Upload buttons in the
+// Pricing modal; last-fetch-failed gate for the "Offline" badge in the
+// modal's Status section. Both are runtime-only (not persisted).
+var _pricingInFlight = false;
+var _pricingLastFetchFailed = false;
+
 /**
  * Pricing Book schema (v1)
  * -------------------------
@@ -4180,6 +4270,11 @@ function _handlePricingFile(file){
     try { localStorage.setItem(PRICING_SOURCE_KEY, 'local'); } catch(_){}
     try { localStorage.removeItem(PRICING_META_KEY); } catch(_){}
     updatePricingUI();
+    // Pricing Cloud P3: keep an open Pricing modal in sync with the book swap.
+    if(document.getElementById('pricing-modal') &&
+       document.getElementById('pricing-modal').classList.contains('show')){
+      _pricingModalRefresh();
+    }
     var itemCount = parsed.items ? Object.keys(parsed.items).length : 0;
     showToast('Pricing loaded: ' + itemCount + ' items, ' + (parsed.currency || '—') + ', updated ' + (parsed.updated || '—') + '.');
   };
@@ -4246,7 +4341,11 @@ async function fetchRemotePricing(opts){
   opts = opts || {};
   var silent = !!opts.silent;
   var token = _pricingAuthToken();
+  // Pricing Cloud P3: a missing token isn't a "failed fetch" — don't flip
+  // the offline badge for this branch. Return without touching flags.
   if(!token) return { ok:false, reason:'no-token' };
+  _pricingInFlight = true;
+  if(typeof _pricingModalRefresh === 'function') _pricingModalRefresh();
   var url = _pricingWorkerUrl() + '/api/pricing?tenant=' + PRICING_TENANT_DEFAULT;
   try {
     var res = await fetch(url, {
@@ -4255,10 +4354,16 @@ async function fetchRemotePricing(opts){
     });
     if(res.status === 401){
       if(!silent) showToast('Pricing auth failed — re-enter token via File → Pricing', 'warning');
+      _pricingLastFetchFailed = true;
+      _pricingInFlight = false;
+      if(typeof _pricingModalRefresh === 'function') _pricingModalRefresh();
       return { ok:false, reason:'unauthorized', status:401 };
     }
     if(!res.ok){
       if(!silent) showToast('Pricing sync error · using cached book', 'warning');
+      _pricingLastFetchFailed = true;
+      _pricingInFlight = false;
+      if(typeof _pricingModalRefresh === 'function') _pricingModalRefresh();
       return { ok:false, reason:'http', status:res.status };
     }
     var data = await res.json();
@@ -4266,6 +4371,9 @@ async function fetchRemotePricing(opts){
     var ok = setPricingBook(book);
     if(!ok){
       if(!silent) showToast('Pricing sync rejected — invalid book shape', 'warning');
+      _pricingLastFetchFailed = true;
+      _pricingInFlight = false;
+      if(typeof _pricingModalRefresh === 'function') _pricingModalRefresh();
       return { ok:false, reason:'validation' };
     }
     try { localStorage.setItem(PRICING_CACHE_KEY, JSON.stringify(book)); } catch(_){}
@@ -4279,10 +4387,16 @@ async function fetchRemotePricing(opts){
     try { localStorage.setItem(PRICING_SOURCE_KEY, 'cloud'); } catch(_){}
     updatePricingUI();
     if(!silent) showToast('Pricing synced from cloud · ' + ((data.meta && data.meta.commit) || 'ok'));
+    _pricingLastFetchFailed = false;
+    _pricingInFlight = false;
+    if(typeof _pricingModalRefresh === 'function') _pricingModalRefresh();
     return { ok:true, commit: data.meta && data.meta.commit };
   } catch(e){
     if(!silent) showToast('Pricing sync offline · using cached book', 'warning');
     try { console.warn('[pricing] fetch failed:', e); } catch(_){}
+    _pricingLastFetchFailed = true;
+    _pricingInFlight = false;
+    if(typeof _pricingModalRefresh === 'function') _pricingModalRefresh();
     return { ok:false, reason:'network', err:String(e) };
   }
 }
@@ -4320,6 +4434,202 @@ async function uploadPricing(book, message){
   }
 }
 
+// ─── Pricing Cloud P3 — Pricing modal handlers ─────────────────────────────
+// Unified Pricing manager UI: Status / Actions / Advanced sections. All
+// entry points (#pricing-status, #pricing-banner Load Now, File → Pricing)
+// open this single modal. _pricingModalRefresh() rebuilds the Status pane
+// + reconciles disabled-state on Sync/Upload/Reload buttons every time the
+// modal opens, every time a sync flips _pricingInFlight, and every time
+// the active book/source/meta changes via the existing pricing paths.
+
+function openPricingModal(){
+  _pricingModalRefresh();
+  document.getElementById('pricing-modal').classList.add('show');
+  var tokenInput = document.getElementById('pm-token-input');
+  if(!_pricingAuthToken() && tokenInput){
+    document.getElementById('pm-token-hint').style.display = 'block';
+    setTimeout(function(){ tokenInput.focus(); }, 50);
+  }
+}
+
+function closePricingModal(){
+  document.getElementById('pricing-modal').classList.remove('show');
+}
+
+function _pricingModalRefresh(){
+  var statusEl = document.getElementById('pricing-modal-status');
+  if(!statusEl) return;
+  var source = _pricingSource();
+  var meta = _pricingMeta();
+  var book = getPricingBook();
+  var hasToken = !!_pricingAuthToken();
+  var cacheExists = !!localStorage.getItem(PRICING_CACHE_KEY);
+
+  var lines = [];
+  if(!book){
+    lines.push('<div>&#128229; <strong>Not loaded</strong></div>');
+  } else if(source === 'cloud'){
+    var rel = _pricingRelativeTime(meta.syncedAt);
+    var commit = meta.commit ? ' · <code>' + meta.commit + '</code>' : '';
+    var badge = _pricingLastFetchFailed
+      ? ' <span style="color:#d97706;">● Offline (last sync failed)</span>'
+      : '';
+    lines.push('<div>&#9729;&#65039; <strong>Cloud</strong> · synced ' + rel + commit + badge + '</div>');
+    lines.push('<div style="font-size:11px; color:#6b7280;">' + (book.currency || '?') + ' · ' + (book.updated || '?') + ' · ' + Object.keys(book.items || {}).length + ' items</div>');
+  } else if(source === 'local'){
+    lines.push('<div>&#128193; <strong>Local file</strong></div>');
+    lines.push('<div style="font-size:11px; color:#6b7280;">' + (book.currency || '?') + ' · ' + (book.updated || '?') + ' · ' + Object.keys(book.items || {}).length + ' items</div>');
+  } else {
+    lines.push('<div>&#128230; <strong>Loaded</strong> (legacy)</div>');
+    lines.push('<div style="font-size:11px; color:#6b7280;">' + (book.currency || '?') + ' · ' + (book.updated || '?') + ' · ' + Object.keys(book.items || {}).length + ' items</div>');
+  }
+  statusEl.innerHTML = lines.join('');
+
+  var syncBtn = document.getElementById('pm-sync-btn');
+  var uploadBtn = document.getElementById('pm-upload-btn');
+  var cacheBtn = document.getElementById('pm-cache-btn');
+  if(syncBtn)   { syncBtn.disabled   = _pricingInFlight || !hasToken; }
+  if(uploadBtn) { uploadBtn.disabled = _pricingInFlight || !hasToken; }
+  if(cacheBtn)  { cacheBtn.disabled  = !cacheExists; }
+  if(!hasToken && syncBtn)   syncBtn.title   = 'Add auth token in Advanced first';
+  if(!hasToken && uploadBtn) uploadBtn.title = 'Add auth token in Advanced first';
+  if(!cacheExists && cacheBtn) cacheBtn.title = 'No cached book — sync first';
+
+  var tokenInput = document.getElementById('pm-token-input');
+  if(tokenInput){ tokenInput.value = _pricingAuthToken(); }
+
+  var urlInput = document.getElementById('pm-url-input');
+  if(urlInput){ urlInput.value = _pricingWorkerUrl(); }
+
+  var hint = document.getElementById('pm-token-hint');
+  if(hint){ hint.style.display = hasToken ? 'none' : 'block'; }
+}
+
+async function _pricingModalSync(){
+  _pricingModalRefresh();
+  var result = await fetchRemotePricing();
+  _pricingModalRefresh();
+}
+
+function _pricingModalReloadCache(){
+  var cacheStr = localStorage.getItem(PRICING_CACHE_KEY);
+  if(!cacheStr){ showToast('No cached book — sync first', 'warning'); return; }
+  try {
+    var book = JSON.parse(cacheStr);
+    var ok = setPricingBook(book);
+    if(!ok){ showToast('Cache reload — invalid book', 'warning'); return; }
+    localStorage.setItem(PRICING_SOURCE_KEY, 'cloud');
+    updatePricingUI();
+    _pricingModalRefresh();
+    showToast('Pricing reloaded from cache', 'success');
+  } catch(e){
+    showToast('Cache reload — parse error', 'warning');
+  }
+}
+
+function _pricingModalSaveToken(){
+  var v = (document.getElementById('pm-token-input').value || '').trim();
+  if(!v){ showToast('Token cannot be empty', 'warning'); return; }
+  localStorage.setItem(PRICING_AUTH_KEY, v);
+  _pricingModalRefresh();
+  showToast('Auth token saved', 'success');
+}
+
+function _pricingModalClearToken(){
+  localStorage.removeItem(PRICING_AUTH_KEY);
+  _pricingModalRefresh();
+  showToast('Auth token cleared', 'success');
+}
+
+function _pricingModalToggleUrlOverride(){
+  var checked = document.getElementById('pm-url-override').checked;
+  var input   = document.getElementById('pm-url-input');
+  var actions = document.getElementById('pm-url-actions');
+  input.readOnly = !checked;
+  actions.style.display = checked ? 'flex' : 'none';
+  if(checked) input.focus();
+}
+
+function _pricingModalSaveUrl(){
+  var v = (document.getElementById('pm-url-input').value || '').trim();
+  if(v.indexOf('https://') !== 0){
+    showToast('Worker URL must start with https://', 'warning');
+    return;
+  }
+  if(v.endsWith('/')) v = v.slice(0, -1);
+  localStorage.setItem(PRICING_WORKER_URL_KEY, v);
+  _pricingModalRefresh();
+  showToast('Worker URL saved', 'success');
+}
+
+function _pricingModalResetUrl(){
+  localStorage.removeItem(PRICING_WORKER_URL_KEY);
+  document.getElementById('pm-url-override').checked = false;
+  _pricingModalToggleUrlOverride();
+  _pricingModalRefresh();
+  showToast('Worker URL reset to default', 'success');
+}
+
+function _pricingModalClearCache(){
+  if(!confirm('Clear cached pricing snapshot?\n\nThe active book is unaffected. Re-sync to refill the cache.')) return;
+  localStorage.removeItem(PRICING_CACHE_KEY);
+  _pricingModalRefresh();
+  showToast('Cache cleared', 'success');
+}
+
+function openPricingUploadPicker(){
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    if(f) _handlePricingUpload(f);
+    if(input.parentNode) input.parentNode.removeChild(input);
+  });
+  input.click();
+}
+
+function _handlePricingUpload(file){
+  var reader = new FileReader();
+  reader.onload = async function(ev){
+    var text = ev.target && ev.target.result;
+    var parsed;
+    try { parsed = JSON.parse(text); }
+    catch(e){ showPricingError('The file is not valid JSON.', ['Parse error: ' + e.message]); return; }
+    var v = validatePricingBook(parsed);
+    if(!v.valid){ showPricingError('Schema mismatch.', v.errors); return; }
+    _pricingInFlight = true;
+    _pricingModalRefresh();
+    var result = await uploadPricing(parsed, 'Pricing upload via tool');
+    _pricingInFlight = false;
+    if(!result.ok){
+      if(result.reason === 'unauthorized') showToast('Upload — auth failed', 'warning');
+      else if(result.reason === 'network') showToast('Upload — network offline', 'warning');
+      else if(result.reason === 'no-token') showToast('Add auth token in Advanced first', 'warning');
+      else showToast('Upload failed (' + (result.status || result.reason) + ')', 'warning');
+      _pricingModalRefresh();
+      return;
+    }
+    var ok = setPricingBook(parsed);
+    if(!ok){ showPricingError("Couldn't persist book locally.", ['localStorage write failed']); return; }
+    try { localStorage.setItem(PRICING_CACHE_KEY, JSON.stringify(parsed)); } catch(_){}
+    try {
+      localStorage.setItem(PRICING_META_KEY, JSON.stringify({
+        commit: result.commit, tenant: PRICING_TENANT_DEFAULT,
+        syncedAt: result.timestamp || new Date().toISOString()
+      }));
+    } catch(_){}
+    try { localStorage.setItem(PRICING_SOURCE_KEY, 'cloud'); } catch(_){}
+    updatePricingUI();
+    _pricingModalRefresh();
+    showToast('Pricing uploaded · ' + result.commit, 'success');
+  };
+  reader.onerror = function(){ showPricingError("Couldn't read the file.", []); };
+  reader.readAsText(file);
+}
+
 // Confirm before clearing. Pricing books are file-based so clearing is
 // recoverable via re-load — keep the confirm copy non-alarming.
 function confirmClearPricing(){
@@ -4336,6 +4646,11 @@ function confirmClearPricing(){
   try { localStorage.removeItem(PRICING_SOURCE_KEY); } catch(_){}
   try { localStorage.removeItem(PRICING_META_KEY); } catch(_){}
   updatePricingUI();
+  // Pricing Cloud P3: keep an open Pricing modal in sync with the clear.
+  if(document.getElementById('pricing-modal') &&
+     document.getElementById('pricing-modal').classList.contains('show')){
+    _pricingModalRefresh();
+  }
   showToast('Pricing data cleared.');
 }
 
@@ -12045,6 +12360,8 @@ document.addEventListener('keydown',function(e){
     if(isCalibrationPromptOpen()){ closeCalibrationPrompt(); return; }
     if(document.getElementById('recovery-modal').classList.contains('show')){ discardRecovery(); return; }
     if(document.getElementById('export-modal').classList.contains('show')){ closeExportModal(); return; }
+    // Pricing Cloud P3: Pricing manager modal dismiss.
+    if(document.getElementById('pricing-modal').classList.contains('show')){ closePricingModal(); return; }
     // Pass N+1 M5: Escape closes the Unit Types modal — same dismiss
     // semantics as Skip (modal-shown flag flips, no commit).
     if(document.getElementById('unit-types-modal').classList.contains('show')){ closeUnitTypesModal(); return; }
