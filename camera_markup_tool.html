@@ -310,7 +310,7 @@ input[type="number"]::-webkit-outer-spin-button {
    so we keep an explicit value rather than max-height alone. */
 #bom-drawer {
   position: fixed; top:50%; left:50%;
-  width: 92vw; min-width: min(780px, 92vw); max-width: 1080px;
+  width: 95vw; min-width: min(780px, 95vw); max-width: 1080px;
   height: 92vh; min-height: 480px; max-height: 92vh;
   background:#fff; box-shadow:0 20px 60px rgba(0,0,0,.28);
   border-radius:8px; overflow:hidden;
@@ -686,7 +686,8 @@ input[type="number"]::-webkit-outer-spin-button {
    itself must also be a direct child of <body> (not nested in any
    stacking context — common gotcha). */
 :root { --z-notice-modal: 80; }
-#sq-qty-lock-modal { z-index: var(--z-notice-modal); }
+#sq-qty-lock-modal,
+#dhw-colmap-modal { z-index: var(--z-notice-modal); }
 /* SQ polish: Tier Filter band hidden — the chip filter was retired in
    M5. Markup at #sq-tier-filter-host stays so setTierFilter() still
    resolves if invoked from a future re-introduction; the layout
@@ -997,7 +998,7 @@ input[type="number"]::-webkit-outer-spin-button {
    overflow-y:visible as auto), which trapped sticky positioning to a
    non-scrolling wrapper. Inner wrappers now drop the overflow-x and let
    wide tables scroll at the modal-box level. */
-.dhw-modal-box { min-width:780px; max-width:1100px; overflow:auto; }
+.dhw-modal-box { width:95vw; min-width:min(780px, 95vw); max-width:1100px; overflow:auto; }
 /* Polish: stronger section separation — thicker top border, more breathing room,
    bolder section title with an under-bar. Each region reads as its own block. */
 .dhw-section { margin-top:26px; padding-top:18px; border-top:2px solid var(--border); }
@@ -7001,13 +7002,28 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
   DHW_PRICING_COLS.forEach(function(c){ show[c.key] = !_dhwPricingHiddenCols[c.key]; });
   function showVendor(name){ return !_dhwPricingHiddenCols['vendor-' + name]; }
 
+  var quoteListHtml = '';
+  if(hasQuotes){
+    var quoteItems = vendors.map(function(v, idx){
+      var pricedCount = (v.lines || []).filter(function(l){ return typeof l.unitCost === 'number' && l.unitCost > 0; }).length;
+      return '<div style="display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px solid var(--border); font:500 11px var(--font-ui);">' +
+        '<span style="flex:1;">' + _dhwEsc(v.supplierName || 'Vendor') + '</span>' +
+        '<span style="color:var(--text-muted);">' + pricedCount + ' lines</span>' +
+        '<button class="dhw-exclude-btn" style="color:#9ca3af;" ' +
+          'onclick="_dhwRemoveQuote(' + idx + ')" ' +
+          'title="Remove this supplier quote">&#10005;</button>' +
+      '</div>';
+    }).join('');
+    quoteListHtml = '<div style="margin:8px 0 4px;">' + quoteItems + '</div>';
+  }
+
   var topControls =
     '<div class="dhw-section">' +
       '<div class="dhw-section-hdr">' +
         '<span class="dhw-section-hdr-title">Materials</span>' +
         '<button class="dhw-btn-small" onclick="_dhwOpenQuoteImport()" style="margin-left:auto;">Import Quotes</button>' +
       '</div>' +
-      (hasQuotes ? '' : '<div class="dhw-empty" style="margin:8px 0;">No supplier quotes imported. Click "Import Quotes" to add pricing.</div>') +
+      (hasQuotes ? quoteListHtml : '<div class="dhw-empty" style="margin:8px 0;">No supplier quotes imported. Click "Import Quotes" to add pricing.</div>') +
       '<div style="margin:8px 0;">' +
         '<label style="font:500 11px var(--font-ui);"><b>Project Markup:</b> ' +
           '<span class="dhw-pct-wrap">' +
@@ -7255,6 +7271,29 @@ function _dhwIsCheapestVendor(matchKey, supplierName, quotes){
 // → commit). Single source of truth for quote imports.
 function _dhwOpenQuoteImport(){
   openHardwareQuotePicker();
+}
+
+function _dhwRemoveQuote(idx){
+  var quotes = doorHardware.hardwareQuotes || [];
+  if(idx < 0 || idx >= quotes.length) return;
+  var removedName = quotes[idx].supplierName;
+  quotes.splice(idx, 1);
+  doorHardware.hardwareQuotes = quotes;
+  // Clear lineSupplier entries that awarded to the removed vendor.
+  var award = doorHardware.hardwareAward || {};
+  if(award.lineSupplier){
+    Object.keys(award.lineSupplier).forEach(function(key){
+      if(award.lineSupplier[key] === removedName){
+        delete award.lineSupplier[key];
+      }
+    });
+  }
+  // If no quotes remain, clear the basis flag so resolveAward resets cleanly.
+  if(doorHardware.hardwareQuotes.length === 0){
+    if(award.basis) delete award.basis;
+  }
+  markDirty();
+  renderDoorHardwareModal();
 }
 
 // ─── DHW Revamp M4 — Step 3 Labour setters ──────────────────────────────────
