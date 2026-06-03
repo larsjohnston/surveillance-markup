@@ -6024,6 +6024,14 @@ function _handleHardwareQuoteFile(file){
     var result = ev.target && ev.target.result;
     var csvText;
     if(isXlsx){
+      if(typeof XLSX === 'undefined'){
+        showHardwareError(
+          'SheetJS not loaded',
+          'The Excel parsing library (lib/xlsx.full.min.js) failed to load.',
+          ['Re-run setup-windows.bat (or setup-mac-linux.sh) to re-fetch the library, then reload the page.']
+        );
+        return;
+      }
       // Parse .xlsx via SheetJS — first sheet → CSV string.
       // Then feed the unchanged colmap modal flow.
       try {
@@ -7149,11 +7157,11 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
     if(show.list)   leadingColspan++;
     if(show.sell)   leadingColspan++;
     if(show.qty)    leadingColspan++;
-    if(show.markup) leadingColspan++;
 
     var subCells = '<td class="dhw-section-total" colspan="' + leadingColspan + '"><b>' + _dhwEsc(mfr) + ' Sub-Total</b></td>';
     if(show.qtyCost) subCells += '<td class="dhw-num dhw-section-total"><b>' + _dhwFmtMoney(subQtyCost) + '</b></td>';
     if(show.qtySell) subCells += '<td class="dhw-num dhw-section-total"><b>' + _dhwFmtMoney(subQtySell) + '</b></td>';
+    if(show.markup)  subCells += '<td class="dhw-section-total"></td>';
     if(show.margin)  subCells += '<td class="dhw-num dhw-section-total"><b>' + _dhwFmtMoney(subMargin)  + '</b></td>';
     if(show.gm)      subCells += '<td class="dhw-num dhw-section-total"><b>' + Number(subGm).toFixed(1) + '%</b></td>';
     var subRow = '<tr>' + subCells + '</tr>';
@@ -7189,8 +7197,12 @@ function _dhwToggleLineExcluded(matchKey){
   if(!doorHardware.hardwareAward) doorHardware.hardwareAward = { basis:'bestLine', lineSupplier:{}, excluded:{}, acOverlapPill:{}, lineNotes:{}, securityContractor:{} };
   if(!doorHardware.hardwareAward.excluded) doorHardware.hardwareAward.excluded = {};
   if(!doorHardware.hardwareAward.securityContractor) doorHardware.hardwareAward.securityContractor = {};
-  doorHardware.hardwareAward.excluded[matchKey] = !doorHardware.hardwareAward.excluded[matchKey];
-  if(doorHardware.hardwareAward.excluded[matchKey]) delete doorHardware.hardwareAward.securityContractor[matchKey];
+  if(doorHardware.hardwareAward.excluded[matchKey]){
+    delete doorHardware.hardwareAward.excluded[matchKey];
+  } else {
+    doorHardware.hardwareAward.excluded[matchKey] = true;
+    delete doorHardware.hardwareAward.securityContractor[matchKey];
+  }
   markDirty();
   renderDoorHardwareModal();
 }
@@ -7199,8 +7211,12 @@ function _dhwToggleLineSecurityContractor(matchKey){
   if(!doorHardware.hardwareAward) doorHardware.hardwareAward = { basis:'bestLine', lineSupplier:{}, excluded:{}, acOverlapPill:{}, lineNotes:{}, securityContractor:{} };
   if(!doorHardware.hardwareAward.securityContractor) doorHardware.hardwareAward.securityContractor = {};
   if(!doorHardware.hardwareAward.excluded) doorHardware.hardwareAward.excluded = {};
-  doorHardware.hardwareAward.securityContractor[matchKey] = !doorHardware.hardwareAward.securityContractor[matchKey];
-  if(doorHardware.hardwareAward.securityContractor[matchKey]) delete doorHardware.hardwareAward.excluded[matchKey];
+  if(doorHardware.hardwareAward.securityContractor[matchKey]){
+    delete doorHardware.hardwareAward.securityContractor[matchKey];
+  } else {
+    doorHardware.hardwareAward.securityContractor[matchKey] = true;
+    delete doorHardware.hardwareAward.excluded[matchKey];
+  }
   markDirty();
   renderDoorHardwareModal();
 }
@@ -7683,7 +7699,8 @@ function _dhwRenderStep4Summary(takeoff, quotes){
       var isExcluded = !!(award.excluded && award.excluded[key]);
       var qty = parseFloat(line.qty) || 0;
 
-      if(!isExcluded && r.priced){
+      var isSCSummary = !!(award.securityContractor && award.securityContractor[key]);
+      if(!isExcluded && !isSCSummary && r.priced){
         var unitCost = r.awardedUnitCost || 0;
         // Markup hierarchy: project default → section override → per-line.
         var lineMarkup = (pricing.lineMarkupOverrides && typeof pricing.lineMarkupOverrides[key] === 'number')
@@ -7696,7 +7713,7 @@ function _dhwRenderStep4Summary(takeoff, quotes){
         mfrMatSell += qty * unitSell;
       }
 
-      if(!isExcluded && !supplyOnly && r.priced){
+      if(!isExcluded && !isSCSummary && !supplyOnly && r.priced){
         // Labour hierarchy: project rule → section rule → per-line rule.
         // Rates carry from upper tiers when not overridden; qty is per-line.
         var projectRule = pricing.projectLabourRule || { mode:'Hourly', costRate:0, sellRate:0 };
@@ -8628,7 +8645,9 @@ function _dhwCountUnresolved(){
   var count = 0;
   for(var i = 0; i < resolved.length; i++){
     var r = resolved[i];
-    if(!r.priced && !_dhwIsExcluded(r.matchKey)) count++;
+    var sc = doorHardware.hardwareAward && doorHardware.hardwareAward.securityContractor;
+    var isSC = !!(sc && sc[r.matchKey]);
+    if(!r.priced && !_dhwIsExcluded(r.matchKey) && !isSC) count++;
   }
   return count;
 }
@@ -18808,7 +18827,8 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
   // OMITTED entirely from the customer schedule — they're billed under
   // Access Control, not hardware, so the customer shouldn't see them.
   var resolvedAll = resolveAward(takeoff, quotes, award);
-  var resolved = resolvedAll.filter(function(r){ return !acOverlapPill[r.matchKey]; });
+  var scLines = (award && award.securityContractor) ? award.securityContractor : {};
+  var resolved = resolvedAll.filter(function(r){ return !acOverlapPill[r.matchKey] && !scLines[r.matchKey]; });
   var rows = resolved.map(function(r){
     var t = r.takeoffLine || {};
     var qty = (typeof t.qty === 'number') ? t.qty : 0;
