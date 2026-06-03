@@ -7044,7 +7044,6 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
 
   var sections = [];
   var _firstSection = true;
-  var grandQtyCost = 0, grandQtySell = 0, grandMarginTotal = 0;
   Object.keys(mfrGroups).sort().forEach(function(mfr){
     var mfrLines = mfrGroups[mfr];
     var mfrMarkup = (pricing.sectionMarkupRule && typeof pricing.sectionMarkupRule[mfr] === 'number')
@@ -7148,9 +7147,6 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
     }).join('');
 
     var subGm = subQtySell > 0 ? (subMargin / subQtySell * 100) : 0;
-    grandQtyCost    += subQtyCost;
-    grandQtySell    += subQtySell;
-    grandMarginTotal += subMargin;
 
     var leadingColspan = 1;
     if(show.catalogNumber) leadingColspan++;
@@ -7198,27 +7194,7 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
     sections.push(sectionHeader + toolbarRow + '<div style="margin-top:4px;">' + table + '</div></div>');
   });
 
-  var grandGm = grandQtySell > 0 ? (grandMarginTotal / grandQtySell * 100) : 0;
-  var grandLeadingColspan = 1;
-  if(show.catalogNumber) grandLeadingColspan++;
-  if(show.description)   grandLeadingColspan++;
-  if(show.finish)        grandLeadingColspan++;
-  vendors.forEach(function(v){ if(showVendor(v.supplierName)) grandLeadingColspan++; });
-  if(show.list)   grandLeadingColspan++;
-  if(show.cost)   grandLeadingColspan++;
-  if(show.sell)   grandLeadingColspan++;
-  if(show.qty)    grandLeadingColspan++;
-  if(show.markup) grandLeadingColspan++;
-  var grandTotalCells = '<td class="dhw-grand-total" colspan="' + grandLeadingColspan + '"><b>Grand Total</b></td>';
-  if(show.qtyCost) grandTotalCells += '<td class="dhw-num dhw-grand-total"><b>' + _dhwFmtMoney(grandQtyCost)     + '</b></td>';
-  if(show.qtySell) grandTotalCells += '<td class="dhw-num dhw-grand-total"><b>' + _dhwFmtMoney(grandQtySell)     + '</b></td>';
-  if(show.margin)  grandTotalCells += '<td class="dhw-num dhw-grand-total"><b>' + _dhwFmtMoney(grandMarginTotal)  + '</b></td>';
-  if(show.gm)      grandTotalCells += '<td class="dhw-num dhw-grand-total"><b>' + Number(grandGm).toFixed(1) + '%</b></td>';
-  var grandTotalRow = '<div style="margin-top:8px;">' +
-    '<table class="dhw-table"><tbody><tr>' + grandTotalCells + '</tr></tbody></table>' +
-  '</div>';
-
-  return topControls + sections.join('') + grandTotalRow;
+  return topControls + sections.join('');
 }
 
 function _dhwToggleLineExcluded(matchKey){
