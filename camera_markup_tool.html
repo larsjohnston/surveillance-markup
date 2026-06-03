@@ -5996,6 +5996,7 @@ function _dhwConfirmColMap(){
   recomputeQuoteLines(parsed.lines);
   var rec = buildQuoteRecord(supplierName, parsed, file && file.name);
   doorHardware.hardwareQuotes.push(rec);
+  _dhwAutoAwardCheapest();
   markDirty();
   _dhwRefreshManagerIfOpen();
   _dhwRefreshHomeIfVisible();
@@ -8511,6 +8512,34 @@ function _dhwAwardBestLine(){
 // already treat basis:null as "no award" (Unawarded). When the chosen
 // supplier didn't price this line, the line is a gap on confirmation
 // (resolver handles that — flagged-not-zeroed rule).
+// Auto-awards cheapest vendor per takeoff line across all imported quotes.
+// Called after every quote import so new cheaper quotes automatically win.
+// Preserves excluded + securityContractor flags (those lines still get awarded
+// but are suppressed from totals/schedule downstream).
+function _dhwAutoAwardCheapest(){
+  var takeoff = doorHardware.importedTakeoff;
+  var quotes  = doorHardware.hardwareQuotes || [];
+  if(!takeoff || !Array.isArray(takeoff.lines) || takeoff.lines.length === 0) return;
+  if(quotes.length === 0) return;
+  var award = doorHardware.hardwareAward;
+  if(!award) award = doorHardware.hardwareAward = { basis:'bestLine', lineSupplier:{}, excluded:{}, acOverlapPill:{}, lineNotes:{}, securityContractor:{} };
+  if(!award.lineSupplier) award.lineSupplier = {};
+  award.basis = 'bestLine';
+  takeoff.lines.forEach(function(line){
+    var key = dhwMatchKey(line.catalogNumber, line.finish);
+    var cheapestSupplier = null;
+    var cheapestCost = Infinity;
+    quotes.forEach(function(q){
+      var ql = (q.lines || []).find(function(l){ return dhwMatchKey(l.catalogNumber, l.finish) === key; });
+      if(ql && typeof ql.unitCost === 'number' && ql.unitCost > 0 && ql.unitCost < cheapestCost){
+        cheapestCost = ql.unitCost;
+        cheapestSupplier = q.supplierName;
+      }
+    });
+    if(cheapestSupplier) award.lineSupplier[key] = cheapestSupplier;
+  });
+}
+
 function _dhwSetLineSupplier(matchKey, supplierName){
   if(matchKey == null) return;
   var award = doorHardware.hardwareAward;
