@@ -224,8 +224,18 @@ Each pass that changes the save shape bumps the version literal in saveJSON. Cur
 - v14 — tabOrder manual riser order override (Pass A.7)
 - v25 — Pricing Cloud (pricingBook, upload modal, fetch)
 - v26 — Credentials wiring (projectInfo.credentials.brivoSkus)
+- v27 — DHW Revamp M6 (legacy labour fields removed: `hourlyRate`, `lineInstallHours`; `projectLabourRule` + `lineLabourRule` are sole labour shape)
 
 When bumping the version: read all older versions cleanly in `applyProjectState`. Default missing fields rather than rejecting the file. Add a one-time info banner if the migration is user-visible (e.g., reach values updated in Pass C).
+
+### DHW Revamp — M1–M6 shipped
+
+- 4-step wizard (Import / Pricing / Labour / Summary).
+- Labour shape: `projectLabourRule` → `sectionLabourRule[mfr]` → `lineLabourRule[matchKey]` resolution hierarchy (`{mode, costRate, sellRate, qty}`); `supplyOnly` short-circuits all labour math.
+- Markup hierarchy: `defaultMarkupPct` → `sectionMarkupRule[mfr]` → `lineMarkupOverrides[matchKey]`.
+- Per-line `acOverlapPill[matchKey]` flag on `hardwareAward`. AC-overlap lines OMITTED from `drawProposalHardwareSchedule` (covered by Access Control, not hardware).
+- Excluded lines (`hardwareAward.excluded[matchKey]`) render as `—` on the customer schedule, not omitted.
+- Save shape v25/v26 → v27 (full + autoSave). Legacy `hourlyRate` / `lineInstallHours` removed; old saves load with rates at 0 (user re-enters).
 
 ### Dev quiet flag (testing convenience)
 
