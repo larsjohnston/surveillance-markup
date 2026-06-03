@@ -1184,6 +1184,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-cheapest { background:#fff3e0; color:#e65100; font-weight:600; }
 /* DHW Revamp M4: sticky labour subtotal at bottom of Step 3 Labour. */
 .dhw-labour-subtotal { margin-top:16px; padding:12px 16px; background:var(--surface-soft); border:1px solid var(--border); border-radius:5px; font:600 12px var(--font-ui); text-align:right; position:sticky; bottom:0; z-index:10; }
+.dhw-pricing-strip { background:#fff; padding:10px 18px; border-bottom:1px solid var(--border); margin-bottom:8px; }
 .dhw-btn-danger { color:#b91c1c; border-color:#fecaca; }
 .dhw-btn-danger:hover { background:#fef2f2; }
 .dhw-btn-primary { color:#fff; background:var(--primary); border-color:var(--primary); }
@@ -6893,17 +6894,18 @@ function _dhwResetImport(){
 // popover, dome-camera SC icon, X (excluded) icon, per-section sub-totals.
 // Replaces all M6.2 / M6.2-fixes partial implementations.
 var DHW_PRICING_COLS = [
-  { key:'catalogNumber', label:'Catalog #',   defaultHidden:false },
-  { key:'description',   label:'Description', defaultHidden:false },
-  { key:'finish',        label:'Finish',      defaultHidden:true  },
-  { key:'list',          label:'List',        defaultHidden:false },
-  { key:'sell',          label:'Sell',        defaultHidden:false },
-  { key:'qty',           label:'Qty',         defaultHidden:false },
-  { key:'qtyCost',       label:'Qty x Cost',  defaultHidden:false },
-  { key:'qtySell',       label:'Qty x Sell',  defaultHidden:false },
-  { key:'markup',        label:'Markup %',    defaultHidden:true  },
-  { key:'margin',        label:'Margin $',    defaultHidden:false },
-  { key:'gm',            label:'GM %',        defaultHidden:false }
+  { key:'catalogNumber', label:'SKU',          defaultHidden:false },
+  { key:'description',   label:'Description',  defaultHidden:true  },
+  { key:'finish',        label:'Finish',       defaultHidden:true  },
+  { key:'list',          label:'List',         defaultHidden:true  },
+  { key:'cost',          label:'Cost',         defaultHidden:true  },
+  { key:'sell',          label:'Sell',         defaultHidden:false },
+  { key:'qty',           label:'Qty',          defaultHidden:false },
+  { key:'qtyCost',       label:'Qty x Cost',   defaultHidden:false },
+  { key:'qtySell',       label:'Qty x Sell',   defaultHidden:false },
+  { key:'markup',        label:'Markup %',     defaultHidden:true  },
+  { key:'margin',        label:'Margin $',     defaultHidden:false },
+  { key:'gm',            label:'GM %',         defaultHidden:true  }
 ];
 
 var _dhwPricingHiddenCols = (function(){
@@ -7026,27 +7028,22 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
   }
 
   var topControls =
-    '<div class="dhw-section">' +
-      '<div class="dhw-section-hdr">' +
-        '<span class="dhw-section-hdr-title">Materials</span>' +
-        '<button class="dhw-btn-small" onclick="_dhwOpenQuoteImport()" style="margin-left:auto;">Import Quotes</button>' +
+    '<div class="dhw-pricing-strip">' +
+      '<div class="sq-default-rule-strip" style="margin-bottom:0; align-items:center;">' +
+        '<label>Default markup</label>' +
+        '<input type="number" min="0" max="200" step="0.1"' +
+          ' value="' + Number(projectMarkup).toFixed(1) + '"' +
+          ' onchange="_dhwSetDefaultMarkup(this.value)">' +
+        '<span>%</span>' +
+        '<button class="sq-apply-defaults" type="button" onclick="_dhwApplyDefaultMarkupToSections()">Apply to sections</button>' +
+        '<div style="flex:1;"></div>' +
+        '<button class="btn btn-blue" onclick="_dhwOpenQuoteImport()" style="padding:6px 14px; font-size:11px;">Import Quotes</button>' +
       '</div>' +
-      (hasQuotes ? quoteListHtml : '<div class="dhw-empty" style="margin:8px 0;">No supplier quotes imported. Click "Import Quotes" to add pricing.</div>') +
-      '<div style="margin:8px 0;">' +
-        '<label style="font:500 11px var(--font-ui);"><b>Project Markup:</b> ' +
-          '<span class="dhw-pct-wrap">' +
-            '<input type="number" class="dhw-input" min="0" step="5"' +
-              ' value="' + Number(projectMarkup).toFixed(1) + '"' +
-              ' onchange="_dhwSetDefaultMarkup(this.value)">' +
-            '<span>%</span>' +
-          '</span>' +
-        '</label>' +
-        '<span style="font:500 11px var(--font-ui); color:var(--text-muted); margin-left:8px;">Default applies to all lines without a per-line or section override.</span>' +
-      '</div>' +
-      _dhwRenderPricingToolbar(vendors) +
+      (hasQuotes ? '' : '<div class="dhw-empty" style="margin:8px 0 0;">No supplier quotes imported. Click "Import Quotes" to add pricing.</div>') +
     '</div>';
 
   var sections = [];
+  var _firstSection = true;
   Object.keys(mfrGroups).sort().forEach(function(mfr){
     var mfrLines = mfrGroups[mfr];
     var mfrMarkup = (pricing.sectionMarkupRule && typeof pricing.sectionMarkupRule[mfr] === 'number')
@@ -7056,8 +7053,9 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
     if(show.catalogNumber) hdrCells += '<th>SKU</th>';
     if(show.description)   hdrCells += '<th>Description</th>';
     if(show.finish)        hdrCells += '<th>Finish</th>';
-    vendors.forEach(function(v){ if(showVendor(v.supplierName)) hdrCells += '<th class="dhw-num">' + _dhwEsc(v.supplierName || 'Vendor') + '</th>'; });
+    vendors.forEach(function(v, vIdx){ if(showVendor(v.supplierName)) hdrCells += '<th class="dhw-num" style="white-space:nowrap;">' + _dhwEsc(v.supplierName || 'Vendor') + ' <button class="dhw-exclude-btn" style="color:#d1d5db; vertical-align:middle; font-size:11px;" onclick="event.stopPropagation();_dhwRemoveQuote(' + vIdx + ')" title="Remove this supplier quote">&#10005;</button></th>'; });
     if(show.list)    hdrCells += '<th class="dhw-num">List</th>';
+    if(show.cost)    hdrCells += '<th class="dhw-num">Cost</th>';
     if(show.sell)    hdrCells += '<th class="dhw-num">Sell</th>';
     if(show.qty)     hdrCells += '<th class="dhw-num">Qty</th>';
     if(show.qtyCost) hdrCells += '<th class="dhw-num">Qty<br>&times;Cost</th>';
@@ -7136,6 +7134,7 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
       if(show.finish)        cells += '<td>' + _dhwEsc(line.finish        || '') + '</td>';
       cells += vendorCells;
       if(show.list)    cells += '<td class="dhw-num"><span class="dhw-gap">&mdash;</span></td>';
+      if(show.cost)    cells += '<td class="dhw-num">' + mc(unitCost, isExcluded) + '</td>';
       if(show.sell)    cells += '<td class="dhw-num">' + mc(unitSell, isExcluded) + '</td>';
       if(show.qty)     cells += '<td class="dhw-num">' + (isExcluded ? '<span style="color:var(--text-muted);">' + qty + '</span>' : qty) + '</td>';
       if(show.qtyCost) cells += '<td class="dhw-num">' + mc(extCost, isExcluded) + '</td>';
@@ -7155,6 +7154,7 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
     if(show.finish)        leadingColspan++;
     vendors.forEach(function(v){ if(showVendor(v.supplierName)) leadingColspan++; });
     if(show.list)   leadingColspan++;
+    if(show.cost)   leadingColspan++;
     if(show.sell)   leadingColspan++;
     if(show.qty)    leadingColspan++;
 
@@ -7187,7 +7187,11 @@ function _dhwRenderStep2Pricing(takeoff, quotes){
       '<tbody>' + trs + subRow + '</tbody>' +
     '</table>';
 
-    sections.push(sectionHeader + '<div style="margin-top:8px; overflow-x:auto;">' + table + '</div></div>');
+    var toolbarRow = _firstSection
+      ? '<div class="dhw-summary-toolbar" style="margin:8px 0 4px;">' + _dhwRenderPricingToolbar(vendors).replace(/<div class="dhw-summary-toolbar[^>]*>/, '').replace(/<\/div>\s*$/, '') + '</div>'
+      : '';
+    _firstSection = false;
+    sections.push(sectionHeader + toolbarRow + '<div style="margin-top:4px;">' + table + '</div></div>');
   });
 
   return topControls + sections.join('');
@@ -7231,6 +7235,20 @@ function _dhwToggleLineSecurityContractor(matchKey){
 //
 // _dhwSetDefaultMarkup (L9060) is also reused — the Project Markup input
 // in this renderer calls it directly.
+
+function _dhwApplyDefaultMarkupToSections(){
+  var pct = (typeof doorHardware.hardwarePricing.defaultMarkupPct === 'number')
+    ? doorHardware.hardwarePricing.defaultMarkupPct : 50;
+  if(!doorHardware.hardwarePricing.sectionMarkupRule) doorHardware.hardwarePricing.sectionMarkupRule = {};
+  var takeoff = doorHardware.importedTakeoff;
+  var lines = (takeoff && takeoff.lines) ? takeoff.lines : [];
+  lines.forEach(function(line){
+    var mfr = line.manufacturer || 'OTHER';
+    doorHardware.hardwarePricing.sectionMarkupRule[mfr] = pct;
+  });
+  markDirty();
+  renderDoorHardwareModal();
+}
 
 function _dhwSetSectionMarkup(mfr, value){
   var pct = parseFloat(value);
