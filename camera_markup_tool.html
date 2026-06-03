@@ -1129,27 +1129,20 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-table tr.dhw-sub-total-row td.dhw-num { color: #fff; }
 /* DHW Revamp M5 — Step 4 Summary per-section + grand totals + tax row. */
 .dhw-section-total {
-  background: #f5f5f5;
-  font-weight: 600;
-  border-top: 1px solid var(--border);
+  background: var(--surface-muted);
+  font-weight: 700;
+  border-top: 1px solid #d1d5db;
 }
 .dhw-grand-total {
-  background: #e8e8e8;
-  font-weight: 700;
-  border-top: 2px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  background: var(--ink);
+  color: #fff;
+  font-weight: 800;
+  border-top: 2px solid var(--primary);
 }
-.dhw-tax-row {
-  background: #fff9e6;
-  font-size: 11px;
+.dhw-grand-total td {
+  color: #fff;
+  font-size: 12px;
 }
-.dhw-final-total {
-  background: #111827;
-  color: white;
-  font-weight: 700;
-  border-top: 2px solid var(--border);
-}
-.dhw-final-total td { color: white; }
 .dhw-unresolved-warning {
   padding: 12px;
   background: #fff3cd;
@@ -4950,6 +4943,21 @@ function dhwNormalizeState(obj){
   var empty = dhwEmptyState();
   if(!obj || typeof obj !== 'object') return empty;
   empty.importedTakeoff = (obj.importedTakeoff && typeof obj.importedTakeoff === 'object') ? obj.importedTakeoff : null;
+  (function(){
+    var t = empty.importedTakeoff;
+    var tlines = (t && Array.isArray(t.lines)) ? t.lines : null;
+    if(!tlines) return;
+    var keyCounts = {};
+    tlines.forEach(function(line){
+      var k = dhwMatchKey(line.catalogNumber, line.finish);
+      keyCounts[k] = (keyCounts[k] || 0) + 1;
+    });
+    tlines.forEach(function(line, idx){
+      var k = dhwMatchKey(line.catalogNumber, line.finish);
+      if(keyCounts[k] > 1){ line._lineIdx = idx; }
+      else { delete line._lineIdx; }
+    });
+  })();
   empty.hardwareQuotes  = Array.isArray(obj.hardwareQuotes) ? obj.hardwareQuotes : [];
   empty.hardwareAward   = (obj.hardwareAward && typeof obj.hardwareAward === 'object') ? obj.hardwareAward : null;
   // W1: additive backfill for the per-line supplier override map. Always an
@@ -5296,9 +5304,14 @@ function buildQuoteRecord(supplierName, parsedQuote, sourceFileName){
 // Normalize a (catalogNumber, finish) pair to a match key. Used to align
 // quote rows back to takeoff rows. Trims, collapses internal whitespace,
 // uppercases the catalog number; finish is trimmed + uppercased.
-function dhwMatchKey(catalogNumber, finish){
+function dhwMatchKey(catalogNumber, finish, lineIdx){
   var c = String(catalogNumber || '').replace(/\s+/g,' ').replace(/^\s|\s$/g,'').toUpperCase();
   var f = String(finish || '').replace(/^\s+|\s+$/g,'').toUpperCase();
+  // Always include lineIdx when provided — prevents collisions between lines
+  // sharing identical catalog # + finish (e.g. two "BY PATIO DOOR SUPPLIER"
+  // rows, or duplicate spec items). Quote-line lookups omit lineIdx and fall
+  // back to cat|fin matching (they don't have _lineIdx).
+  if(typeof lineIdx === 'number') return c + '|' + f + '|' + lineIdx;
   return c + '|' + f;
 }
 
@@ -5308,7 +5321,7 @@ function compareBySupplier(takeoff, quotes){
   var takeoffLines = (takeoff && Array.isArray(takeoff.lines)) ? takeoff.lines : [];
   var totalCount = takeoffLines.length;
   var takeoffKeys = {};
-  takeoffLines.forEach(function(t){ takeoffKeys[dhwMatchKey(t.catalogNumber, t.finish)] = true; });
+  takeoffLines.forEach(function(t){ takeoffKeys[dhwMatchKey(t.catalogNumber, t.finish, t._lineIdx)] = true; });
   return (quotes || []).map(function(q){
     var pkgCost = 0;
     var pricedCount = 0;
@@ -5349,7 +5362,7 @@ function compareBestLine(takeoff, quotes){
   });
   var bestLineTotal = 0;
   var result = takeoffLines.map(function(t){
-    var key = dhwMatchKey(t.catalogNumber, t.finish);
+    var key = dhwMatchKey(t.catalogNumber, t.finish, t._lineIdx);
     var perSupplier = quoteIndex.map(function(qi){
       var ql = qi.byKey[key];
       return {
@@ -5389,7 +5402,7 @@ function compareBestLine(takeoff, quotes){
 function resolveAward(takeoff, quotes, award){
   var takeoffLines = (takeoff && Array.isArray(takeoff.lines)) ? takeoff.lines : [];
   if(!award || !award.basis) return takeoffLines.map(function(t){
-    return { matchKey: dhwMatchKey(t.catalogNumber, t.finish), takeoffLine: t, awardedUnitCost: 0, awardedSupplierName: null, priced: false };
+    return { matchKey: dhwMatchKey(t.catalogNumber, t.finish, t._lineIdx), takeoffLine: t, awardedUnitCost: 0, awardedSupplierName: null, priced: false };
   });
   if(award.basis === 'whole'){
     var supplier = (quotes || []).find(function(q){ return q.supplierName === award.supplierId; });
@@ -5400,7 +5413,7 @@ function resolveAward(takeoff, quotes, award){
       });
     }
     return takeoffLines.map(function(t){
-      var key = dhwMatchKey(t.catalogNumber, t.finish);
+      var key = dhwMatchKey(t.catalogNumber, t.finish, t._lineIdx);
       var ql = byKey[key];
       var priced = !!(ql && typeof ql.unitCost === 'number' && ql.unitCost > 0);
       return {
@@ -5450,7 +5463,7 @@ function resolveAward(takeoff, quotes, award){
   }
   // Unknown basis: same shape as null award.
   return takeoffLines.map(function(t){
-    return { matchKey: dhwMatchKey(t.catalogNumber, t.finish), takeoffLine: t, awardedUnitCost: 0, awardedSupplierName: null, priced: false };
+    return { matchKey: dhwMatchKey(t.catalogNumber, t.finish, t._lineIdx), takeoffLine: t, awardedUnitCost: 0, awardedSupplierName: null, priced: false };
   });
 }
 
@@ -5627,7 +5640,7 @@ function dhwBomRows(){
   if(!takeoff || !Array.isArray(takeoff.lines) || takeoff.lines.length === 0) return empty;
   var groups = {};
   takeoff.lines.forEach(function(t){
-    var matchKey = dhwMatchKey(t.catalogNumber, t.finish);
+    var matchKey = dhwMatchKey(t.catalogNumber, t.finish, t._lineIdx);
     if(_dhwIsExcluded(matchKey)) return;
     var bucket = dhwClassifyLine(t);
     var desc = t.description || t.catalogNumber || '(unspecified)';
@@ -5777,6 +5790,24 @@ function _handleHardwareTakeoffFile(file){
       doorHardware.hardwareAward = null;
       doorHardware.hardwarePricing.lineMarkupOverrides = {};
       doorHardware.hardwarePricing.lineLabourRule      = {};
+    }
+    // Stamp _lineIdx only on lines whose (catalogNumber, finish) collides with
+    // another line's — i.e., true duplicates by the canonical cat|fin key. Unique
+    // lines stay un-stamped so dhwMatchKey returns the bare cat|fin form, which
+    // is what quote-side lookups (l.catalogNumber + l.finish, no _lineIdx) use.
+    // Duplicate takeoff lines get cat|fin|<idx> instead so per-line state
+    // (excluded, securityContractor, lineSell, lineSupplier) doesn't collide.
+    if(parsed && Array.isArray(parsed.lines)){
+      var keyCounts = {};
+      parsed.lines.forEach(function(line){
+        var k = dhwMatchKey(line.catalogNumber, line.finish);
+        keyCounts[k] = (keyCounts[k] || 0) + 1;
+      });
+      parsed.lines.forEach(function(line, idx){
+        var k = dhwMatchKey(line.catalogNumber, line.finish);
+        if(keyCounts[k] > 1) line._lineIdx = idx;
+        else delete line._lineIdx;
+      });
     }
     doorHardware.importedTakeoff = { header: parsed.header, lines: parsed.lines };
     markDirty();
@@ -6786,7 +6817,7 @@ function _dhwRenderActiveStep(takeoff, quotes){
 // _dhwRefreshManagerIfOpen path triggered by that handler.
 //
 // matchKey is NOT stamped onto line objects — every consumer recomputes
-// it via dhwMatchKey(line.catalogNumber, line.finish) at use-site
+// it via dhwMatchKey(line.catalogNumber, line.finish, line._lineIdx) at use-site
 // (resolveAward, dhwBomRows, etc.). Stamping would duplicate data; the
 // existing pattern stays unchanged.
 function _dhwRenderStep1Import(takeoff, quotes){
@@ -7667,7 +7698,6 @@ function _dhwRenderStep4Summary(takeoff, quotes){
   var award = doorHardware.hardwareAward || {};
   var pricing = doorHardware.hardwarePricing || {};
   var supplyOnly = !!pricing.supplyOnly;
-  var taxPct = (typeof pricing.taxPct === 'number') ? pricing.taxPct : 0;
 
   if(takeoffLines.length === 0){
     return '<div class="dhw-section">' +
@@ -7702,16 +7732,42 @@ function _dhwRenderStep4Summary(takeoff, quotes){
   // amber banner above the table; the export gate moves to M6.
   var unresolvedLines = awardedLines.filter(function(r){
     var isExcluded = !!(award.excluded && award.excluded[r.matchKey]);
-    return !isExcluded && !r.priced;
+    var isSC = !!(award.securityContractor && award.securityContractor[r.matchKey]);
+    return !isExcluded && !isSC && !r.priced;
   });
 
-  var unresolvedBanner = (unresolvedLines.length > 0)
-    ? '<div class="dhw-unresolved-warning">' +
-        '&#9888; <b>' + unresolvedLines.length + ' line(s) not yet priced or excluded.</b> ' +
-        'Price them or mark as by-others/excluded before sending to the customer. ' +
-        'Unresolved lines will not show a price in the proposal.' +
-      '</div>'
-    : '';
+  var unresolvedBanner = '';
+  // All unpriced lines — includes excluded + SC (user can change their mind).
+  var allUnpricedLines = awardedLines.filter(function(r){ return !r.priced; });
+  if(allUnpricedLines.length > 0){
+    var unresolvedCount = unresolvedLines.length;
+    var unpricedRows = allUnpricedLines.map(function(r){
+      var line = r.takeoffLine || {};
+      var key = r.matchKey;
+      var isExcluded = !!(award.excluded && award.excluded[key]);
+      var isSC = !!(award.securityContractor && award.securityContractor[key]);
+      var rowStyle = isExcluded
+        ? 'opacity:0.5;'
+        : (isSC ? 'background:#eff6ff;' : '');
+      return '<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid rgba(0,0,0,.08); font:500 11px var(--font-ui);' + rowStyle + '">' +
+        '<button class="dhw-exclude-btn' + (isExcluded ? ' active' : '') + '"' +
+          ' onclick="_dhwToggleLineExcluded(\'' + _dhwEsc(key) + '\')"' +
+          ' title="Mark as by-others (excluded from schedule)">&#10005;</button>' +
+        '<button class="dhw-sc-btn' + (isSC ? ' active' : '') + '"' +
+          ' onclick="_dhwToggleLineSecurityContractor(\'' + _dhwEsc(key) + '\')"' +
+          ' title="Security contractor">' + _DHW_SC_ICON + '</button>' +
+        '<span style="flex:1;">' + _dhwEsc(line.description || line.catalogNumber || key) + '</span>' +
+        '<span style="color:var(--text-muted); font-size:10px;">' + _dhwEsc(line.manufacturer || 'OTHER') + '</span>' +
+        ((!isExcluded && !isSC) ? '<span style="color:#856404; font-size:10px; font-weight:700;">unresolved</span>' : '') +
+      '</div>';
+    }).join('');
+    unresolvedBanner =
+      '<div class="dhw-unresolved-warning">' +
+        '<div style="margin-bottom:8px;">&#9888; <b>' + unresolvedCount + ' line(s) not yet resolved.</b> ' +
+          'Mark each as By Others (&#10005;) or Security Contractor (camera) before sending to the customer.</div>' +
+        unpricedRows +
+      '</div>';
+  }
 
   var summaryRows = [];
   var grandCost = 0, grandSell = 0;
@@ -7791,8 +7847,6 @@ function _dhwRenderStep4Summary(takeoff, quotes){
 
   var grandMargin = grandSell - grandCost;
   var grandMarginPct = (grandCost > 0) ? (grandMargin / grandCost * 100) : 0;
-  var taxAmount = grandSell * (taxPct / 100);
-  var grandTotal = grandSell + taxAmount;
 
   var tableRows = summaryRows.map(function(row){
     var rowCls = row.isSectionTotal ? ' class="dhw-section-total"' : '';
@@ -7817,33 +7871,13 @@ function _dhwRenderStep4Summary(takeoff, quotes){
     }
   });
   tableRows += '<tr class="dhw-grand-total">' +
-    '<td><b>Sub-Total</b></td>' +
+    '<td><b>Grand Total</b></td>' +
     '<td class="dhw-num"><b>' + _dhwFmtMoney(grandMatCost) + '</b></td>' +
     '<td class="dhw-num"><b>' + _dhwFmtMoney(grandMatSell) + '</b></td>' +
     '<td class="dhw-num"><b>' + _dhwFmtMoney(grandLabCost) + '</b></td>' +
     '<td class="dhw-num"><b>' + _dhwFmtMoney(grandLabSell) + '</b></td>' +
     '<td class="dhw-num"><b>' + _dhwFmtMoney(grandMargin) + '</b></td>' +
     '<td class="dhw-num"><b>' + Number(grandMarginPct).toFixed(1) + '%</b></td>' +
-  '</tr>';
-
-  tableRows += '<tr class="dhw-tax-row">' +
-    '<td>Tax (' + Number(taxPct).toFixed(1) + '%)</td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-    '<td class="dhw-num">' + _dhwFmtMoney(taxAmount) + '</td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-  '</tr>';
-
-  tableRows += '<tr class="dhw-final-total">' +
-    '<td><b>Grand Total (incl. tax)</b></td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-    '<td class="dhw-num"><b>' + _dhwFmtMoney(grandTotal) + '</b></td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-    '<td class="dhw-num">&mdash;</td>' +
-    '<td class="dhw-num">&mdash;</td>' +
   '</tr>';
 
   var header = '<tr>' +
@@ -8534,7 +8568,7 @@ function _dhwAutoAwardCheapest(){
   if(!award.lineSupplier) award.lineSupplier = {};
   award.basis = 'bestLine';
   takeoff.lines.forEach(function(line){
-    var key = dhwMatchKey(line.catalogNumber, line.finish);
+    var key = dhwMatchKey(line.catalogNumber, line.finish, line._lineIdx);
     var cheapestSupplier = null;
     var cheapestCost = Infinity;
     quotes.forEach(function(q){
