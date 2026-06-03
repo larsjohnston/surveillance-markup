@@ -6,29 +6,42 @@ Canonical work queue for Smart Building Markup & Quoting Tool. Manually maintain
 
 ## Active / next
 
-1. **DHW Revamp** (PASS_DHW_REVAMP_BRIEF.md) — 2 left-pane tile launchers + 4-step wizard (Import / Pricing / Labour / Summary). All decisions locked.
+1. **Proposal Wizard** (PASS_PROPOSAL_WIZARD_BRIEF.md) — 4-step wizard (Setup / Review / Output / Generate). Absorbs deferred SQ Tax row + DHW Summary warning banner + internal-review prose + Combine-hw-labour toggle. Multi-tax model (GST + PST/QST, tax-on-tax for QC, province presets). PDF orchestration. Cover redesign folds into P4. All 6 decisions locked.
 
-2. **Proposal Wizard** (PASS_PROPOSAL_WIZARD_BRIEF.md) — 4-step wizard (Setup / Review / Output / Generate). Absorbs deferred SQ Tax row + DHW Summary warning banner + internal-review prose + Combine-hw-labour toggle. Multi-tax model (GST + PST/QST, tax-on-tax for QC, province presets). PDF orchestration. Cover redesign folds into P4. All 6 decisions locked.
+2. **M5 — persistence** — Section pricing rules + labour rules + supply-only flag + custom-row ids + credential brivoSkus into save shape. Migrate older versions in applyProjectState.
 
-3. **M5 — persistence** — Section pricing rules + labour rules + supply-only flag + custom-row ids + credential brivoSkus into save shape. Migrate older versions in applyProjectState.
+3. **Luxer Deep Dive** — full Luxer PDF extraction (Outdoor Lockers + Fridge + Camera + Accessories + Room Kit) + catalog reconciliation + Tier-3 variant drill-down.
 
-4. **Luxer Deep Dive** — full Luxer PDF extraction (Outdoor Lockers + Fridge + Camera + Accessories + Room Kit) + catalog reconciliation + Tier-3 variant drill-down.
-
-5. **V2 Tab focus restoration** — cherry-pick orphan commit `1590519`.
+4. **V2 Tab focus restoration** — cherry-pick orphan commit `1590519`.
 
 ---
 
 ## Recently shipped
 
-- **Credential pricing — lazy-load fallback** (PR #19 / `45190a0`) — _sqRenderAutoRow lazy-loads cost/list from pricing book if not set at emit time (covers race condition when book loads after boot). Credential rows in SQ MATERIALS now price correctly.
-- **Brivo credentials converter extension** (PR #18 / `e486714`) — extended build_pricing_json.py with --brivo-credentials arg + adapter. Reads brivo-credentials-extract.csv (sku, description, msrp, unit_cost, notes). Collides with Brivo Access MSRP-only entries; reseller cost wins. 11 SKUs in final pricingBook.json (1125 items, 5 vendors).
-- **Credentials wiring** (PR #16 / `523a7f9`) — BRIVO_CRED_CATALOG (11 SKUs) + Tier-3 grouped render + right-panel + Add-to-BOM handler + v26 save bump. Removed auto-ac-credentials stub.
-- **DoorBird pricing extract** — manual CSV from DoorBird price book PDF (6 SKUs). Regenerated pricingBook.json (1125 items, 4 vendors). Uploaded to cloud pricing.
-- **Pricing Cloud P3 — modal UI** (PR #15) — Pricing modal with Status/Actions/Advanced sections. File menu entry. Toast per-kind CSS. 13 handlers.
-- **Pricing Cloud — UTF-8 fix** (Worker Version `86f2bcb9-9dc8-44f3-a8cc-284deb04774f`) — `toBase64Utf8()` replaces `btoa()` in `githubWrite`. End-to-end pipeline validated.
-- **Pricing Cloud P2 — tool-side fetch** (PR #14) — `fetchRemotePricing` + `uploadPricing` + localStorage cache + offline fallback + boot async fetch.
-- **Pricing Cloud P0/P1 — backend infra** — Cloudflare Worker `pricing.mf-quoting-tool.workers.dev` deployed.
-- **Pricing Vendor Expansion** (PR #13) — Phase A converter refactor + argparse + per-vendor adapters. Luxer Indoor Lockers (37 SKUs) extracted.
+- **DHW UX pass + fixes** (main / `latest`) — Full DHW wizard redesign + bug fixes shipped this session:
+  - **M6.4a**: Wizard 4 steps → 3 steps (Pricing / Labour / Summary). Step 1 Import removed from wizard — home canvas row 2 is the import entry point. openDoorHardwareModal guards on no takeoff.
+  - **M6.4b**: Pricing header redesign — DEFAULT MARKUP strip (SQ-style, sticky), Columns button above thead, × on vendor column headers, Import Quotes → btn-blue. Default columns: SKU / vendors / Sell / Qty / Qty×Cost / Qty×Sell / Margin. DHW_PRICING_COLS defaultHidden updated.
+  - **M6.4d**: Summary redesign — remove tax row, SQ-matched colors (ink grand total, muted section rows), unresolved lines listed with X/camera inline toggles, Lab Cost/Lab Sell hidden when supplyOnly.
+  - **Auto-award cheapest vendor**: `_dhwAutoAwardCheapest()` runs on every quote import; prices + sub-totals populate immediately.
+  - **Quote removal**: × button on vendor column headers removes that supplier's quote.
+  - **Excel quote import**: SheetJS vendored to `lib/xlsx.full.min.js`; .xlsx accepted alongside .csv via unchanged colmap flow.
+  - **SC flag downstream** (C1/C2/C3): Security Contractor propagated to `drawProposalHardwareSchedule` (customer PDF), `_dhwRenderStep4Summary` (estimator totals), `_dhwCountUnresolved` (export gate).
+  - **dhwMatchKey collision**: duplicate-only `_lineIdx` stamping (two-pass in parse + normalize). Eliminates shared keys for lines with identical catalog # + finish.
+  - **I1/I2/I3**: sub-total markup blank cell + colspan fix; toggle setters delete-on-false; XLSX pre-check with friendly error.
+  - **SQ modal fixes**: min-width:max-content on step panes + section containers; horizontal scroll containment; 95vw width; colmap modal z-index elevated to --z-notice-modal.
+  - **Grand Total row** in Pricing step below all sections.
+  - **CLAUDE.md + QUEUE.md updated** with notice modal stacking, table conventions, SheetJS dep, v27 version chain, horizontal scroll gotcha.
+
+- **DHW Revamp M1–M6** (PR #23–#27 / `314c32a`→`2be85a2`) — Complete 4-step wizard. Save v25→v26→v27. SheetJS vendored. AC-overlap + SC filtering. Legacy labour fields removed.
+
+- **DHW Quote Column-Map Modal** (PR #22 / `8f3a6cf`) — Column-mapping confirmation step. +269 / -52.
+
+- **Credential pricing — lazy-load fallback** (PR #19 / `45190a0`)
+- **Brivo credentials converter extension** (PR #18 / `e486714`)
+- **Credentials wiring** (PR #16 / `523a7f9`)
+- **DoorBird pricing extract** — 6 SKUs. pricingBook.json 1125 items.
+- **Pricing Cloud P0–P3** (PR #14–#15) — Cloudflare Worker + tool-side fetch + modal UI.
+- **Pricing Vendor Expansion** (PR #13) — Luxer Indoor Lockers (37 SKUs).
 - **SQ + DHW parity arc** (PR #12) — P1–P7 + follow-ups.
 
 ---
@@ -40,6 +53,10 @@ Canonical work queue for Smart Building Markup & Quoting Tool. Manually maintain
 - Door-operator components (column actuator, surf. auto operator, power supply, wire harness) → §2.2.
 - "By others" lines → integrator W7-excludes at import; user-guide note.
 - Ride-along: add `\b` word boundaries to `SECURITY_HARDWARE_PATTERN`.
+
+### DHW Pricing — remaining M6.4 items (deferred)
+- **M6.4c Sell override**: editable Sell column with `$`-prefix input + blue highlight on manual override. `lineSell` field (M1 save shape) already wired. Prior attempt reverted — approach TBD.
+- **Awarded vendor column white highlight**: `dhw-col-awarded-hdr` / `dhw-col-awarded-cell` classes ready; CSS needs tuning.
 
 ### Other backlog
 - **Switch Topology** (partial — Network tile place/drag/delete/persist exists). Two-tier camera→switch→CMVR cabling; multi-switch-per-page array; switch right-panel.
