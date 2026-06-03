@@ -6427,6 +6427,15 @@ function _hwHomeToggleProposal(){
 // — table-tools state is session-only, never persisted, never affects
 // totals or export.
 function openDoorHardwareModal(){
+  var takeoff = doorHardware.importedTakeoff;
+  if(!takeoff || !takeoff.lines || takeoff.lines.length === 0){
+    showHardwareError(
+      'Import a hardware schedule first',
+      'The Door Hardware wizard requires a takeoff before pricing.',
+      ['Go to the Door Hardware home canvas (key icon in the left rail) and use row 2 to import a hardware schedule CSV or XLSX.']
+    );
+    return;
+  }
   _dhwCurrentStep = 1;
   _dhwSummarySort         = { column:null, dir:null };
   _dhwSummaryFilters      = {};
@@ -6700,7 +6709,7 @@ var _dhwCurrentStep = 1;
 // Overlap becomes a per-row pill in the future Step 2 Pricing renderer
 // (M3). Step 3 Labour + Step 4 Summary inherit the old Step 4/5 renderers
 // renamed in place (full Labour/Summary refresh comes in M4/M5).
-var _DHW_STEP_LABELS = ['Import', 'Pricing', 'Labour', 'Summary'];
+var _DHW_STEP_LABELS = ['Pricing', 'Labour', 'Summary'];
 
 // Main render dispatcher. Builds the modal body + wizard nav from current
 // state. Idempotent — safe to call any number of times.
@@ -6717,7 +6726,7 @@ function renderDoorHardwareModal(){
     return;
   }
   // Defensive clamp (shouldn't happen through normal nav).
-  if(_dhwCurrentStep < 1 || _dhwCurrentStep > 4) _dhwCurrentStep = 1;
+  if(_dhwCurrentStep < 1 || _dhwCurrentStep > 3) _dhwCurrentStep = 1;
   var quotes = doorHardware.hardwareQuotes || [];
   body.innerHTML =
     '<div class="dhw-project-info">' + _dhwRenderTakeoffSummary(takeoff) + '</div>' +
@@ -6730,14 +6739,14 @@ function renderDoorHardwareModal(){
   _dhwApplyPendingFocus();
 }
 
-// W1 / DHW Revamp M5: render the 4-step indicator. Each step is a clickable
-// button that jumps directly to that step (free bidirectional nav).
-// Connectors are flex-grow lines between dots. Loop bound matches the new
-// 4-step set (Import / Pricing / Labour / Summary) — fixes the stale i<=5
-// bound from the W1 5-step shell that survived the M2 4-step collapse.
+// W1 / DHW Revamp M5 → M6.4a: render the 3-step indicator. Each step is a
+// clickable button that jumps directly to that step (free bidirectional
+// nav). Connectors are flex-grow lines between dots. M6.4a dropped Step 1
+// Import from the wizard (home canvas row 2 is the import entry point);
+// the new set is Pricing / Labour / Summary.
 function _dhwRenderStepper(){
   var parts = [];
-  for(var i = 1; i <= 4; i++){
+  for(var i = 1; i <= 3; i++){
     var cls = 'dhw-step' + (i === _dhwCurrentStep ? ' active' : '');
     var labelHtml = _dhwEsc(_DHW_STEP_LABELS[i-1]);
     parts.push(
@@ -6746,7 +6755,7 @@ function _dhwRenderStepper(){
         '<div class="dhw-step-label">' + labelHtml + '</div>' +
       '</button>'
     );
-    if(i < 4) parts.push('<div class="dhw-step-connector" aria-hidden="true"></div>');
+    if(i < 3) parts.push('<div class="dhw-step-connector" aria-hidden="true"></div>');
   }
   return '<div class="dhw-stepper" role="navigation" aria-label="Door Hardware wizard steps">' + parts.join('') + '</div>';
 }
@@ -6757,10 +6766,9 @@ function _dhwRenderStepper(){
 // _dhwRenderStep3AcOverlap) are deleted as of this milestone.
 function _dhwRenderActiveStep(takeoff, quotes){
   switch(_dhwCurrentStep){
-    case 1: return _dhwRenderStep1Import(takeoff, quotes);
-    case 2: return _dhwRenderStep2Pricing(takeoff, quotes);
-    case 3: return _dhwRenderStep3Labour(takeoff, quotes);
-    case 4: return _dhwRenderStep4Summary(takeoff, quotes);
+    case 1: return _dhwRenderStep2Pricing(takeoff, quotes);
+    case 2: return _dhwRenderStep3Labour(takeoff, quotes);
+    case 3: return _dhwRenderStep4Summary(takeoff, quotes);
   }
   return '';
 }
@@ -7869,7 +7877,7 @@ function _dhwRenderWizardNav(){
     ? '<button class="btn btn-dark" onclick="_dhwStepBack()" style="background:#fff; color:var(--text); border:1px solid var(--border);">&larr; Back</button>'
     : '';
   // DHW Revamp M2: 4 steps total. Forward on steps 1-3, Save on step 4.
-  var forward = (_dhwCurrentStep < 4)
+  var forward = (_dhwCurrentStep < 3)
     ? '<button class="btn btn-dark" onclick="_dhwStepNext()">Continue &rarr;</button>'
     : '<button class="btn btn-dark" onclick="closeDoorHardwareModal()">Save</button>';
   return back + '<div class="dhw-nav-spacer"></div>' + forward;
@@ -7886,12 +7894,12 @@ function _dhwRenderWizardNav(){
 // "Award best line" buttons in View 1 / View 2.
 function _dhwGoToStep(n){
   // DHW Revamp M2: 4 steps (Import / Pricing / Labour / Summary).
-  if(typeof n !== 'number' || n < 1 || n > 4) return;
+  if(typeof n !== 'number' || n < 1 || n > 3) return;
   _dhwCurrentStep = n;
   renderDoorHardwareModal();
 }
 function _dhwStepNext(){
-  if(_dhwCurrentStep < 4){
+  if(_dhwCurrentStep < 3){
     // DHW Revamp M2: the old Comparison-step award-commit-on-Continue hook
     // (_dhwConfirmAwardOnContinue) was wired to step 1 in the 5-step
     // wizard. Step 1 is now Import (no award staging happens here), so
