@@ -5,7 +5,7 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 
 ## Files
 - `camera_markup_tool.html` — the entire tool, ~140 KB, ~2700 lines, single file
-- `lib/` — three external libraries (PDF.js + worker, jsPDF), loaded as `<script src>`
+- `lib/` — four external libraries (PDF.js + worker, jsPDF, SheetJS), loaded as `<script src>`
 - `setup-windows.bat` / `setup-mac-linux.sh` — one-time scripts that fetch libs from cdnjs
 - `README.md` — end-user deployment guide
 
@@ -36,6 +36,7 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 - **Proposal PDF export** — branded cover page, BOM with totals, riser diagram + equipment schedule, then floor plan pages with overlays. Saved with project name as filename.
 - **Typical floor multiplier** — pages can be configured as "typical" representing N identical floors. Camera counts and cable lengths multiply in BOM and riser schedule.
 - **Access control mode** — separate device type (Brivo readers). Mode toggle in top bar. Readers have their own right panel with editable label and notes.
+- **Door Hardware wizard** — 4-step wizard (Import / Pricing / Labour / Summary). Vendor quote comparison (.csv + .xlsx via SheetJS), per-section + per-line markup/labour rules, AC-overlap filtering, supply-only toggle, exclude + security-contractor row toggles.
 
 ## Pending / known gaps
 - **Pricing fields are blank by default.** User will populate camera and labor pricing in the database when they have updated info from their distributor.
@@ -51,7 +52,7 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 
 ## Things I'd like to keep doing in this style
 - Single-file HTML — must keep working when opened directly from disk by double-click. No frameworks, no bundler, no node_modules in the runtime.
-- Library count stays at PDF.js + jsPDF only. Don't add new dependencies without asking.
+- Library count stays at PDF.js + jsPDF + SheetJS only. Don't add new dependencies without asking.
 - Every change to the tool gets tested by opening the HTML in a browser and trying it.
 
 ## Workflow notes
@@ -97,8 +98,8 @@ Surface uncertainty, don't hide it.
 - **Where things live:** Everything is in one file. Convention is `// ─── Section Name ───` comment dividers for navigation.
 - **Conventions worth knowing:**
   - Vanilla JS, `var` declarations (not `let`/`const`). Match existing style.
-  - No new dependencies. CDN-loaded libs only: pdf.js, jsPDF.
-  - Save files use a single JSON version literal (currently v26). Bump on shape change.
+  - No new dependencies. Vendored libs in `lib/`: pdf.js, jsPDF, SheetJS (xlsx.full.min.js). All loaded as local `<script src="./lib/...">`.
+  - Save files use a single JSON version literal (currently v27). Bump on shape change.
   - State changes call `markDirty()` for auto-save tracking.
   - Selection uses `selectCamera(id)` / `selectReader(id)` — never bare assignment to `selectedId` / `acSelectedId`.
 
@@ -120,6 +121,53 @@ Step reports that claim "Retained X" or "Kept Y" must be verified against actual
 - Retained: [elements/functions/variables that stayed in place]
 - Dropped: [removed, not reachable elsewhere]
 - New: [added]
+
+---
+
+### Notice modal stacking convention
+
+**Any modal that fires while another modal is already open MUST:**
+1. Live as a direct child of `<body>` in the HTML.
+2. Use `z-index: var(--z-notice-modal)` (= 80) — higher than `.big-modal` (z-index:30).
+
+Either half alone fails. A notice inside an existing modal's subtree is clipped by the parent's stacking context. A notice with z-index:30 loses to the open modal.
+
+**Known modals that follow this pattern** (add any new one here AND to the CSS rule at `#sq-qty-lock-modal`):
+- `#sq-qty-lock-modal` — Qty lock notice in SQ Materials
+- `#dhw-colmap-modal` — Column-map confirmation during hardware quote import
+
+**Diagnosis:** if a modal appears behind another modal, check (a) its DOM parent and (b) its z-index. Both must satisfy the above. Do NOT fix by re-parenting to the existing modal's subtree.
+
+---
+
+### Table and renderer redesign conventions
+
+**Always read before writing any table redesign.** Before touching any wizard step table or renderer:
+1. `grep -n` the FULL existing function and read it completely before writing a single line.
+2. If porting a pattern from SQ to DHW (or vice versa), read the SQ equivalent in full first.
+3. Capture every: column name, CSS class, helper function, icon source (grep it), sub-total pattern.
+
+**Complete function bodies in briefs — never pseudocode.** A table renderer brief must contain the FULL replacement function: every column header, every row cell, every sub-total cell, every icon source (verified by grep), every CSS class (verified to exist). Pseudocode stubs, partial row builders, and "add X here" placeholders always produce broken output requiring multiple fix rounds.
+
+**Column definitions use a COLS array.** Wizard table columns are defined as a module-scope array of `{key, label, defaultHidden}` descriptors — see `SQ_SUMMARY_COLS` (L21358) and `DHW_PRICING_COLS`. Never hardcode column lists inline. The array is the single source of truth for: (a) the column-filter popover checkboxes, (b) the table header `<th>`, (c) the data row `<td>`, (d) the sub-total row `<td>`. All four must be kept in sync.
+
+**Column gating must wire all the way through.** When a column is hideable, the `show.colKey` flag must gate: the `<th>` in the header, the `<td>` in every data row, the `<td>` in the sub-total row, and the `leadingColspan` calculation. Missing any one causes cell misalignment.
+
+**Sub-total `leadingColspan` = count of visible leading columns.** Always compute `leadingColspan` dynamically — start with the fixed column count (icon buttons etc.), then increment for each visible hideable leading column. Never hardcode the number.
+
+**DHW table vs SQ table.** DHW wizard steps use `<table class="dhw-table">` (HTML table). SQ Materials/Labour use `.bom-row` CSS grid (`grid-template-columns: 75px minmax(200px,3fr) 60px 65px 65px 45px 70px 70px 70px 55px 24px`). Don't mix the two — DHW Pricing stays as `dhw-table`.
+
+**Icons in row cells — always grep first.** Two categories:
+- **Ghost row-action icons** (X exclude, SC camera): `border:none; background:none; color:#d1d5db` inactive → `#6b7280` hover → `#111827` active. SVG uses `fill:currentColor` so `color` drives the icon. No tile chrome, no border, no background. Two icons in ONE `<td>` cell (not separate columns).
+- **Strip/tile icons** (mode buttons, tier tiles): grep the exact SVG path from the strip button — camera dome at L2227, access control at L2232. Never write icon SVG from memory.
+
+**Mutually exclusive row toggles.** When two icon buttons are mutually exclusive (Exclude + Security Contractor), each setter clears the other on activate. Both write to `hardwareAward` sub-maps. Both call `markDirty()` + `renderDoorHardwareModal()`.
+
+**Column filter popover reuses `.dhw-tools-popover` CSS** (L1253). Add a scoped position class (e.g. `.dhw-pricing-popover { position:absolute; top:calc(100% + 4px); left:0; z-index:20; }`) so it doesn't collide with the Summary step's popover. Use `mousedown` capture on `document` for outside-click close; remove the listener on close.
+
+**Modal viewport overflow.** Fixed-position modals with a hard `min-width` can overflow narrow viewports. Use `min-width: min(Xpx, 96vw)` so the modal is clamped to the viewport on small windows while keeping its floor on larger ones.
+
+**Table horizontal scroll — flex container gotcha.** When a table inside a flex child needs to scroll horizontally: the flex child needs `min-width:0` (overrides flex's default `min-width:auto` which prevents shrinking), and the table's containing block needs `min-width:max-content` so the table expands to its natural width rather than collapsing to the container's visible width. Both are required; either alone fails. Applied to: `#bom-scroll-wrap { min-width:0 }`, and `min-width:max-content` on `#bom-body`, `#sq-labour-body`, `#sq-summary-xlsx-host`, `#sq-step-materials`, `#sq-step-labour`, `#sq-step-summary`, `.dhw-step-content .dhw-section`.
 
 ---
 
@@ -224,18 +272,9 @@ Each pass that changes the save shape bumps the version literal in saveJSON. Cur
 - v14 — tabOrder manual riser order override (Pass A.7)
 - v25 — Pricing Cloud (pricingBook, upload modal, fetch)
 - v26 — Credentials wiring (projectInfo.credentials.brivoSkus)
-- v27 — DHW Revamp M6 (legacy labour fields removed: `hourlyRate`, `lineInstallHours`; `projectLabourRule` + `lineLabourRule` are sole labour shape)
+- v27 — DHW Revamp M6 (legacy labour fields removed; securityContractor field added)
 
 When bumping the version: read all older versions cleanly in `applyProjectState`. Default missing fields rather than rejecting the file. Add a one-time info banner if the migration is user-visible (e.g., reach values updated in Pass C).
-
-### DHW Revamp — M1–M6 shipped
-
-- 4-step wizard (Import / Pricing / Labour / Summary).
-- Labour shape: `projectLabourRule` → `sectionLabourRule[mfr]` → `lineLabourRule[matchKey]` resolution hierarchy (`{mode, costRate, sellRate, qty}`); `supplyOnly` short-circuits all labour math.
-- Markup hierarchy: `defaultMarkupPct` → `sectionMarkupRule[mfr]` → `lineMarkupOverrides[matchKey]`.
-- Per-line `acOverlapPill[matchKey]` flag on `hardwareAward`. AC-overlap lines OMITTED from `drawProposalHardwareSchedule` (covered by Access Control, not hardware).
-- Excluded lines (`hardwareAward.excluded[matchKey]`) render as `—` on the customer schedule, not omitted.
-- Save shape v25/v26 → v27 (full + autoSave). Legacy `hourlyRate` / `lineInstallHours` removed; old saves load with rates at 0 (user re-enters).
 
 ### Dev quiet flag (testing convenience)
 
@@ -262,3 +301,5 @@ Persists across reloads. Init reads the flag and sets `SUPPRESS_AUTO_CALIBRATION
 - When diagnosing failures, ask for the SPECIFIC error string + HTTP status + response body. Don't guess from stack traces alone. Network tab Response body and `wrangler tail` are the diagnostic tools.
 - Tell me explicitly when a command goes in PowerShell vs DevTools Console.
 - **EVERY Claude Code instruction is ONE fenced code block, period.** Multi-edit tasks use `old_str: / new_str:` pairs numbered 1–N. No prose scaffolding before the block. Block opens with `[HEAD: <hash> | branch | tree]`. This is default behavior, never ask or wait for permission.
+- **CRITICAL: Code blocks for Claude Code must be ONE continuous fence, period.** From `[HEAD: <hash> | branch | tree]` to the final line, everything goes between a single pair of triple backticks. NO internal fence breaks, NO markdown section dividers inside the fence, NO line that contains ``` except the opening and closing markers. If a block would exceed readability, restructure the content (condense comments, use numbered str_replace pairs, omit explanatory prose) — never split into multiple fenced blocks. Before outputting any CC instruction, verify: opening ```, then all content, then closing ``` with nothing between them. One fence only.
+- **Table/renderer redesigns require complete function bodies in the brief, never pseudocode.** Before briefing CC on any table, wizard step, or renderer change: (1) grep for and read the FULL existing function, (2) grep for and read the SQ/DHW equivalent if porting a pattern, (3) capture every column name, CSS class, helper function, and icon source via grep before writing a single line of the brief. The brief must contain a complete replacement function — every column header, every row cell, every sub-total cell, every icon source (verified by grep), every CSS class (verified to exist). Pseudocode stubs, partial row builders, and "add X here" placeholders are banned. If the function is too long to write completely, split into smaller milestone briefs — never ship a partial implementation.
