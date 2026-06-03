@@ -7854,8 +7854,8 @@ function _dhwRenderStep4Summary(takeoff, quotes){
       '<td>' + _dhwEsc(row.label) + '</td>' +
       '<td class="dhw-num">' + _dhwFmtMoney(row.hwCost) + '</td>' +
       '<td class="dhw-num">' + _dhwFmtMoney(row.hwSell) + '</td>' +
-      '<td class="dhw-num">' + _dhwFmtMoney(row.labCost) + '</td>' +
-      '<td class="dhw-num">' + _dhwFmtMoney(row.labSell) + '</td>' +
+      (supplyOnly ? '' : '<td class="dhw-num">' + _dhwFmtMoney(row.labCost) + '</td>') +
+      (supplyOnly ? '' : '<td class="dhw-num">' + _dhwFmtMoney(row.labSell) + '</td>') +
       '<td class="dhw-num">' + _dhwFmtMoney(row.margin) + '</td>' +
       '<td class="dhw-num">' + Number(row.marginPct).toFixed(1) + '%</td>' +
     '</tr>';
@@ -7874,8 +7874,8 @@ function _dhwRenderStep4Summary(takeoff, quotes){
     '<td><b>Grand Total</b></td>' +
     '<td class="dhw-num"><b>' + _dhwFmtMoney(grandMatCost) + '</b></td>' +
     '<td class="dhw-num"><b>' + _dhwFmtMoney(grandMatSell) + '</b></td>' +
-    '<td class="dhw-num"><b>' + _dhwFmtMoney(grandLabCost) + '</b></td>' +
-    '<td class="dhw-num"><b>' + _dhwFmtMoney(grandLabSell) + '</b></td>' +
+    (supplyOnly ? '' : '<td class="dhw-num"><b>' + _dhwFmtMoney(grandLabCost) + '</b></td>') +
+    (supplyOnly ? '' : '<td class="dhw-num"><b>' + _dhwFmtMoney(grandLabSell) + '</b></td>') +
     '<td class="dhw-num"><b>' + _dhwFmtMoney(grandMargin) + '</b></td>' +
     '<td class="dhw-num"><b>' + Number(grandMarginPct).toFixed(1) + '%</b></td>' +
   '</tr>';
@@ -7884,8 +7884,8 @@ function _dhwRenderStep4Summary(takeoff, quotes){
     '<th>Description</th>' +
     '<th class="dhw-num">HW Cost</th>' +
     '<th class="dhw-num">HW Sell</th>' +
-    '<th class="dhw-num">Lab Cost</th>' +
-    '<th class="dhw-num">Lab Sell</th>' +
+    (supplyOnly ? '' : '<th class="dhw-num">Lab Cost</th>') +
+    (supplyOnly ? '' : '<th class="dhw-num">Lab Sell</th>') +
     '<th class="dhw-num">Margin $</th>' +
     '<th class="dhw-num">GM %</th>' +
   '</tr>';
