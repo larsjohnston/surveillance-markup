@@ -526,6 +526,8 @@ input[type="number"]::-webkit-outer-spin-button {
   font:600 11px var(--font-mono); background:#fff;
 }
 .sq-default-rule-strip input[type=number] { width:60px; text-align:right; }
+.dhw-strip-rate-lbl { font-weight:700; color:var(--text-muted); font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
+.dhw-strip-rate { padding:3px 6px; border:1px solid var(--border); border-radius:3px; font:600 11px var(--font-mono); background:#fff; width:70px; text-align:right; }
 .sq-default-rule-strip .sq-apply-defaults {
   background:#fff; color:var(--text); border:1px solid var(--border); border-radius:3px;
   padding:4px 10px; cursor:pointer; font:600 10px var(--font-ui); text-transform:uppercase; letter-spacing:.04em;
@@ -4952,7 +4954,7 @@ function dhwEmptyState(){
       //                        override per line (bypasses markup-rule
       //                        derivation). Empty = derive from cost ×
       //                        (1 + markupPct/100) as today.
-      projectLabourRule: { mode: 'Hourly', costRate: 0, sellRate: 0 },
+      projectLabourRule: { mode: 'Hourly', hourly: { costRate: 0, sellRate: 0 }, flat: { costRate: 0, sellRate: 0 } },
       sectionLabourRule: {},
       lineLabourRule:    {},
       sectionMarkupRule: {},
@@ -5044,10 +5046,23 @@ function dhwNormalizeState(obj){
     // Old v25/v26 saves load with defaults; new shape on next save (v27).
     if(p.projectLabourRule && typeof p.projectLabourRule === 'object'){
       var plr = p.projectLabourRule;
+      function _migRate(o){
+        return {
+          costRate: (o && typeof o.costRate === 'number' && isFinite(o.costRate)) ? o.costRate : 0,
+          sellRate: (o && typeof o.sellRate === 'number' && isFinite(o.sellRate)) ? o.sellRate : 0
+        };
+      }
+      // v28: per-mode buckets. Carry existing hourly/flat through; if a legacy
+      // flat shape (costRate/sellRate at top level) is present, promote it into
+      // the hourly bucket (legacy default mode was Hourly) and seed flat at 0.
+      var hourlyBucket = (plr.hourly && typeof plr.hourly === 'object') ? _migRate(plr.hourly)
+                       : _migRate(plr);
+      var flatBucket   = (plr.flat && typeof plr.flat === 'object') ? _migRate(plr.flat)
+                       : { costRate:0, sellRate:0 };
       empty.hardwarePricing.projectLabourRule = {
-        mode:     (plr.mode === 'Flat') ? 'Flat' : 'Hourly',
-        costRate: (typeof plr.costRate === 'number' && isFinite(plr.costRate)) ? plr.costRate : 0,
-        sellRate: (typeof plr.sellRate === 'number' && isFinite(plr.sellRate)) ? plr.sellRate : 0
+        mode:   (plr.mode === 'Flat') ? 'Flat' : 'Hourly',
+        hourly: hourlyBucket,
+        flat:   flatBucket
       };
     }
     empty.hardwarePricing.sectionLabourRule = (p.sectionLabourRule && typeof p.sectionLabourRule === 'object') ? p.sectionLabourRule : {};
@@ -7455,10 +7470,27 @@ function _dhwRemoveQuote(idx){
 // hardwarePricing.supplyOnly. Setters below all write to the new M1
 // shape (projectLabourRule / sectionLabourRule / lineLabourRule).
 
+// B-lite: resolve the active project rate bucket. Reads the per-mode bucket
+// matching projectRule.mode; tolerates legacy flat shape (costRate/sellRate at
+// top level) by falling back. Single source of truth for all 3 read sites.
+function _dhwResolveProjectRates(projectRule){
+  var pr = projectRule || {};
+  var mode = (pr.mode === 'Flat') ? 'Flat' : 'Hourly';
+  var bucket = (mode === 'Flat') ? pr.flat : pr.hourly;
+  var cost, sell;
+  if(bucket && typeof bucket === 'object'){
+    cost = (typeof bucket.costRate === 'number') ? bucket.costRate : 0;
+    sell = (typeof bucket.sellRate === 'number') ? bucket.sellRate : 0;
+  } else {
+    // Legacy flat shape fallback (pre-v28 in-memory, defensive only).
+    cost = (typeof pr.costRate === 'number') ? pr.costRate : 0;
+    sell = (typeof pr.sellRate === 'number') ? pr.sellRate : 0;
+  }
+  return { mode: mode, costRate: cost, sellRate: sell };
+}
 function _dhwSetProjectLabourMode(mode){
-  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
-  if(!doorHardware.hardwarePricing.projectLabourRule) doorHardware.hardwarePricing.projectLabourRule = { mode: 'Hourly', costRate: 0, sellRate: 0 };
-  doorHardware.hardwarePricing.projectLabourRule.mode = (mode === 'Flat') ? 'Flat' : 'Hourly';
+  var pr = _dhwEnsureProjectRuleBuckets();
+  pr.mode = (mode === 'Flat') ? 'Flat' : 'Hourly';
   markDirty();
   renderDoorHardwareModal();
 }
@@ -7485,6 +7517,126 @@ function _dhwSetSectionLabourSell(mfr, value, mode){
   if(mode === 'Hourly' || mode === 'Flat') doorHardware.hardwarePricing.sectionLabourRule[mfr].mode = mode;
   markDirty();
   renderDoorHardwareModal();
+}
+
+// Section-level mode override (mode-only; '' clears the override → falls back to project mode).
+function _dhwSetSectionLabourMode(mfr, mode){
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  if(!doorHardware.hardwarePricing.sectionLabourRule) doorHardware.hardwarePricing.sectionLabourRule = {};
+  var rule = doorHardware.hardwarePricing.sectionLabourRule;
+  if(mode !== 'Hourly' && mode !== 'Flat'){
+    if(rule[mfr]){ delete rule[mfr].mode; if(Object.keys(rule[mfr]).length === 0) delete rule[mfr]; }
+  } else {
+    if(!rule[mfr]) rule[mfr] = {};
+    rule[mfr].mode = mode;
+  }
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+// Project-level labour rate setters (siblings of _dhwSetProjectLabourMode).
+// The top-strip Cost/Sell $/HR inputs write here. PascalCase mode preserved.
+function _dhwEnsureProjectRuleBuckets(){
+  if(!doorHardware.hardwarePricing) doorHardware.hardwarePricing = {};
+  var pr = doorHardware.hardwarePricing.projectLabourRule;
+  if(!pr || typeof pr !== 'object') pr = { mode:'Hourly' };
+  if(pr.mode !== 'Flat') pr.mode = 'Hourly';
+  if(!pr.hourly || typeof pr.hourly !== 'object') pr.hourly = { costRate:0, sellRate:0 };
+  if(!pr.flat   || typeof pr.flat   !== 'object') pr.flat   = { costRate:0, sellRate:0 };
+  doorHardware.hardwarePricing.projectLabourRule = pr;
+  return pr;
+}
+function _dhwSetProjectLabourCost(value){
+  var n = parseFloat(value);
+  if(!isFinite(n) || n < 0) n = 0;
+  var pr = _dhwEnsureProjectRuleBuckets();
+  var bucket = (pr.mode === 'Flat') ? pr.flat : pr.hourly;
+  bucket.costRate = n;
+  markDirty();
+  renderDoorHardwareModal();
+}
+function _dhwSetProjectLabourSell(value){
+  var n = parseFloat(value);
+  if(!isFinite(n) || n < 0) n = 0;
+  var pr = _dhwEnsureProjectRuleBuckets();
+  var bucket = (pr.mode === 'Flat') ? pr.flat : pr.hourly;
+  bucket.sellRate = n;
+  markDirty();
+  renderDoorHardwareModal();
+}
+
+// ─── DHW Labour column-hide (cloned from DHW Pricing, Convention B) ───
+var DHW_LABOUR_COLS = [
+  { key:'qty',     label:'Qty',         defaultHidden:false },
+  { key:'sku',     label:'SKU',         defaultHidden:false },
+  { key:'desc',    label:'Description', defaultHidden:true  },
+  { key:'hours',   label:'Hours',       defaultHidden:false },
+  { key:'cost',    label:'Cost',        defaultHidden:false },
+  { key:'sell',    label:'Sell',        defaultHidden:false },
+  { key:'extcost', label:'Ext Cost',    defaultHidden:true  },
+  { key:'extsell', label:'Ext Sell',    defaultHidden:true  },
+  { key:'margin',  label:'Margin $',    defaultHidden:false },
+  { key:'gm',      label:'GM %',        defaultHidden:true  }
+];
+var _dhwLabourHiddenCols = (function(){
+  var h = {};
+  DHW_LABOUR_COLS.forEach(function(c){ if(c.defaultHidden) h[c.key] = true; });
+  return h;
+})();
+var _dhwLabourToolsOpen = false;
+function _dhwToggleLabourTools(){
+  _dhwLabourToolsOpen = !_dhwLabourToolsOpen;
+  renderDoorHardwareModal();
+  if(_dhwLabourToolsOpen) _dhwInstallLabourToolsCloseHandler();
+}
+function _dhwInstallLabourToolsCloseHandler(){
+  function onDown(e){
+    var pop = document.querySelector('#door-hardware-modal .dhw-labour-popover');
+    var btn = document.querySelector('#door-hardware-modal .dhw-labour-tools-btn');
+    if(!pop || !btn) return;
+    if(pop.contains(e.target) || btn.contains(e.target)) return;
+    document.removeEventListener('mousedown', onDown, true);
+    _dhwLabourToolsOpen = false;
+    renderDoorHardwareModal();
+  }
+  document.addEventListener('mousedown', onDown, true);
+}
+function _dhwToggleLabourHiddenCol(colKey){
+  if(_dhwLabourHiddenCols[colKey]) delete _dhwLabourHiddenCols[colKey];
+  else _dhwLabourHiddenCols[colKey] = true;
+  renderDoorHardwareModal();
+}
+function _dhwResetLabourCols(){
+  var h = {};
+  DHW_LABOUR_COLS.forEach(function(c){ if(c.defaultHidden) h[c.key] = true; });
+  _dhwLabourHiddenCols = h;
+  renderDoorHardwareModal();
+}
+function _dhwRenderLabourToolbar(){
+  var toolsBtn = '<button class="dhw-tools-btn dhw-labour-tools-btn' + (_dhwLabourToolsOpen ? ' active' : '') + '"' +
+    ' onclick="_dhwToggleLabourTools()" title="Show or hide labour columns">' +
+    _DHW_COLS_ICON + ' Columns</button>';
+  var popover = '';
+  if(_dhwLabourToolsOpen){
+    var colChecks = DHW_LABOUR_COLS.map(function(c){
+      var checked = !_dhwLabourHiddenCols[c.key];
+      return '<label class="dhw-col-toggle">' +
+        '<input type="checkbox"' + (checked ? ' checked' : '') +
+        ' onchange="_dhwToggleLabourHiddenCol(\'' + c.key + '\')">' +
+        _dhwEsc(c.label) + '</label>';
+    }).join('');
+    popover = '<div class="dhw-tools-popover dhw-labour-popover">' +
+      '<div class="dhw-popover-section">' +
+        '<div class="dhw-popover-hdr">Columns</div>' + colChecks +
+      '</div>' +
+      '<div class="dhw-popover-section">' +
+        '<div class="dhw-popover-actions">' +
+          '<button class="dhw-popover-clear" onclick="_dhwResetLabourCols()">Reset columns</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+  return '<div class="dhw-summary-toolbar">' + toolsBtn + '<div class="dhw-toolbar-spacer"></div>' + popover + '</div>';
 }
 
 function _dhwSetLineLabourQty(matchKey, value){
@@ -7561,63 +7713,51 @@ function _dhwRenderStep3Labour(takeoff, quotes){
   var pricing    = doorHardware.hardwarePricing || {};
   var supplyOnly = !!pricing.supplyOnly;
 
+  // ─── Top strip: supply-only pill + Default Labour mode pills + project rates ───
+  var projectRule = pricing.projectLabourRule || {};
+  var _dhwPR = _dhwResolveProjectRates(projectRule);
+  var projectMode     = _dhwPR.mode;
+  var projectCostRate = _dhwPR.costRate;
+  var projectSellRate = _dhwPR.sellRate;
+  var flatActive   = (projectMode === 'Flat')   ? ' active' : '';
+  var hourlyActive = (projectMode === 'Hourly') ? ' active' : '';
+  var _rateUnit = (projectMode === 'Flat') ? '/unit' : '/hr';
+  var rateInputs =
+    '<span class="dhw-strip-rate-lbl">Cost $' + _rateUnit + '</span>' +
+    '<input type="number" min="0" step="0.01" class="dhw-strip-rate" value="' + Number(projectCostRate).toFixed(2) + '" onchange="_dhwSetProjectLabourCost(this.value)">' +
+    '<span class="dhw-strip-rate-lbl">Sell $' + _rateUnit + '</span>' +
+    '<input type="number" min="0" step="0.01" class="dhw-strip-rate" value="' + Number(projectSellRate).toFixed(2) + '" onchange="_dhwSetProjectLabourSell(this.value)">';
+  var topStrip =
+    '<div class="sq-default-rule-strip">' +
+      '<label class="dhw-toggle" title="Toggle on for supply-only jobs (install labour performed by others; labour excluded from all totals).">' +
+        '<input type="checkbox" ' + (supplyOnly ? 'checked' : '') + ' onchange="_dhwSetSupplyOnly(this.checked)">' +
+        '<span class="dhw-toggle-slider"></span>' +
+      '</label>' +
+      '<span style="font-weight:700;">Supply only</span>' +
+      '<span style="flex:0 0 auto; color:var(--text-muted); padding:0 6px;">|</span>' +
+      '<label>Default labour</label>' +
+      '<span class="sq-mode-toggle" style="margin-left:0;">' +
+        '<button type="button" class="tier-btn' + flatActive   + '" onclick="_dhwSetProjectLabourMode(\'Flat\')">Flat</button>' +
+        '<button type="button" class="tier-btn' + hourlyActive + '" onclick="_dhwSetProjectLabourMode(\'Hourly\')">Hourly</button>' +
+      '</span>' +
+      rateInputs +
+    '</div>';
+
   if(takeoffLines.length === 0){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
+      topStrip +
       '<div class="dhw-empty">No takeoff lines for labour.</div>' +
     '</div>';
   }
 
-  // Supply-only control (always visible at top — mode-independent of award).
-  var supplyOnlyTitle = supplyOnly
-    ? 'Currently in Supply Only mode. Toggle off to enter install labour for the hardware lines.'
-    : 'Toggle on for supply-only jobs (integrator supplies hardware only; install labour is performed by others). Hides labour table and excludes labour from every total.';
-  var supplyOnlyControl =
-    '<div class="dhw-control-row">' +
-      '<label class="dhw-toggle" title="' + supplyOnlyTitle + '">' +
-        '<input type="checkbox" ' + (supplyOnly ? 'checked' : '') +
-          ' onchange="_dhwSetSupplyOnly(this.checked)">' +
-        '<span class="dhw-toggle-slider"></span>' +
-      '</label>' +
-      '<b>Supply only</b>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">For jobs where the integrator supplies hardware only &mdash; install labour is performed by others.</span>' +
-    '</div>';
-
   if(supplyOnly){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
-      supplyOnlyControl +
-      '<div class="dhw-supply-notice">' +
-        '<b>Supply Only.</b> Install labour is excluded from all totals. ' +
-        'Grand Total = hardware only; the Project Totals box hides Labour and Expected Project Hours. ' +
-        'Per-line labour settings stay saved &mdash; toggle off to restore.' +
-      '</div>' +
+      topStrip +
     '</div>';
   }
 
-  // Project labour rule defaults. M6 dropped the legacy hourlyRate
-  // backfill — old v25/v26 saves load with rates at 0; user re-enters
-  // them in the wizard. typeof checks honour an explicit 0 vs missing field.
-  var projectRule = pricing.projectLabourRule || { mode: 'Hourly', costRate: 0, sellRate: 0 };
-  var projectMode     = (projectRule.mode === 'Flat') ? 'Flat' : 'Hourly';
-  var projectCostRate = (typeof projectRule.costRate === 'number') ? projectRule.costRate : 0;
-  var projectSellRate = (typeof projectRule.sellRate === 'number') ? projectRule.sellRate : 0;
-
-  // Project-level mode selector.
-  var modeControl =
-    '<div class="dhw-control-row">' +
-      '<label><b>Labour mode:</b> ' +
-        '<select onchange="_dhwSetProjectLabourMode(this.value)" style="padding:4px 8px; border:1.5px solid var(--border); border-radius:4px; font:500 12px var(--font-ui);">' +
-          '<option value="Hourly"' + (projectMode === 'Hourly' ? ' selected' : '') + '>Hourly</option>' +
-          '<option value="Flat"'   + (projectMode === 'Flat'   ? ' selected' : '') + '>Flat (per unit)</option>' +
-        '</select>' +
-      '</label>' +
-      '<span style="font:500 11px var(--font-ui); color:var(--text-muted);">How labour is billed: by hours or per unit. Sections can override.</span>' +
-    '</div>';
-
-  // resolveAward with the FULL takeoff object (it reads takeoff.lines
-  // internally). Filter to priced + non-excluded — labour only attaches to
-  // hardware that's actually going on the order.
   var resolved = resolveAward(takeoff, quotes, award) || [];
   var activeLines = resolved.filter(function(r){
     return r.priced && !(award.excluded && award.excluded[r.matchKey]);
@@ -7626,13 +7766,17 @@ function _dhwRenderStep3Labour(takeoff, quotes){
   if(activeLines.length === 0){
     return '<div class="dhw-section">' +
       '<div class="dhw-section-hdr"><span class="dhw-section-hdr-title">Labour</span></div>' +
-      supplyOnlyControl +
-      modeControl +
+      topStrip +
       '<div class="dhw-empty" style="margin-top:12px;">No priced lines yet. Return to Materials (Step 2) to select suppliers and price hardware.</div>' +
     '</div>';
   }
 
-  // Group by manufacturer (same grouping as M3 Pricing).
+  // Column visibility.
+  var show = {};
+  DHW_LABOUR_COLS.forEach(function(c){ show[c.key] = !_dhwLabourHiddenCols[c.key]; });
+  var toolbar = _dhwRenderLabourToolbar();
+
+  // Group by manufacturer.
   var mfrGroups = {};
   activeLines.forEach(function(r){
     var mfr = (r.takeoffLine && r.takeoffLine.manufacturer) || 'OTHER';
@@ -7640,47 +7784,47 @@ function _dhwRenderStep3Labour(takeoff, quotes){
     mfrGroups[mfr].push(r);
   });
 
-  // Per-section render. Each section resolves its own mode (sectionRule
-  // .mode wins over projectMode); per-line costs/sells fall back through
-  // section → project. The table header label ("Hours" vs "Units") flips
-  // per-section to match the resolved mode.
   var sectionLabourRule = pricing.sectionLabourRule || {};
   var sections = [];
-  var labourSubtotal = 0;  // running across all sections, uses resolved rates.
+  var labourSubtotal = 0;
 
   Object.keys(mfrGroups).sort().forEach(function(mfr){
-    var mfrLines   = mfrGroups[mfr];
-    var sectRule   = (sectionLabourRule[mfr] && typeof sectionLabourRule[mfr] === 'object') ? sectionLabourRule[mfr] : null;
-    var sectMode   = sectRule && sectRule.mode === 'Flat' ? 'Flat' :
-                     sectRule && sectRule.mode === 'Hourly' ? 'Hourly' :
-                     projectMode;
-    var sectCost   = (sectRule && typeof sectRule.costRate === 'number') ? sectRule.costRate : projectCostRate;
-    var sectSell   = (sectRule && typeof sectRule.sellRate === 'number') ? sectRule.sellRate : projectSellRate;
-    var modeLabel  = (sectMode === 'Hourly') ? 'per hour' : 'per unit';
-    var qtyHeading = (sectMode === 'Hourly') ? 'Hours'    : 'Units';
+    var mfrLines = mfrGroups[mfr];
+    var sectRule = (sectionLabourRule[mfr] && typeof sectionLabourRule[mfr] === 'object') ? sectionLabourRule[mfr] : null;
+    var sectMode = sectRule && sectRule.mode === 'Flat' ? 'Flat' :
+                   sectRule && sectRule.mode === 'Hourly' ? 'Hourly' :
+                   projectMode;
+    var sectCost = (sectRule && typeof sectRule.costRate === 'number') ? sectRule.costRate : projectCostRate;
+    var sectSell = (sectRule && typeof sectRule.sellRate === 'number') ? sectRule.sellRate : projectSellRate;
+    var hoursHeading = (sectMode === 'Hourly') ? 'Hours' : 'Units';
+    var hasOverride  = !!(sectRule && sectRule.mode);
 
+    // Section header: mode-only pill (no per-section rate inputs).
+    var sFlat   = (sectMode === 'Flat')   ? ' active' : '';
+    var sHourly = (sectMode === 'Hourly') ? ' active' : '';
+    var resetX  = hasOverride ? '<span class="sq-mode-reset" title="Reset to project default" onclick="_dhwSetSectionLabourMode(\'' + _dhwEsc(mfr) + '\',\'\')">&times;</span>' : '';
     var sectionHeader =
       '<div class="dhw-section" style="margin-top:16px;">' +
-        '<div class="dhw-section-hdr">' +
+        '<div class="dhw-section-hdr" style="display:flex; align-items:center;">' +
           '<span class="dhw-section-hdr-title">' + _dhwEsc(mfr) + '</span>' +
-        '</div>' +
-        '<div class="dhw-control-row" style="margin:12px 0;">' +
-          '<label><b>Cost rate (' + modeLabel + '):</b> $ ' +
-            '<input type="number" class="dhw-input" min="0" step="0.01"' +
-              ' value="' + Number(sectCost).toFixed(2) + '"' +
-              ' onchange="_dhwSetSectionLabourCost(\'' + _dhwEsc(mfr) + '\', this.value, \'' + sectMode + '\')"' +
-              ' title="Cost per ' + (sectMode === 'Hourly' ? 'hour' : 'unit') + ' for this manufacturer section.">' +
-          '</label>' +
-          '<label><b>Sell rate (' + modeLabel + '):</b> $ ' +
-            '<input type="number" class="dhw-input" min="0" step="0.01"' +
-              ' value="' + Number(sectSell).toFixed(2) + '"' +
-              ' onchange="_dhwSetSectionLabourSell(\'' + _dhwEsc(mfr) + '\', this.value, \'' + sectMode + '\')"' +
-              ' title="Sell rate per ' + (sectMode === 'Hourly' ? 'hour' : 'unit') + ' for this manufacturer section.">' +
-          '</label>' +
+          '<span class="sq-mode-toggle" style="margin-left:auto;">' +
+            '<button type="button" class="tier-btn' + sFlat   + '" onclick="_dhwSetSectionLabourMode(\'' + _dhwEsc(mfr) + '\',\'Flat\')">Flat</button>' +
+            '<button type="button" class="tier-btn' + sHourly + '" onclick="_dhwSetSectionLabourMode(\'' + _dhwEsc(mfr) + '\',\'Hourly\')">Hourly</button>' +
+          '</span>' + resetX +
         '</div>';
 
-    var headerCells = ['Qty', 'Description', 'Catalog #', 'Finish', qtyHeading, 'Cost rate', 'Sell rate', 'Ext Cost', 'Ext Sell', 'Margin $', 'GM %'];
-    var header = '<tr>' + headerCells.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr>';
+    var headerCells = [];
+    if(show.qty)     headerCells.push('<th class="dhw-num">Qty</th>');
+    if(show.sku)     headerCells.push('<th>SKU</th>');
+    if(show.desc)    headerCells.push('<th>Description</th>');
+    if(show.hours && sectMode === 'Hourly') headerCells.push('<th class="dhw-num">Hours</th>');
+    if(show.cost)    headerCells.push('<th class="dhw-num">Cost</th>');
+    if(show.sell)    headerCells.push('<th class="dhw-num">Sell</th>');
+    if(show.extcost) headerCells.push('<th class="dhw-num">Ext Cost</th>');
+    if(show.extsell) headerCells.push('<th class="dhw-num">Ext Sell</th>');
+    if(show.margin)  headerCells.push('<th class="dhw-num">Margin $</th>');
+    if(show.gm)      headerCells.push('<th class="dhw-num">GM %</th>');
+    var header = '<tr>' + headerCells.join('') + '</tr>';
 
     var trs = mfrLines.map(function(r){
       var line = r.takeoffLine || {};
@@ -7688,48 +7832,45 @@ function _dhwRenderStep3Labour(takeoff, quotes){
       var matQty = (typeof line.qty === 'number') ? line.qty : 0;
       var lineRule = (pricing.lineLabourRule && pricing.lineLabourRule[key]) || {};
 
-      var labourQty = (typeof lineRule.qty      === 'number') ? lineRule.qty      : 0;
       var lineCost  = (typeof lineRule.costRate === 'number') ? lineRule.costRate : sectCost;
       var lineSell  = (typeof lineRule.sellRate === 'number') ? lineRule.sellRate : sectSell;
+      // Hourly: ext = material qty x per-unit hours x rate. Flat: ext = material qty x rate.
+      var lineHours = (typeof lineRule.qty === 'number') ? lineRule.qty : 0;
+      var labourQty = (sectMode === 'Hourly') ? (matQty * lineHours) : matQty;
 
       var extCost   = labourQty * lineCost;
       var extSell   = labourQty * lineSell;
       var margin    = extSell - extCost;
       var marginPct = extCost > 0 ? (margin / extCost * 100) : 0;
-
       labourSubtotal += extSell;
 
       var qtyInput = '<input type="number" class="dhw-input-inline" style="width:70px;" min="0" step="0.25"' +
-        ' value="' + (typeof lineRule.qty === 'number' ? lineRule.qty : '') + '"' +
-        ' placeholder="0"' +
+        ' value="' + (typeof lineRule.qty === 'number' ? lineRule.qty : '') + '" placeholder="0"' +
         ' onchange="_dhwSetLineLabourQty(\'' + _dhwEsc(key) + '\', this.value)"' +
-        ' title="Labour ' + (sectMode === 'Hourly' ? 'hours' : 'units') + ' for this line. Decoupled from material qty.">';
-
+        ' title="Labour hours for this line. Decoupled from material qty.">';
       var costInput = '<input type="number" class="dhw-input-inline" style="width:80px;" min="0" step="0.01"' +
         ' value="' + (typeof lineRule.costRate === 'number' ? Number(lineRule.costRate).toFixed(2) : '') + '"' +
         ' placeholder="' + Number(sectCost).toFixed(2) + '"' +
         ' onchange="_dhwSetLineLabourCost(\'' + _dhwEsc(key) + '\', this.value)"' +
         ' title="Override section cost rate for this line. Blank = use section default.">';
-
       var sellInput = '<input type="number" class="dhw-input-inline" style="width:80px;" min="0" step="0.01"' +
         ' value="' + (typeof lineRule.sellRate === 'number' ? Number(lineRule.sellRate).toFixed(2) : '') + '"' +
         ' placeholder="' + Number(sectSell).toFixed(2) + '"' +
         ' onchange="_dhwSetLineLabourSell(\'' + _dhwEsc(key) + '\', this.value)"' +
         ' title="Override section sell rate for this line. Blank = use section default.">';
 
-      return '<tr>' +
-        '<td class="dhw-num">' + matQty + '</td>' +
-        '<td>' + _dhwEsc(line.description   || '') + '</td>' +
-        '<td>' + _dhwEsc(line.catalogNumber || '') + '</td>' +
-        '<td>' + _dhwEsc(line.finish        || '') + '</td>' +
-        '<td class="dhw-num">' + qtyInput  + '</td>' +
-        '<td class="dhw-num">' + costInput + '</td>' +
-        '<td class="dhw-num">' + sellInput + '</td>' +
-        '<td class="dhw-num">' + _dhwFmtMoney(extCost) + '</td>' +
-        '<td class="dhw-num">' + _dhwFmtMoney(extSell) + '</td>' +
-        '<td class="dhw-num">' + _dhwFmtMoney(margin)  + '</td>' +
-        '<td class="dhw-num">' + Number(marginPct).toFixed(1) + '%</td>' +
-      '</tr>';
+      var cells = [];
+      if(show.qty)     cells.push('<td class="dhw-num">' + matQty + '</td>');
+      if(show.sku)     cells.push('<td>' + _dhwEsc(line.catalogNumber || '') + '</td>');
+      if(show.desc)    cells.push('<td>' + _dhwEsc(line.description || '') + '</td>');
+      if(show.hours && sectMode === 'Hourly') cells.push('<td class="dhw-num">' + qtyInput + '</td>');
+      if(show.cost)    cells.push('<td class="dhw-num">' + costInput + '</td>');
+      if(show.sell)    cells.push('<td class="dhw-num">' + sellInput + '</td>');
+      if(show.extcost) cells.push('<td class="dhw-num">' + _dhwFmtMoney(extCost) + '</td>');
+      if(show.extsell) cells.push('<td class="dhw-num">' + _dhwFmtMoney(extSell) + '</td>');
+      if(show.margin)  cells.push('<td class="dhw-num">' + _dhwFmtMoney(margin) + '</td>');
+      if(show.gm)      cells.push('<td class="dhw-num">' + Number(marginPct).toFixed(1) + '%</td>');
+      return '<tr>' + cells.join('') + '</tr>';
     }).join('');
 
     sections.push(
@@ -7746,7 +7887,7 @@ function _dhwRenderStep3Labour(takeoff, quotes){
       '<b>Labour Sub-Total:</b> ' + _dhwFmtMoney(labourSubtotal) +
     '</div>';
 
-  return supplyOnlyControl + modeControl + sections.join('') + subtotalRow;
+  return topStrip + toolbar + sections.join('') + subtotalRow;
 }
 
 // W4 setter _dhwSetLabourDisplay removed in W6. The (repurposed)
@@ -7878,9 +8019,10 @@ function _dhwRenderStep4Summary(takeoff, quotes){
       if(!isExcluded && !isSCSummary && !supplyOnly && r.priced){
         // Labour hierarchy: project rule → section rule → per-line rule.
         // Rates carry from upper tiers when not overridden; qty is per-line.
-        var projectRule = pricing.projectLabourRule || { mode:'Hourly', costRate:0, sellRate:0 };
-        var projectCostRate = (typeof projectRule.costRate === 'number') ? projectRule.costRate : 0;
-        var projectSellRate = (typeof projectRule.sellRate === 'number') ? projectRule.sellRate : 0;
+        var projectRule = pricing.projectLabourRule || {};
+        var _sumPR = _dhwResolveProjectRates(projectRule);
+        var projectCostRate = _sumPR.costRate;
+        var projectSellRate = _sumPR.sellRate;
 
         var sectionRule = (pricing.sectionLabourRule && pricing.sectionLabourRule[mfr]) || null;
         var sectionCostRate = sectionRule
@@ -15956,7 +16098,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 27,             // generation tag — v27 DHW Revamp M6: legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
+      version: 28,             // generation tag — v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -16174,7 +16316,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 27,            // v27 DHW Revamp M6: legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 28,            // v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -18960,7 +19102,8 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
   // DHW Revamp M6: labour math reads the M1+ shape (projectLabourRule +
   // sectionLabourRule + lineLabourRule). Legacy hourlyRate/lineInstallHours
   // were dropped from save shape in v27.
-  var projectRule    = pricing.projectLabourRule || { mode: 'Hourly', costRate: 0, sellRate: 0 };
+  var projectRule    = pricing.projectLabourRule || {};
+  var _pdfPR         = _dhwResolveProjectRates(projectRule);
   var sectionRules   = pricing.sectionLabourRule || {};
   var lineRules      = pricing.lineLabourRule    || {};
   var acOverlapPill  = award.acOverlapPill       || {};
@@ -19013,7 +19156,7 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
     var labourSellRate =
       (lineRule    && typeof lineRule.sellRate    === 'number') ? lineRule.sellRate    :
       (sectionRule && typeof sectionRule.sellRate === 'number') ? sectionRule.sellRate :
-      (typeof projectRule.sellRate === 'number') ? projectRule.sellRate : 0;
+      (typeof _pdfPR.sellRate === 'number') ? _pdfPR.sellRate : 0;
     var hasLabour = !supplyOnly && labourQty > 0 && labourSellRate > 0;
     var labour    = hasLabour ? labourQty * labourSellRate : 0;
 
