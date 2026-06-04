@@ -52,6 +52,11 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 BRIVO_EE_SHEET_BRIVO     = 'Access Reseller - NA1 L3'
 BRIVO_EE_SHEET_EAGLE_EYE = 'Video Reseller - NA1 L3'
 
+# Hanwha Vision America pricelist. Single sheet, repeated grouping-band
+# header rows ("8K Cameras", "Item #", etc.) interleave the data and are
+# skipped. Reseller cost = the 42%-off column (col 8); = msrp * 0.58.
+HANWHA_SHEET = 'HVA Pricelist'
+
 # Effective date stamped into the merged book. Brivo+EE is the most-recent
 # vendor (2026-04-01); DoorBird is 2026-01-01, Luxer is 2024-11-01.
 PRICE_LIST_DATE = '2026-04-01'
@@ -121,6 +126,48 @@ def parse_eagle_eye(xlsx_path):
 
 def parse_brivo(xlsx_path):
     return _parse_brivo_ee_sheet(xlsx_path, BRIVO_EE_SHEET_BRIVO)
+
+
+def parse_hanwha(xlsx_path):
+    """Hanwha Vision America pricelist adapter ("HVA Pricelist" sheet).
+    Columns (1-indexed): B=Category, C=Item#, D=ItemType, E=Notes,
+    F=Description, G=MSRP(CAD), H=42%-off reseller cost, I=EAN.
+    Real header is row 2; row 1 is a banner. Repeated band-header rows
+    (Category text in B, no price in G/H — and re-printed "Item #" rows)
+    are skipped. unit_cost = col H (msrp * 0.58). No suffix filter: the
+    -1/-12/-36/-60 SKUs present here (TMIS-1, TA-1, etc.) are real
+    hardware; subscriptions are excluded by sheet scope.
+    """
+    wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+    if HANWHA_SHEET not in wb.sheetnames:
+        raise SystemExit('[err] sheet "%s" not in %s' % (HANWHA_SHEET, xlsx_path))
+    ws = wb[HANWHA_SHEET]
+    items = {}
+    for r in range(1, ws.max_row + 1):
+        c = ws.cell(row=r, column=3).value          # Item# (SKU)
+        f = ws.cell(row=r, column=6).value          # Description
+        g = _num(ws.cell(row=r, column=7).value)    # MSRP(CAD) → msrp
+        h = _num(ws.cell(row=r, column=8).value)    # 42%-off → unit_cost
+
+        if c is None:
+            continue
+        sku = str(c).strip()
+        if not sku or sku == 'Item #':
+            continue
+        if g is None and h is None:
+            continue
+
+        item = {}
+        if h is not None:
+            item['unit_cost'] = round(float(h), 2)
+        if g is not None:
+            item['msrp'] = round(float(g), 2)
+        if isinstance(f, str) and f.strip():
+            note = f.strip()
+            item['notes'] = (note[:300] + '…') if len(note) > 300 else note
+
+        items[sku] = item
+    return items
 
 
 def _parse_manual_csv(csv_path, vendor_label):
@@ -217,6 +264,11 @@ def main():
         help='Brivo Credentials manual-extract CSV (columns: sku, description, msrp, unit_cost, notes).',
     )
     parser.add_argument(
+        '--hanwha',
+        default=_default_path('source-data', 'April 2026 Hanwha Vision Pricelist.xlsx'),
+        help='Hanwha Vision America pricelist xlsx ("HVA Pricelist" sheet; cost = 42%%-off column).',
+    )
+    parser.add_argument(
         '--out',
         default=_default_path('source-data', 'pricingBook.json'),
         help='Output pricingBook.json path.',
@@ -236,6 +288,7 @@ def main():
         ('doorbird',          parse_doorbird,          args.doorbird),
         ('luxer',             parse_luxer,             args.luxer),
         ('brivo_credentials', parse_brivo_credentials, args.brivo_credentials),
+        ('hanwha',            parse_hanwha,            args.hanwha),
     ]:
         if not os.path.exists(src):
             print('[warn] skipping %s: %s not found' % (vendor, src))
@@ -261,7 +314,7 @@ def main():
         'currency':             'CAD',
         'updated':              PRICE_LIST_DATE,
         'notes': (
-            'Merged book: Brivo (Access + Credentials) + Eagle Eye + DoorBird + Luxer One — effective '
+            'Merged book: Brivo (Access + Credentials) + Eagle Eye + Hanwha Vision + DoorBird + Luxer One — effective '
             + PRICE_LIST_DATE + '. unit_cost = vendor reseller/dealer price where '
             'available; msrp = list. labor_rate_per_hour is a PLACEHOLDER ('
             + str(LABOR_RATE_PLACEHOLDER) + '). DoorBird + Luxer One have no '
