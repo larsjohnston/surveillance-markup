@@ -2579,7 +2579,7 @@ input[type="number"]::-webkit-outer-spin-button {
             </div>
             <div class="brand-name">Door Schedule</div>
           </div>
-          <div class="brand-tile tier1-tile" data-brand="hw-schedule" onclick="openHardwareTakeoffPicker()" title="Import the Allegion hardware takeoff CSV — opens the pricing wizard">
+          <div class="brand-tile tier1-tile" data-brand="hw-schedule" onclick="_dhwHardwareScheduleTileClick()" title="Open the Door Hardware pricing wizard (imports a takeoff first if none is loaded)">
             <div class="brand-logo brand-hwa" style="background:linear-gradient(135deg,#15803d 0%,#14532d 100%);">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M9 4v16"/></svg>
             </div>
@@ -3547,6 +3547,7 @@ input[type="number"]::-webkit-outer-spin-button {
     <div class="dhw-header">
       <h3>Door Hardware</h3>
       <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+        <button class="btn btn-dark" onclick="openHardwareTakeoffPicker()" title="Re-import the hardware takeoff — replaces the current schedule (warns before clearing quotes/awards/overrides)">Re-import schedule</button>
         <button class="btn btn-blue" onclick="exportHardwareRfq()" title="Export the RFQ CSV from the current takeoff">Export RFQ</button>
         <button class="dhw-close-x" onclick="closeDoorHardwareModal()" title="Close" aria-label="Close">&times;</button>
       </div>
@@ -5796,6 +5797,15 @@ function _dhwOpenFilePicker(accept, onFile){
 }
 
 // File → Import Hardware Takeoff (CSV)
+// Hardware Schedule Tier-1 tile: stateful. Takeoff present -> open the wizard
+// directly; otherwise open the import picker (import auto-opens the wizard).
+// Re-importing/replacing the schedule is done from the wizard header button.
+function _dhwHardwareScheduleTileClick(){
+  var t = doorHardware.importedTakeoff;
+  var hasTakeoff = !!(t && t.lines && t.lines.length > 0);
+  if(hasTakeoff) openDoorHardwareModal();
+  else openHardwareTakeoffPicker();
+}
 function openHardwareTakeoffPicker(){
   _dhwOpenFilePicker('.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', _handleHardwareTakeoffFile);
 }
@@ -6547,7 +6557,7 @@ function openDoorHardwareModal(){
     showHardwareError(
       'Import a hardware schedule first',
       'The Door Hardware wizard requires a takeoff before pricing.',
-      ['Go to the Door Hardware home canvas (key icon in the left rail) and use row 2 to import a hardware schedule CSV or XLSX.']
+      ['Open Hardware mode in the left pane and click the Hardware Schedule tile to import a takeoff CSV or XLSX.']
     );
     return;
   }
