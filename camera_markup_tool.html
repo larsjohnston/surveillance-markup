@@ -18161,7 +18161,7 @@ var RISER_MAX_BAND_PT   = 120;  // cap so a small project doesn't sprawl
 // baseline +6pt below icon bottom, text descent ~2pt → ~32pt minimum
 // between rail lines. M2 bumped from 16pt to 32pt after static analysis
 // caught the prior overlap; further eyeball polish can adjust.
-var RISER_MAX_DEVICES_PER_ROW = 15;
+var RISER_MAX_DEVICES_PER_ROW = 8;
 var RISER_RAIL_PADDING        = 24;   // pt of horizontal margin inside each rail
 var RISER_ROW_HEIGHT_EXTRA    = 32;   // pt added per row beyond the first
 var RISER_LABEL_W       = 64;   // left column reserved for the floor name
@@ -18273,6 +18273,14 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
     doc.text('(Head-end not placed)', x0 + w/2, y0 + headendStripH/2 + 3, {align:'center'});
   }
 
+  // Zebra shading — tint every other band so floors read as distinct rows.
+  // Drawn first (background); dividers, trunk, and band content paint on top.
+  var shadeY = bandsY0;
+  model.zones.forEach(function(zone, zi){
+    if(zi % 2 === 1){ doc.setFillColor(248, 249, 251); doc.rect(x0, shadeY, w, bandHeights[zi], 'F'); }
+    shadeY += bandHeights[zi];
+  });
+
   // First pass — band divider lines, floor labels, and the continuous trunk.
   // Hairline dividers between bands (subtle, per brief).
   doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3);
@@ -18312,6 +18320,25 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
 // same band, the camera rail occupies the upper sub-region and an AC rail
 // occupies the lower sub-region with a hairline separator between them.
 // Cams-only and AC-only bands keep a single rail centered at midY.
+// Real head-end gear placed on a given page, grouped by SKU. Used by BOTH the
+// riser diagram cluster and the equipment schedule so they reflect the actual
+// CMVRs + network switches on the canvas (not camera-count-derived generics).
+// Returns { cmvr:[{sku,qty,label}], sw:[{sku,qty,label}] } in placement order.
+function _riserZoneGear(pageIdx){
+  var cmvr = [], sw = [], cMap = {}, sMap = {};
+  (typeof headends !== 'undefined' ? headends : []).forEach(function(he){
+    if(!he || he.page !== pageIdx || !he.sku) return;
+    if(!cMap[he.sku]){ cMap[he.sku] = { sku: he.sku, qty: 0, label: he.label || '' }; cmvr.push(cMap[he.sku]); }
+    cMap[he.sku].qty++;
+  });
+  (typeof switches !== 'undefined' ? switches : []).forEach(function(s){
+    if(!s || s.page !== pageIdx || !s.sku) return;
+    if(!sMap[s.sku]){ sMap[s.sku] = { sku: s.sku, qty: 0, label: s.label || '' }; sw.push(sMap[s.sku]); }
+    sMap[s.sku].qty++;
+  });
+  return { cmvr: cmvr, sw: sw };
+}
+
 function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
   var midY = y0 + h / 2;
 
@@ -18337,35 +18364,45 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
   var acRegionTop    = isMixed ? separatorY              : y0;
   var acRailY        = isMixed ? (acRegionTop + (h - camRegionH) / 2) : midY;
 
-  if(zone.hasHeadend){
-    // Compact head-end cluster: NVR, one switch (with "× N" badge if multi-
-    // switch), UPS. Anchored to the camera rail's vertical center (camRailY)
-    // so it sits in the upper sub-region of mixed bands — keeps the cluster
-    // and the camera rail on the same visual lane, leaving the AC region
-    // visually separate. In cams-only / AC-only bands camRailY === midY so
-    // the cluster stays centered as it did before Pass N.
-    var nvrW = 36, swW = 44, upsW = 30, gap = 6, hH = 20;
-    var multiSw = model.switchCount > 1;
-    var multW = multiSw ? 16 : 0;
-    var clusterW = nvrW + gap + swW + multW + gap + upsW;
-    var clusterX = trunkX - clusterW - 4;
-    if(clusterX < x0 + RISER_LABEL_W + 4) clusterX = x0 + RISER_LABEL_W + 4;
-    var clusterY = camRailY - hH/2;
+  // Head-end cluster — reflects the ACTUAL CMVR(s) + network switch(es) placed
+  // on this floor's canvas, grouped by SKU with a "×N" suffix, not camera-count
+  // derived generics. UPS shown whenever a CMVR head-end is on the floor.
+  // Anchored to the camera rail's vertical center (camRailY); box widths shrink
+  // to fit the head-end footprint as the gear count grows.
+  var gear = _riserZoneGear(zone.pageIdx);
+  if(zone.hasHeadend || gear.cmvr.length || gear.sw.length){
+    var boxes = [];
+    gear.cmvr.forEach(function(g){
+      var c = CMVR_CATALOG[g.sku];
+      boxes.push({ kind:'cmvr', ports:0, top:'CMVR', bot:(c ? c.code : '') + (g.qty > 1 ? ' x'+g.qty : '') });
+    });
+    if(boxes.length === 0 && zone.hasHeadend) boxes.push({ kind:'cmvr', ports:0, top:'CMVR', bot:'' });
+    gear.sw.forEach(function(g){
+      var s = SWITCH_CATALOG[g.sku];
+      boxes.push({ kind:'sw', ports:(s ? s.ports : 8), top:'SW', bot:(s ? s.code : '') + (g.qty > 1 ? ' x'+g.qty : '') });
+    });
+    if(zone.hasHeadend || gear.cmvr.length) boxes.push({ kind:'ups', ports:0, top:'UPS', bot:'' });
 
-    drawRiserNvrBox(doc, clusterX, clusterY, nvrW, hH, model.nvrChannels);
-    var hx = clusterX + nvrW + gap;
-    drawRiserSwitchBox(doc, hx, clusterY, swW, hH, model.ports);
-    if(multiSw){
-      doc.setFont('courier','bold'); doc.setFontSize(7);
-      doc.setTextColor(40, 40, 60);
-      doc.text('× ' + model.switchCount, hx + swW + 2, clusterY + hH/2 + 2);
-    }
-    hx += swW + multW + gap;
-    drawRiserUpsBox(doc, hx, clusterY, upsW, hH);
+    var hH = 18, gap = 5;
+    var nB = boxes.length;
+    var availW = RISER_HEAD_W - 8;
+    var boxW = Math.max(22, Math.min(46, (availW - gap * (nB - 1)) / nB));
+    var clusterW = boxW * nB + gap * (nB - 1);
+    var clusterX = trunkX - clusterW - 4;
+    if(clusterX < x0 + RISER_LABEL_W + 2) clusterX = x0 + RISER_LABEL_W + 2;
+    var clusterY = camRailY - hH / 2;
+
+    var hx = clusterX;
+    boxes.forEach(function(b){
+      if(b.kind === 'cmvr')    drawRiserNvrBox(doc, hx, clusterY, boxW, hH, b.top, b.bot);
+      else if(b.kind === 'sw') drawRiserSwitchBox(doc, hx, clusterY, boxW, hH, b.ports, b.top, b.bot);
+      else                     drawRiserUpsBox(doc, hx, clusterY, boxW, hH);
+      hx += boxW + gap;
+    });
 
     // Connector from cluster's right edge to the trunk
     doc.setDrawColor(31, 41, 55); doc.setLineWidth(0.6);
-    doc.line(hx + upsW, camRailY, trunkX, camRailY);
+    doc.line(clusterX + clusterW, camRailY, trunkX, camRailY);
   }
 
   // Pass N M2: hairline separator between camera region and AC region in
@@ -18506,9 +18543,13 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
       var rowAcSpacing = rowAcAvail / (rowN_ac + 1);
       var rowAcIconSize = Math.min(11, Math.max(7, rowAcSpacing * 0.55));
       var acBandBot = isMixed ? (y0 + h) : (y0 + h);
+      // Stagger labels (alternate baseline) on dense rows, mirroring the camera
+      // rail — keeps AC / smart-apt labels from colliding horizontally.
+      var acStagger = rowN_ac >= 4;
+      var acBottomMargin = acStagger ? 16 : 8;
       var rowAcIconY = (acRailRows > 1)
         ? (rowAcRailY + 14)
-        : Math.min(rowAcRailY + 14, acBandBot - rowAcIconSize/2 - 8);
+        : Math.min(rowAcRailY + 14, acBandBot - rowAcIconSize/2 - acBottomMargin);
 
       rowEntries.forEach(function(entry, i){
         var dev  = entry.dev;
@@ -18525,6 +18566,11 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
         else if(kind === 'parcel')   drawRiserParcelIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
         else if(kind === 'mailbox')  drawRiserMailboxIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
         var labelBaseline = rowAcIconY + rowAcIconSize/2 + 6;
+        if(acStagger && (i % 2 === 1)){
+          labelBaseline += 8;
+          doc.setDrawColor(159, 165, 175); doc.setLineWidth(0.3);
+          doc.line(cx, rowAcIconY + rowAcIconSize/2 + 1, cx, labelBaseline - 4);
+        }
         doc.setFont('courier','bold'); doc.setFontSize(5.5);
         doc.setTextColor(40, 40, 60);
         var lab = dev.label || '';
@@ -18634,7 +18680,7 @@ function drawRiserMailboxIcon(doc, dev, cx, cy, size){
   doc.line(cx - rw/2 + 0.5, cy, cx + rw/2 - 0.5, cy);
 }
 
-function drawRiserNvrBox(doc, x, y, w, h, channels){
+function drawRiserNvrBox(doc, x, y, w, h, topLabel, botLabel){
   doc.setLineWidth(0.6); doc.setDrawColor(40, 40, 60); doc.setFillColor(255, 255, 255);
   doc.rect(x, y, w, h, 'FD');
   doc.setDrawColor(180, 180, 200); doc.setLineWidth(0.3);
@@ -18643,27 +18689,25 @@ function drawRiserNvrBox(doc, x, y, w, h, channels){
     if(ry < y + h - 2) doc.line(x + 3, ry, x + w - 3, ry);
   }
   doc.setFillColor(40, 200, 40); doc.circle(x + w - 4, y + 5, 1, 'F');
-  doc.setFont('courier','bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 60);
-  doc.text('NVR', x + w/2, y - 3, {align:'center'});
-  doc.setFontSize(6);
-  doc.text(channels + 'ch', x + w/2, y + h + 7, {align:'center'});
+  doc.setFont('courier','bold'); doc.setFontSize(6.5); doc.setTextColor(40, 40, 60);
+  doc.text(topLabel || 'CMVR', x + w/2, y - 3, {align:'center'});
+  if(botLabel){ doc.setFontSize(5.5); doc.text(botLabel, x + w/2, y + h + 7, {align:'center'}); }
 }
 
-function drawRiserSwitchBox(doc, x, y, w, h, ports){
+function drawRiserSwitchBox(doc, x, y, w, h, ports, topLabel, botLabel){
   doc.setLineWidth(0.6); doc.setDrawColor(40, 40, 60); doc.setFillColor(255, 255, 255);
   doc.rect(x, y, w, h, 'FD');
   // port-array dots along the bottom edge
-  var dotCount = Math.min(ports, 12);
+  var dotCount = Math.max(1, Math.min(ports || 8, 12));
   var totalDotW = w - 6;
   var dotW = totalDotW / dotCount;
   doc.setFillColor(80, 80, 100);
   for(var i=0; i<dotCount; i++){
     doc.rect(x + 3 + i * dotW + dotW * 0.2, y + h - 3, dotW * 0.6, 1.5, 'F');
   }
-  doc.setFont('courier','bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 60);
-  doc.text('SWITCH', x + w/2, y - 3, {align:'center'});
-  doc.setFontSize(6);
-  doc.text(ports + '-port', x + w/2, y + h + 7, {align:'center'});
+  doc.setFont('courier','bold'); doc.setFontSize(6.5); doc.setTextColor(40, 40, 60);
+  doc.text(topLabel || 'SWITCH', x + w/2, y - 3, {align:'center'});
+  if(botLabel){ doc.setFontSize(5.5); doc.text(botLabel, x + w/2, y + h + 7, {align:'center'}); }
 }
 
 function drawRiserUpsBox(doc, x, y, w, h){
@@ -18772,12 +18816,25 @@ function buildRiserScheduleRows(model){
     // parcel SKU, or mailbox brand+cols×rows. ID column uses the first
     // device's label; MODEL column includes `× N` suffix when grouped.
     pushSmartAptScheduleRows(rows, zone);
-    if(zone.hasHeadend){
-      rows.push({type:'equip', id:'NVR-1', model: model.nvrChannels + '-Ch NVR'});
-      for(var i = 0; i < model.switchCount; i++){
-        rows.push({type:'equip', id:'SW-'+(i+1), model: model.ports + '-pt PoE+'});
+    var zGear = _riserZoneGear(zone.pageIdx);
+    if(zone.hasHeadend || zGear.cmvr.length || zGear.sw.length){
+      // Real placed CMVR(s) + network switch(es) for this floor (grouped by
+      // SKU), mirroring the diagram cluster — true canvas equipment, not
+      // camera-count-derived generics. UPS shown when a CMVR head-end exists.
+      zGear.cmvr.forEach(function(g){
+        var c = CMVR_CATALOG[g.sku];
+        rows.push({type:'equip', id:(g.label || 'CMVR') + (g.qty > 1 ? ' ×'+g.qty : ''), model:(c ? c.model : g.sku)});
+      });
+      if(zGear.cmvr.length === 0 && zone.hasHeadend){
+        rows.push({type:'equip', id:'NVR-1', model: model.nvrChannels + '-Ch NVR'});
       }
-      rows.push({type:'equip', id:'UPS-1', model:'Rack UPS'});
+      zGear.sw.forEach(function(g){
+        var s = SWITCH_CATALOG[g.sku];
+        rows.push({type:'equip', id:(g.label || 'SW') + (g.qty > 1 ? ' ×'+g.qty : ''), model:(s ? s.model + ' (' + s.ports + '-pt)' : g.sku)});
+      });
+      if(zone.hasHeadend || zGear.cmvr.length){
+        rows.push({type:'equip', id:'UPS-1', model:'Rack UPS'});
+      }
     }
   });
 
