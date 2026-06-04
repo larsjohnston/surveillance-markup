@@ -3246,7 +3246,6 @@ input[type="number"]::-webkit-outer-spin-button {
     <div class="export-opts">
       <label><input type="checkbox" id="export-cover" oninput="updateExportAllDisabledHint()" checked> Cover Page</label>
       <label><input type="checkbox" id="export-bom"   oninput="updateExportAllDisabledHint()" checked> Bill of Materials</label>
-      <label><input type="checkbox" id="export-takeoff" oninput="updateExportAllDisabledHint()" checked> Take-Off Page</label>
       <label><input type="checkbox" id="export-riser" oninput="updateExportAllDisabledHint()" checked> Riser Diagram</label>
       <!-- Hardware-Module M5: Hardware Schedule section toggle. Off by default
            until the user opts in. Drives projectInfo.proposalSections.hardware
@@ -16950,7 +16949,6 @@ function openExportModal(){
   var sec = projectInfo.proposalSections || {};
   document.getElementById('export-cover').checked   = sec.cover   !== false;
   document.getElementById('export-bom').checked     = sec.bom     !== false;
-  document.getElementById('export-takeoff').checked = sec.takeOff !== false;
   document.getElementById('export-riser').checked   = sec.riser   !== false;
   document.getElementById('export-plans').checked   = sec.plans   !== false;
   // Hardware-Module M5: hardware section + 2x2 presentation controls. The
@@ -16978,7 +16976,7 @@ function closeExportModal(){
 // Hardware-Module M5: include export-hardware in the anyOn check so a
 // hardware-only export doesn't falsely trip the "all off" hint.
 function updateExportAllDisabledHint(){
-  var anyOn = ['export-cover','export-bom','export-takeoff','export-riser','export-hardware','export-plans']
+  var anyOn = ['export-cover','export-bom','export-riser','export-hardware','export-plans']
     .some(function(id){
       var el = document.getElementById(id);
       return el && el.checked;
@@ -17032,7 +17030,6 @@ async function runExportPDF(){
   var opts = {
     cover:       document.getElementById('export-cover').checked,
     bom:         document.getElementById('export-bom').checked,
-    takeOff:     document.getElementById('export-takeoff').checked,
     riser:       document.getElementById('export-riser').checked,
     plans:       document.getElementById('export-plans').checked,
     currentOnly: document.getElementById('exp-current-only').checked,
@@ -17067,7 +17064,6 @@ async function runExportPDF(){
   projectInfo.proposalSections = {
     cover:    opts.cover,
     bom:      opts.bom,
-    takeOff:  opts.takeOff,
     riser:    opts.riser,
     hardware: opts.hardware,
     plans:    opts.plans
@@ -17117,16 +17113,10 @@ async function runExportPDF(){
     drawProposalBOM(doc, pageW, pageH);
   }
 
-  // Take-Off Page. Gated on (a) the export-modal toggle (M3) AND (b) the
-  // empty-project content gate (M2). Toggle off \u2192 skip entirely; toggle on
-  // but empty project \u2192 also skip. Toggle on with any content \u2192 render.
-  var takeOffHasContent = (cameras.length > 0 || acDevices.length > 0
-                        || smartApartment.length > 0 || suites.length > 0);
-  if(opts.takeOff && takeOffHasContent){
-    showProgress('Composing Take-Off\u2026',20);
-    startSection('letter','portrait');
-    drawTakeOffPage(doc, pageW, pageH);
-  }
+  // Take-Off Page removed from the customer proposal (it's an internal
+  // procurement / estimator schedule). drawTakeOffPage + buildTakeOffData are
+  // retained as dead code for easy restore; the export-modal toggle, opts read,
+  // and proposalSections.takeOff write were removed.
 
   // Riser Diagram (one or more pages \u2014 overflows continue the schedule).
   // Pass N: gate matches BOM \u2014 AC-only projects produce per-band AC rails +
