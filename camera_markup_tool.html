@@ -2065,6 +2065,8 @@ input[type="number"]::-webkit-outer-spin-button {
 #panel[data-mode="parcel"]   .panel-body[data-mode-section="parcel"]   { display:flex; }
 #panel[data-mode="mailbox"]  .panel-body[data-mode-section="mailbox"]  { display:flex; }
 #panel[data-mode="suite"]    .panel-body[data-mode-section="suite"]    { display:flex; }
+#panel[data-mode="hardware"] .panel-body[data-mode-section="hardware"] { display:flex; }
+.tier1-tile.hw-tile1-disabled { opacity:.45; cursor:default; pointer-events:none; }
 /* Hardware-Module M2 tidy: the panel's bottom status strip ("Ready" /
    "Scale: ...") is meaningless on the dashboard (no canvas state to
    report). Hide it in hardware mode only — canvas modes are unaffected. */
@@ -2557,6 +2559,33 @@ input[type="number"]::-webkit-outer-spin-button {
          removed. Selection/deletion of cameras happens on the canvas
          (click + Del key / right-click menu). -->
     </div><!-- /panel-body cameras -->
+
+    <div class="panel-body" data-mode-section="hardware">
+      <div class="phdr">Door Hardware</div>
+      <div id="hw-controls">
+        <!-- Hardware-Module relocate: the former 6-tile #hardware-home overlay
+             is retired. Door Hardware now lives in the left pane as two Tier-1
+             action tiles (Import Door Schedule = inactive placeholder; Import
+             Hardware Schedule = active, auto-opens the wizard on successful CSV
+             import). RFQ export + Add-to-Proposal moved into the wizard. These
+             tiles are terminal actions, NOT a select-to-place drill-down, so
+             there is no Tier 2/3 here by design. -->
+        <div id="hw-tier1-grid">
+          <div class="brand-tile tier1-tile hw-tile1-disabled" data-brand="door-schedule" title="Door schedule import — coming soon">
+            <div class="brand-logo brand-custom">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4"/></svg>
+            </div>
+            <div class="brand-name">Door Schedule</div>
+          </div>
+          <div class="brand-tile tier1-tile" data-brand="hw-schedule" onclick="openHardwareTakeoffPicker()" title="Import the Allegion hardware takeoff CSV — opens the pricing wizard">
+            <div class="brand-logo brand-hwa" style="background:linear-gradient(135deg,#15803d 0%,#14532d 100%);">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M9 4v16"/></svg>
+            </div>
+            <div class="brand-name">Hardware Schedule</div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /panel-body hardware -->
 
     <div class="panel-body" data-mode-section="access">
       <div class="phdr">AC Manufacturers</div>
@@ -3515,7 +3544,10 @@ input[type="number"]::-webkit-outer-spin-button {
     <!-- SQ + DHW parity P1: shared header band mirrors SQ's #bom-header. -->
     <div class="dhw-header">
       <h3>Door Hardware</h3>
-      <button class="dhw-close-x" onclick="closeDoorHardwareModal()" title="Close" aria-label="Close">&times;</button>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+        <button class="btn btn-blue" onclick="exportHardwareRfq()" title="Export the RFQ CSV from the current takeoff">Export RFQ</button>
+        <button class="dhw-close-x" onclick="closeDoorHardwareModal()" title="Close" aria-label="Close">&times;</button>
+      </div>
     </div>
     <div id="dhw-modal-body"></div>
     <div id="dhw-wizard-nav" class="dhw-wizard-nav"></div>
@@ -5750,12 +5782,43 @@ function _dhwOpenFilePicker(accept, onFile){
 
 // File → Import Hardware Takeoff (CSV)
 function openHardwareTakeoffPicker(){
-  _dhwOpenFilePicker('.csv,text/csv', _handleHardwareTakeoffFile);
+  _dhwOpenFilePicker('.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', _handleHardwareTakeoffFile);
 }
 function _handleHardwareTakeoffFile(file){
+  var isXlsx = file.name && /\.xlsx$/i.test(file.name);
   var reader = new FileReader();
   reader.onload = function(ev){
-    var text = ev.target && ev.target.result;
+    var result = ev.target && ev.target.result;
+    var text;
+    if(isXlsx){
+      if(typeof XLSX === 'undefined'){
+        showHardwareError(
+          'SheetJS not loaded',
+          'The Excel parsing library (lib/xlsx.full.min.js) failed to load.',
+          ['Re-run setup-windows.bat (or setup-mac-linux.sh) to re-fetch the library, then reload the page.']
+        );
+        return;
+      }
+      try {
+        var data = new Uint8Array(result);
+        var workbook = XLSX.read(data, { type: 'array' });
+        var sheetName = workbook.SheetNames[0];
+        if(!sheetName){
+          showHardwareError('Empty workbook', 'The Excel file has no sheets.', []);
+          return;
+        }
+        text = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+      } catch(err){
+        showHardwareError(
+          "Couldn't parse the Excel file",
+          'SheetJS parse error.',
+          [String(err && err.message || err)]
+        );
+        return;
+      }
+    } else {
+      text = String(result || '');
+    }
     var parsed;
     try { parsed = parseHardwareCSV(String(text || '')); }
     catch(parseErr){
@@ -5812,9 +5875,11 @@ function _handleHardwareTakeoffFile(file){
     doorHardware.importedTakeoff = { header: parsed.header, lines: parsed.lines };
     markDirty();
     _dhwRefreshManagerIfOpen();
-    _dhwRefreshHomeIfVisible();
     var projName = (parsed.header && parsed.header.projectName) || 'unnamed';
     showToast('Takeoff imported: ' + parsed.lines.length + ' lines, ' + projName + '.');
+    // Hardware-Module relocate: importing the schedule opens the pricing
+    // wizard directly (the old dashboard "Price the Hardware" tile is gone).
+    openDoorHardwareModal();
   };
   reader.onerror = function(){
     showHardwareError(
@@ -5823,7 +5888,11 @@ function _handleHardwareTakeoffFile(file){
       [(reader.error && reader.error.message) || 'unknown']
     );
   };
-  reader.readAsText(file);
+  if(isXlsx){
+    reader.readAsArrayBuffer(file);
+  } else {
+    reader.readAsText(file);
+  }
 }
 
 // ─── Column-map modal (hardware quote import) ─────────────────────────────
@@ -6483,6 +6552,16 @@ function openDoorHardwareModal(){
   renderDoorHardwareModal();
   var modal = document.getElementById('door-hardware-modal');
   if(modal) modal.classList.add('show');
+}
+function _dhwSaveAndClose(){
+  // Hardware-Module relocate: the dashboard's Add-to-Proposal tile is retired.
+  // Saving the wizard now opts the Hardware Schedule into the proposal.
+  if(!projectInfo.proposalSections) projectInfo.proposalSections = {};
+  if(!projectInfo.proposalSections.hardware){
+    projectInfo.proposalSections.hardware = true;
+    markDirty();
+  }
+  closeDoorHardwareModal();
 }
 function closeDoorHardwareModal(){
   var modal = document.getElementById('door-hardware-modal');
@@ -7913,7 +7992,7 @@ function _dhwRenderWizardNav(){
   // DHW Revamp M2: 4 steps total. Forward on steps 1-3, Save on step 4.
   var forward = (_dhwCurrentStep < 3)
     ? '<button class="btn btn-dark" onclick="_dhwStepNext()">Continue &rarr;</button>'
-    : '<button class="btn btn-dark" onclick="closeDoorHardwareModal()">Save</button>';
+    : '<button class="btn btn-dark" onclick="_dhwSaveAndClose()">Save</button>';
   return back + '<div class="dhw-nav-spacer"></div>' + forward;
 }
 
@@ -13118,28 +13197,9 @@ function setPanelMode(mode){
   //   2. Suppress zoom() / fitPage() / wheel-zoom while in hardware mode
   //      (see those functions) so scroll positions can't move under the
   //      overlay.
-  var hwHome = document.getElementById('hardware-home');
-  if(hwHome){
-    var wasHardware = hwHome.classList.contains('show');
-    var nowHardware = (mode === 'hardware');
-    hwHome.classList.toggle('show', nowHardware);
-    if(nowHardware && !wasHardware){
-      // Entering hardware mode: save scroll, reset to 0.
-      if(typeof wrap !== 'undefined' && wrap){
-        _hwSavedScroll = { left: wrap.scrollLeft, top: wrap.scrollTop };
-        wrap.scrollLeft = 0;
-        wrap.scrollTop  = 0;
-      }
-    } else if(!nowHardware && wasHardware && _hwSavedScroll){
-      // Leaving hardware mode: restore the saved floor-plan scroll position.
-      if(typeof wrap !== 'undefined' && wrap){
-        wrap.scrollLeft = _hwSavedScroll.left;
-        wrap.scrollTop  = _hwSavedScroll.top;
-      }
-      _hwSavedScroll = null;
-    }
-    if(nowHardware) renderHardwareHome();
-  }
+  // Hardware-Module relocate: the #hardware-home overlay is retired. Door
+  // Hardware now renders as left-pane Tier-1 tiles via the standard
+  // panel-body[data-mode-section] mechanism — no overlay to toggle here.
   // Mode switches always deselect — the right panel slides out via the
   // canonical close path (which clears both selectedId and acSelectedId).
   // The user re-opens it by clicking a camera or reader after the switch.
