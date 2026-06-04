@@ -36,7 +36,7 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 - **Proposal PDF export** — branded cover page, BOM with totals, riser diagram + equipment schedule, then floor plan pages with overlays. Saved with project name as filename.
 - **Typical floor multiplier** — pages can be configured as "typical" representing N identical floors. Camera counts and cable lengths multiply in BOM and riser schedule.
 - **Access control mode** — separate device type (Brivo readers). Mode toggle in top bar. Readers have their own right panel with editable label and notes.
-- **Door Hardware wizard** — 4-step wizard (Import / Pricing / Labour / Summary). Vendor quote comparison (.csv + .xlsx via SheetJS), per-section + per-line markup/labour rules, AC-overlap filtering, supply-only toggle, exclude + security-contractor row toggles.
+- **Door Hardware wizard** — 3-step wizard (Pricing / Labour / Summary). Entered from the left-pane Hardware mode Tier-1 "Hardware Schedule" tile (auto-opens on takeoff import; .csv + .xlsx via SheetJS). Export RFQ lives in the wizard header; Add-to-Proposal fires on wizard Save. Vendor quote comparison, per-section + per-line markup/labour rules, AC-overlap filtering, supply-only toggle, exclude + security-contractor row toggles.
 
 ## Pending / known gaps
 - **Pricing fields are blank by default.** User will populate camera and labor pricing in the database when they have updated info from their distributor.
@@ -99,7 +99,7 @@ Surface uncertainty, don't hide it.
 - **Conventions worth knowing:**
   - Vanilla JS, `var` declarations (not `let`/`const`). Match existing style.
   - No new dependencies. Vendored libs in `lib/`: pdf.js, jsPDF, SheetJS (xlsx.full.min.js). All loaded as local `<script src="./lib/...">`.
-  - Save files use a single JSON version literal (currently v27). Bump on shape change.
+  - Save files carry the JSON version literal at TWO write sites (autosave wrapper + full-save/loadProject path) — bump BOTH on a shape change (grep `version:`). Currently v28.
   - State changes call `markDirty()` for auto-save tracking.
   - Selection uses `selectCamera(id)` / `selectReader(id)` — never bare assignment to `selectedId` / `acSelectedId`.
 
@@ -164,6 +164,10 @@ Either half alone fails. A notice inside an existing modal's subtree is clipped 
 **Mutually exclusive row toggles.** When two icon buttons are mutually exclusive (Exclude + Security Contractor), each setter clears the other on activate. Both write to `hardwareAward` sub-maps. Both call `markDirty()` + `renderDoorHardwareModal()`.
 
 **Column filter popover reuses `.dhw-tools-popover` CSS** (L1253). Add a scoped position class (e.g. `.dhw-pricing-popover { position:absolute; top:calc(100% + 4px); left:0; z-index:20; }`) so it doesn't collide with the Summary step's popover. Use `mousedown` capture on `document` for outside-click close; remove the listener on close.
+
+**Two cell-tagging conventions coexist for column-hide; do NOT mix them in one table.** Convention A (SQ Summary): `data-col` attribute on every cell + hidden cells NOT emitted + grid-template-columns track-collapse via a `--cols` custom prop; the descriptor needs a per-column `grid` field. Convention B (DHW Pricing, DHW Summary, DHW Labour): plain HTML `<table>`, `if(show.<key>) cells.push('<td>…')` conditional emission, no data-col, no grid math. New `<table>`-based hosts use B; new grid/`.bom-row` hosts use A. A reusable `makeColumnHidePopover` factory does NOT exist — each host clones the state var + 4 handlers (toggle col / toggle popover / install-close / reset) + a COLS descriptor. De-duping these is a backlog item.
+
+**DHW Labour step** (3-step wizard, step 2). Top strip mirrors SQ: supply-only toggle pill + "Default labour" Flat/Hourly segmented pills + project Cost/Sell rate inputs (shown in BOTH modes; label flips $/hr ↔ $/unit). Labour ext math: Hourly = materialQty × per-unit hours (`lineLabourRule.qty`) × rate; Flat = materialQty × rate (no editable hours/units column — material Qty IS the multiplier). Hours column shows only in Hourly mode. Rates resolve project → section → line; sections override MODE ONLY (per-section rate inputs were dropped in Labour M1 — `_dhwSetSectionLabourCost`/`_dhwSetSectionLabourSell` still exist but are unwired, cleanup target). Per-mode project rates resolve through the single `_dhwResolveProjectRates(projectRule)` helper — all three read sites (Labour step, Summary step, customer PDF) MUST route through it so they stay in sync; setters write to `pr[mode==='Flat'?'flat':'hourly']` via `_dhwEnsureProjectRuleBuckets()`. Column set: Qty·SKU·Description·Hours·Cost·Sell·Ext Cost·Ext Sell·Margin $·GM % (`DHW_LABOUR_COLS`); default-hidden: Description, Ext Cost, Ext Sell, GM %. KNOWN DIVERGENCE: SQ Summary's `labourQty` uses raw `lineRule.qty` (no matQty multiplier) — does not match the DHW Labour/Summary Hourly math; reconcile when SQ Labour M2 ships.
 
 **Modal viewport overflow.** Fixed-position modals with a hard `min-width` can overflow narrow viewports. Use `min-width: min(Xpx, 96vw)` so the modal is clamped to the viewport on small windows while keeping its floor on larger ones.
 
@@ -240,6 +244,8 @@ State changes that do NOT trigger markDirty (read-only navigation):
 
 When adding new state-change features, audit whether `markDirty()` should fire and add the call at the commit point of the change (after the data model update, before redraw).
 
+**Cleanup targets** (orphaned, safe to remove in a sweep — do NOT individually chase mid-feature): `.dhw-supply-notice` CSS (notice HTML removed in v28; rule unreferenced); stale `v27` comments at L5045/L5046/L19104 (descriptive only, not version writes); `_dhwSetSectionLabourCost`/`_dhwSetSectionLabourSell` (unwired post Labour M1); unused `hoursHeading` var in `_dhwRenderStep3Labour`; orphaned `#hardware-home` markup + `renderHardwareHome`/`_hwHomeRenderTile`/`_dhwRefreshHomeIfVisible` + `_hwSavedScroll` (dashboard relocated to left-pane in PR #28).
+
 ### Cache discipline
 
 The local testing protocol (HTTP server, see top of file) eliminates most cache issues. If you still see "it didn't take" behavior — function returns wrong value, version banner says old number, behavior unchanged after code change — the diagnostic order is:
@@ -273,6 +279,7 @@ Each pass that changes the save shape bumps the version literal in saveJSON. Cur
 - v25 — Pricing Cloud (pricingBook, upload modal, fetch)
 - v26 — Credentials wiring (projectInfo.credentials.brivoSkus)
 - v27 — DHW Revamp M6 (legacy labour fields removed; securityContractor field added)
+- v28 — DHW Labour B-lite: projectLabourRule gains per-mode rate buckets { mode, hourly:{costRate,sellRate}, flat:{costRate,sellRate} }. Migration promotes legacy top-level costRate/sellRate into the hourly bucket, seeds flat at 0. Section + line rules unchanged.
 
 When bumping the version: read all older versions cleanly in `applyProjectState`. Default missing fields rather than rejecting the file. Add a one-time info banner if the migration is user-visible (e.g., reach values updated in Pass C).
 
