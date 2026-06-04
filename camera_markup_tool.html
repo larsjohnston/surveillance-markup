@@ -1176,7 +1176,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .dhw-awarded  { background:#e8f5e9; font-weight:600; }
 .dhw-cheapest { background:#fff3e0; color:#e65100; font-weight:600; }
 /* DHW Revamp M4: sticky labour subtotal at bottom of Step 3 Labour. */
-.dhw-labour-subtotal { margin-top:16px; padding:12px 16px; background:var(--surface-soft); border:1px solid var(--border); border-radius:5px; font:600 12px var(--font-ui); text-align:right; position:sticky; bottom:0; z-index:10; }
+.dhw-labour-subtotal { margin-top:16px; padding:12px 16px; background:var(--surface-soft); border:1px solid var(--border); border-radius:5px; font:600 12px var(--font-ui); text-align:right; }
 .dhw-pricing-strip { background:#fff; padding:10px 18px; border-bottom:1px solid var(--border); margin-bottom:8px; }
 .dhw-btn-danger { color:#b91c1c; border-color:#fecaca; }
 .dhw-btn-danger:hover { background:#fef2f2; }
@@ -7743,7 +7743,7 @@ function _dhwRenderStep3Labour(takeoff, quotes){
 
   var subtotalRow =
     '<div class="dhw-labour-subtotal">' +
-      '<b>Labour Subtotal (Ext Sell across all sections):</b> ' + _dhwFmtMoney(labourSubtotal) +
+      '<b>Labour Sub-Total:</b> ' + _dhwFmtMoney(labourSubtotal) +
     '</div>';
 
   return supplyOnlyControl + modeControl + sections.join('') + subtotalRow;
@@ -8010,6 +8010,7 @@ function _dhwGoToStep(n){
   if(typeof n !== 'number' || n < 1 || n > 3) return;
   _dhwCurrentStep = n;
   renderDoorHardwareModal();
+  _dhwScrollStepToTop();
 }
 function _dhwStepNext(){
   if(_dhwCurrentStep < 3){
@@ -8020,10 +8021,22 @@ function _dhwStepNext(){
     // Pricing→Labour transition once the Pricing renderer ships.
     _dhwCurrentStep++;
     renderDoorHardwareModal();
+    _dhwScrollStepToTop();
   }
 }
 function _dhwStepBack(){
-  if(_dhwCurrentStep > 1){ _dhwCurrentStep--; renderDoorHardwareModal(); }
+  if(_dhwCurrentStep > 1){ _dhwCurrentStep--; renderDoorHardwareModal(); _dhwScrollStepToTop(); }
+}
+// Step-nav scroll reset. Step-nav handlers (_dhwStepNext / _dhwStepBack /
+// _dhwGoToStep) call this after renderDoorHardwareModal() so the modal
+// lands at the top of the new step. NOT folded into renderDoorHardwareModal
+// itself because that function is the canonical repaint hook for every
+// per-row setter (vendor pick, exclude toggle, markup edit, sell edit,
+// quote remove, etc.) and scrolling to top on every edit would be
+// disruptive. Scroll owner is .dhw-modal-box (overflow:auto, line 1001).
+function _dhwScrollStepToTop(){
+  var s = document.querySelector('#door-hardware-modal .dhw-modal-box');
+  if(s) s.scrollTop = 0;
 }
 
 // F4: confirm staged award on Continue from Comparison. If the user has
@@ -19338,6 +19351,8 @@ function _sqGoToStep(n){
   if(sum) sum.style.display = (n === 3) ? 'block' : 'none';
   _sqRenderStepper();
   _sqRenderWizardNav();
+  var _sqScroller = document.getElementById('bom-scroll-wrap');
+  if(_sqScroller) _sqScroller.scrollTop = 0;
   // SQ-wizard M4: paint the xlsx on first nav into Summary. recalcBom
   // already populates it on drawer open, but if the user opens the
   // wizard and goes straight to Summary before any edit fires another
