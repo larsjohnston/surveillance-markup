@@ -6,6 +6,7 @@
 <script src="./lib/pdf.min.js"></script>
 <script src="./lib/jspdf.umd.min.js"></script>
 <script src="./lib/xlsx.full.min.js"></script>
+<script src="./lib/branding.js"></script>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 :root {
@@ -17276,177 +17277,64 @@ function propFill(doc, c){ doc.setFillColor(c[0], c[1], c[2]); }
 function propDraw(doc, c){ doc.setDrawColor(c[0], c[1], c[2]); }
 function propText(doc, c){ doc.setTextColor(c[0], c[1], c[2]); }
 
+// Format an ISO date (yyyy-mm-dd) as "Month D, YYYY" for the cover. Empty →
+// today. A non-ISO string is passed through unchanged so legacy / freeform
+// projectInfo.date values still render.
+function formatProposalDate(d){
+  var s = d || new Date().toISOString().slice(0,10);
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if(!m) return String(s);
+  var months = ['January','February','March','April','May','June','July',
+                'August','September','October','November','December'];
+  var mi = parseInt(m[2], 10) - 1;
+  if(mi < 0 || mi > 11) return String(s);
+  return months[mi] + ' ' + parseInt(m[3], 10) + ', ' + m[1];
+}
+
 function drawProposalCover(doc, W, H){
-  // Canva-style cover: white field, top red accent stripe, project name as a
-  // 40 pt headline (the marquee), a client eyebrow line, and a red accent
-  // rule. No flat charcoal hero slab. Summary-box DATA LOGIC below is
-  // unchanged from the prior pass — only fonts / colors / positions changed.
-  propFill(doc, PROP.accent); doc.rect(0, 0, W, 6, 'F');
+  // SMART MF brand title page (reproduces the Alpine/Highpointe cover). The
+  // cover image (window.SMARTMF_BRANDING.coverHero, lib/branding.js) is a
+  // full-bleed JPEG with the navy frame, glass-tower photo, and white footer
+  // all baked in. The SMART MF logo (coverLogo, transparent PNG) sits centered
+  // over the photo, and Project / Client / Proposal Date render as black
+  // Helvetica lines in the baked-in white footer (bold labels). Per the design
+  // decision this cover carries NO summary box / counts / grand total.
+  // Positions are scaled from the source 540×720 page to US Letter.
+  var brand = (typeof window !== 'undefined') ? window.SMARTMF_BRANDING : null;
 
-  // Eyebrow — red caps, naming the client when known.
-  propFont(doc, 'bold'); doc.setFontSize(PT.eyebrow); propText(doc, PROP.accent);
-  var eyebrow = 'SECURITY PROPOSAL';
-  if(projectInfo.client) eyebrow += '   ·   PREPARED FOR ' + String(projectInfo.client).toUpperCase();
-  doc.text(eyebrow, 50, 120);
-
-  // Headline — project name, 40 pt charcoal, wraps within content width.
-  propFont(doc, 'bold'); doc.setFontSize(PT.display); propText(doc, PROP.ink);
-  var headLines = doc.splitTextToSize(projectInfo.name || '(Project Name)', W - 100);
-  var hy = 162;
-  headLines.forEach(function(ln){ doc.text(ln, 50, hy); hy += 44; });
-
-  // Accent rule under the headline (short, left-anchored).
-  var ruleY = (hy - 44) + 22;
-  propDraw(doc, PROP.accent); doc.setLineWidth(2);
-  doc.line(50, ruleY, 230, ruleY);
-
-  // Company.
-  propFont(doc, 'normal'); doc.setFontSize(11); propText(doc, PROP.muted);
-  doc.text((projectInfo.company || 'Your Company'), 50, ruleY + 26);
-
-  // Meta block — Helvetica labels/values; Quote Ref value in Courier (data).
-  var y = ruleY + 58;
-  var rows = [
-    ['Client',     projectInfo.client || '—', false],
-    ['Site',       projectInfo.address || '—', false],
-    ['Quote Ref',  projectInfo.ref || '—', true],
-    ['Date',       projectInfo.date || new Date().toISOString().slice(0,10), false],
-    ['Valid Until',projectInfo.valid || '—', false],
-    ['Salesperson',projectInfo.sales || '—', false]
-  ];
-  rows.forEach(function(r){
-    propFont(doc, 'bold'); doc.setFontSize(PT.small); propText(doc, PROP.muted);
-    doc.text(r[0].toUpperCase(), 50, y);
-    if(r[2]) propData(doc, 'normal'); else propFont(doc, 'normal');
-    doc.setFontSize(11); propText(doc, PROP.ink);
-    doc.text(String(r[1]), 160, y);
-    y += 20;
-  });
-
-  // Scope
-  if(projectInfo.scope){
-    y += 14;
-    propFont(doc, 'bold'); propText(doc, PROP.ink); doc.setFontSize(PT.body);
-    doc.text('SCOPE & NOTES', 50, y); y += 14;
-    propFont(doc, 'normal'); propText(doc, PROP.body); doc.setFontSize(PT.body);
-    var lines = doc.splitTextToSize(projectInfo.scope, W - 100);
-    doc.text(lines, 50, y); y += lines.length * 12 + 10;
+  if(brand && brand.coverHero){
+    // Full-bleed hero. Source ratio 0.75 ≈ letter 0.773 — stretched to fill.
+    doc.addImage(brand.coverHero, 'JPEG', 0, 0, W, H);
+  } else {
+    // Fallback so the page is never blank if branding.js is missing.
+    propFill(doc, PROP.ink); doc.rect(0, 0, W, H, 'F');
+    propFont(doc, 'bold'); doc.setFontSize(PT.h1); propText(doc, [255,255,255]);
+    doc.text((projectInfo.company || 'SMART MF'), 50, 80);
   }
 
-  // Summary box. Pass N M5 / Pass N+1 M9: pre-compute AC + smart-apartment
-  // counts so box height and the Y-cursor below can slot in optional rows
-  // between SCALE CALIBRATED and GRAND TOTAL. Each optional row is hidden
-  // when its count is 0 per D5. The box grows by 20 pt per added line.
-  //
-  // Optional rows in order:
-  //   AC READERS, AC CONTROLLERS,
-  //   INTERCOMS, PARCEL LOCKERS, MAILBOX BANKS,
-  //   <one per defined unit type with > 0 suites>
-  var coverModel  = computeRiserModel();
-  var showReaders = coverModel.readerCount > 0;
-  var showCtrls   = coverModel.controllerCount > 0;
-  var showInter   = coverModel.intercomCount > 0;
-  var showParcel  = coverModel.parcelCount > 0;
-  var showMailbox = coverModel.mailboxCount > 0;
-  // Per-unit-type lines: iterate projectInfo.unitTypes in declared order.
-  // Each line only renders when its multiplied suite count > 0.
-  var unitTypeLines = [];
-  (projectInfo.unitTypes || []).forEach(function(ut){
-    var cnt = coverModel.suiteCountsByUnitType[ut.id] || 0;
-    if(cnt > 0) unitTypeLines.push({ label: ut.label || '(unlabeled)', count: cnt });
-  });
-  var optionalLines = (showReaders ? 1 : 0) + (showCtrls ? 1 : 0)
-                    + (showInter ? 1 : 0) + (showParcel ? 1 : 0) + (showMailbox ? 1 : 0)
-                    + unitTypeLines.length;
-  var boxH = 130 + optionalLines * 20;
-  y = H - 220;
-  propFill(doc, PROP.paper); doc.rect(50, y, W-100, boxH, 'F');
-  propDraw(doc, PROP.hair); doc.setLineWidth(0.5); doc.rect(50, y, W-100, boxH);
-  propFill(doc, PROP.accent); doc.rect(50, y, 4, boxH, 'F');   // left accent strip
-
-  propFont(doc, 'bold'); propText(doc, PROP.ink); doc.setFontSize(11);
-  doc.text('PROPOSAL SUMMARY', 65, y + 22);
-
-  // Pass N M5: Y-cursor replaces the fixed +45/+65/+85/+108 offsets so
-  // optional AC lines can slot in without recalculating absolute Y for
-  // each row. ROW_GAP matches the original 20 pt spacing; GRAND_GAP (23)
-  // mirrors the original SCALE_CALIBRATED → GRAND_TOTAL spacing.
-  var ROW_GAP   = 20;
-  var GRAND_GAP = 23;
-  var summaryY  = y + 45;
-
-  // Pass A.5: CAMERAS reflects multiplied total across typical floors;
-  // FLOORS replaces PAGES — sum of pageMultiplier(i). When no typicals
-  // exist, both numbers match the old pages.length / cameras.length.
-  var floorTotal = 0;
-  for(var fp = 0; fp < pages.length; fp++) floorTotal += pageMultiplier(fp);
-
-  // Helper: draw a label/value pair at the current cursor and advance it.
-  // Label is grey 9 pt; value is charcoal bold 12 pt. Keeps cursor advance
-  // and font state changes tied together so individual sites read cleanly.
-  function drawSummaryRow(label, value){
-    propFont(doc, 'normal'); doc.setFontSize(9);  propText(doc, PROP.muted);
-    doc.text(label, 65, summaryY);
-    propFont(doc, 'bold');   doc.setFontSize(12); propText(doc, PROP.ink);
-    doc.text(String(value), 250, summaryY);
-    summaryY += ROW_GAP;
+  // Logo — centered horizontally, upper-middle (≈46% of page width, square).
+  if(brand && brand.coverLogo){
+    var logoW = W * 0.46;
+    doc.addImage(brand.coverLogo, 'PNG', (W - logoW) / 2, H * 0.19, logoW, logoW);
   }
 
-  drawSummaryRow('CAMERAS',          multipliedTotal(cameras));
-  drawSummaryRow('FLOORS',           floorTotal);
-  var calCount = Object.keys(calibrations).length;
-  drawSummaryRow('SCALE CALIBRATED', calCount + ' / ' + pages.length);
-  // Pass N M5 (D5): optional AC lines. Each hidden when its count is 0.
-  // ACS100 counted under CONTROLLERS via acCategoryOf (catalog category
-  // wins over canvas shape; same rule as the BOM section in M3).
-  if(showReaders) drawSummaryRow('AC READERS',     coverModel.readerCount);
-  if(showCtrls)   drawSummaryRow('AC CONTROLLERS', coverModel.controllerCount);
-  // Pass N+1 M9: smart-apartment device count lines. Each multiplied across
-  // typical floors, hidden when count is 0 per D5.
-  if(showInter)   drawSummaryRow('INTERCOMS',      coverModel.intercomCount);
-  if(showParcel)  drawSummaryRow('PARCEL LOCKERS', coverModel.parcelCount);
-  if(showMailbox) drawSummaryRow('MAILBOX BANKS',  coverModel.mailboxCount);
-  // Pass N+1 M9: per-unit-type suite count lines. Order follows the user's
-  // projectInfo.unitTypes definition order; zero-suite types are omitted.
-  unitTypeLines.forEach(function(ln){
-    drawSummaryRow(ln.label.toUpperCase(), ln.count);
-  });
-
-  // Grand total — only shown when BOM section is included in the proposal.
-  // Y-cursor finishes at SCALE CALIBRATED's bottom + ROW_GAP × extra AC
-  // rows, then we add GRAND_GAP for the divider rhythm.
-  var sec = projectInfo.proposalSections || {};
-  if(sec.bom !== false){
-    summaryY = summaryY - ROW_GAP + GRAND_GAP;  // back off the last ROW_GAP, apply the GRAND_GAP
-    propFont(doc, 'normal'); doc.setFontSize(9); propText(doc, PROP.muted);
-    doc.text('GRAND TOTAL', 65, summaryY);
-    var subtotal = 0;
-    // BOM Restructure pass: GRAND TOTAL is equipment-only. Cabling and
-    // labor totals live on Take-Off / Quote pages, not on the cover.
-    // BOM two-tier M4: walk computeBomTree() so the cover total equals the
-    // drawer total + the BOM-page subtotal exactly — same source, same
-    // routing, no duplicate sum-over-flat-keys path that could drift.
-    var coverTree = computeBomTree();
-    Object.keys(coverTree).forEach(function(bucketId){
-      var b = coverTree[bucketId];
-      b.auto.forEach(function(r){ subtotal += (r.qty||0)*(r.unit||0); });
-      b.custom.forEach(function(c){ subtotal += (c.line.qty||0)*(c.line.unit||0); });
-    });
-    var marginPct = parseFloat(document.getElementById('bom-margin-pct').value) || 0;
-    // SQ + DHW parity P7 FIX 7: bom-tax-pct input may be absent.
-    var taxPct = _sqReadNum('bom-tax-pct');
-    var marginAmt = subtotal * marginPct / 100;
-    var afterMargin = subtotal + marginAmt;
-    var taxAmt = afterMargin * taxPct / 100;
-    var grand = afterMargin + taxAmt;
-    propFont(doc, 'bold'); propText(doc, PROP.accent); doc.setFontSize(16);
-    doc.text('$' + formatMoney(grand), 250, summaryY);
+  // Footer lines — black, in the baked-in white footer. x and baselines
+  // scaled from the source (x 248.8/540; baselines 628.8/650.4/693.6 of 720).
+  var tx = W * 0.46;
+  doc.setTextColor(0, 0, 0);
+  function metaLine(label, value, baseY){
+    propFont(doc, 'bold'); doc.setFontSize(16);
+    doc.text(label, tx, baseY);
+    var lw = doc.getTextWidth(label);
+    propFont(doc, 'normal'); doc.setFontSize(16);
+    doc.text(value, tx + lw + 6, baseY);
   }
 
-  // Footer
-  propFont(doc, 'normal'); doc.setFontSize(PT.small); propText(doc, PROP.muted);
-  doc.text(projectInfo.company || '', 50, H - 30);
-  doc.text('Page 1', W - 80, H - 30);
+  var projVal = projectInfo.name || '(Project Name)';
+  if(projectInfo.address) projVal += ' – ' + projectInfo.address;
+  metaLine('Project:',       projVal,                                H * 0.873);
+  metaLine('Client:',        projectInfo.client || '—',              H * 0.903);
+  metaLine('Proposal Date:', formatProposalDate(projectInfo.date),   H * 0.963);
 }
 
 // Customer BOM PDF M2: extracts {sku, typeLabel} per row for the two-line
