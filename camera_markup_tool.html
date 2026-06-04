@@ -17191,6 +17191,9 @@ async function runExportPDF(){
     return;
   }
   showProgress('Saving\u2026',95);
+  // Resolve the "Page X of Y" placeholder drawn by drawPageFooter on body
+  // pages. Must run after the last page is added, before save.
+  if(typeof doc.putTotalPages === 'function') doc.putTotalPages('{total_pages_count_string}');
   var fname = (projectInfo.name || 'security_proposal').replace(/[^a-z0-9]+/gi,'_').toLowerCase();
   doc.save(fname + '.pdf');
   hideProgress();
@@ -17245,49 +17248,87 @@ function drawHeadEndToCanvas(tc, vs, he){
   tc.textAlign = 'left'; tc.textBaseline = 'alphabetic';
 }
 
+// ─── Proposal PDF design tokens (Canva-style pass) ───────────────────────────
+// Single source for the customer-facing proposal palette + type scale + font
+// helpers. drawProposalCover / drawPageHeader / drawPageFooter and the BOM /
+// Take-Off / Hardware surfaces reference these instead of inline RGB +
+// setFont literals. propFont → Helvetica (headlines + body); propData →
+// Courier (SKUs, refs, model strings, and space-padded tabular data, kept as
+// a deliberate "data" texture per the design decision). The numeric triplets
+// match the values previously hardcoded across these functions (e.g. ink =
+// the old #1F2937 charcoal, navy/blue = the BOM band fills, accent = the
+// #c8202c brand red already used on Take-Off + cover GRAND TOTAL).
+var PROP = {
+  ink:     [31, 41, 55],     // charcoal — primary headings + values
+  inkSoft: [55, 65, 81],     // softer charcoal
+  accent:  [200, 32, 44],    // #c8202c brand red — single accent color
+  navy:    [40, 54, 92],     // BOM tier-1 band fill
+  blue:    [74, 110, 180],   // BOM tier-2 band fill
+  paper:   [245, 244, 240],  // beige neutral card / row tint
+  hair:    [208, 206, 200],  // hairline rules + borders
+  muted:   [120, 120, 140],  // labels / eyebrow / footer
+  body:    [60, 60, 70]      // body copy
+};
+var PT = { display:40, h1:22, h2:14, eyebrow:9, body:10, small:8, micro:7 };
+function propFont(doc, weight){ doc.setFont('helvetica', weight || 'normal'); }
+function propData(doc, weight){ doc.setFont('courier', weight || 'normal'); }
+function propFill(doc, c){ doc.setFillColor(c[0], c[1], c[2]); }
+function propDraw(doc, c){ doc.setDrawColor(c[0], c[1], c[2]); }
+function propText(doc, c){ doc.setTextColor(c[0], c[1], c[2]); }
+
 function drawProposalCover(doc, W, H){
-  // Top accent bar (charcoal + dark-gray hierarchy — see redesign spec)
-  doc.setFillColor(55, 65, 81); doc.rect(0, 0, W, 8, 'F');
-  doc.setFillColor(31, 41, 55); doc.rect(0, 8, W, 90, 'F');
+  // Canva-style cover: white field, top red accent stripe, project name as a
+  // 40 pt headline (the marquee), a client eyebrow line, and a red accent
+  // rule. No flat charcoal hero slab. Summary-box DATA LOGIC below is
+  // unchanged from the prior pass — only fonts / colors / positions changed.
+  propFill(doc, PROP.accent); doc.rect(0, 0, W, 6, 'F');
 
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('courier','bold');
-  doc.setFontSize(22);
-  doc.text('SECURITY CAMERA PROPOSAL', 50, 55);
-  doc.setFontSize(10);
-  doc.setFont('courier','normal');
-  doc.setTextColor(200, 200, 220);
-  doc.text((projectInfo.company || 'Your Company'), 50, 78);
+  // Eyebrow — red caps, naming the client when known.
+  propFont(doc, 'bold'); doc.setFontSize(PT.eyebrow); propText(doc, PROP.accent);
+  var eyebrow = 'SECURITY PROPOSAL';
+  if(projectInfo.client) eyebrow += '   ·   PREPARED FOR ' + String(projectInfo.client).toUpperCase();
+  doc.text(eyebrow, 50, 120);
 
-  // Project block
-  doc.setTextColor(31, 41, 55);
-  doc.setFont('courier','bold'); doc.setFontSize(16);
-  doc.text(projectInfo.name || '(Project Name)', 50, 145);
+  // Headline — project name, 40 pt charcoal, wraps within content width.
+  propFont(doc, 'bold'); doc.setFontSize(PT.display); propText(doc, PROP.ink);
+  var headLines = doc.splitTextToSize(projectInfo.name || '(Project Name)', W - 100);
+  var hy = 162;
+  headLines.forEach(function(ln){ doc.text(ln, 50, hy); hy += 44; });
 
-  doc.setFont('courier','normal'); doc.setFontSize(10);
-  var y = 175;
+  // Accent rule under the headline (short, left-anchored).
+  var ruleY = (hy - 44) + 22;
+  propDraw(doc, PROP.accent); doc.setLineWidth(2);
+  doc.line(50, ruleY, 230, ruleY);
+
+  // Company.
+  propFont(doc, 'normal'); doc.setFontSize(11); propText(doc, PROP.muted);
+  doc.text((projectInfo.company || 'Your Company'), 50, ruleY + 26);
+
+  // Meta block — Helvetica labels/values; Quote Ref value in Courier (data).
+  var y = ruleY + 58;
   var rows = [
-    ['Client',     projectInfo.client || '—'],
-    ['Site',       projectInfo.address || '—'],
-    ['Quote Ref',  projectInfo.ref || '—'],
-    ['Date',       projectInfo.date || new Date().toISOString().slice(0,10)],
-    ['Valid Until',projectInfo.valid || '—'],
-    ['Salesperson',projectInfo.sales || '—']
+    ['Client',     projectInfo.client || '—', false],
+    ['Site',       projectInfo.address || '—', false],
+    ['Quote Ref',  projectInfo.ref || '—', true],
+    ['Date',       projectInfo.date || new Date().toISOString().slice(0,10), false],
+    ['Valid Until',projectInfo.valid || '—', false],
+    ['Salesperson',projectInfo.sales || '—', false]
   ];
   rows.forEach(function(r){
-    doc.setFont('courier','bold'); doc.setTextColor(120, 120, 140);
+    propFont(doc, 'bold'); doc.setFontSize(PT.small); propText(doc, PROP.muted);
     doc.text(r[0].toUpperCase(), 50, y);
-    doc.setFont('courier','normal'); doc.setTextColor(31, 41, 55);
+    if(r[2]) propData(doc, 'normal'); else propFont(doc, 'normal');
+    doc.setFontSize(11); propText(doc, PROP.ink);
     doc.text(String(r[1]), 160, y);
-    y += 18;
+    y += 20;
   });
 
   // Scope
   if(projectInfo.scope){
     y += 14;
-    doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(10);
+    propFont(doc, 'bold'); propText(doc, PROP.ink); doc.setFontSize(PT.body);
     doc.text('SCOPE & NOTES', 50, y); y += 14;
-    doc.setFont('courier','normal'); doc.setTextColor(60, 60, 70); doc.setFontSize(10);
+    propFont(doc, 'normal'); propText(doc, PROP.body); doc.setFontSize(PT.body);
     var lines = doc.splitTextToSize(projectInfo.scope, W - 100);
     doc.text(lines, 50, y); y += lines.length * 12 + 10;
   }
@@ -17319,10 +17360,11 @@ function drawProposalCover(doc, W, H){
                     + unitTypeLines.length;
   var boxH = 130 + optionalLines * 20;
   y = H - 220;
-  doc.setFillColor(245, 244, 240); doc.rect(50, y, W-100, boxH, 'F');
-  doc.setDrawColor(208, 206, 200); doc.rect(50, y, W-100, boxH);
+  propFill(doc, PROP.paper); doc.rect(50, y, W-100, boxH, 'F');
+  propDraw(doc, PROP.hair); doc.setLineWidth(0.5); doc.rect(50, y, W-100, boxH);
+  propFill(doc, PROP.accent); doc.rect(50, y, 4, boxH, 'F');   // left accent strip
 
-  doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(11);
+  propFont(doc, 'bold'); propText(doc, PROP.ink); doc.setFontSize(11);
   doc.text('PROPOSAL SUMMARY', 65, y + 22);
 
   // Pass N M5: Y-cursor replaces the fixed +45/+65/+85/+108 offsets so
@@ -17343,9 +17385,9 @@ function drawProposalCover(doc, W, H){
   // Label is grey 9 pt; value is charcoal bold 12 pt. Keeps cursor advance
   // and font state changes tied together so individual sites read cleanly.
   function drawSummaryRow(label, value){
-    doc.setFont('courier','normal'); doc.setFontSize(9);  doc.setTextColor(120, 120, 140);
+    propFont(doc, 'normal'); doc.setFontSize(9);  propText(doc, PROP.muted);
     doc.text(label, 65, summaryY);
-    doc.setFont('courier','bold');   doc.setFontSize(12); doc.setTextColor(31, 41, 55);
+    propFont(doc, 'bold');   doc.setFontSize(12); propText(doc, PROP.ink);
     doc.text(String(value), 250, summaryY);
     summaryY += ROW_GAP;
   }
@@ -17376,7 +17418,7 @@ function drawProposalCover(doc, W, H){
   var sec = projectInfo.proposalSections || {};
   if(sec.bom !== false){
     summaryY = summaryY - ROW_GAP + GRAND_GAP;  // back off the last ROW_GAP, apply the GRAND_GAP
-    doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(120, 120, 140);
+    propFont(doc, 'normal'); doc.setFontSize(9); propText(doc, PROP.muted);
     doc.text('GRAND TOTAL', 65, summaryY);
     var subtotal = 0;
     // BOM Restructure pass: GRAND TOTAL is equipment-only. Cabling and
@@ -17397,13 +17439,12 @@ function drawProposalCover(doc, W, H){
     var afterMargin = subtotal + marginAmt;
     var taxAmt = afterMargin * taxPct / 100;
     var grand = afterMargin + taxAmt;
-    doc.setFont('courier','bold'); doc.setTextColor(31, 41, 55); doc.setFontSize(16);
+    propFont(doc, 'bold'); propText(doc, PROP.accent); doc.setFontSize(16);
     doc.text('$' + formatMoney(grand), 250, summaryY);
   }
 
   // Footer
-  doc.setFont('courier','normal'); doc.setFontSize(8);
-  doc.setTextColor(160, 160, 170);
+  propFont(doc, 'normal'); doc.setFontSize(PT.small); propText(doc, PROP.muted);
   doc.text(projectInfo.company || '', 50, H - 30);
   doc.text('Page 1', W - 80, H - 30);
 }
@@ -17497,7 +17538,7 @@ function bomRowSku(row){
 
 function drawProposalBOM(doc, W, H){
   drawPageHeader(doc, W, 'Bill of Materials');
-  var y = 80;
+  var y = 52;
 
   // Customer BOM PDF M2: two-line rows (SKU+Qty / desc) with NO pricing.
   // This is a customer-facing spec sheet — Qty + SKU + Description only.
@@ -17510,7 +17551,7 @@ function drawProposalBOM(doc, W, H){
   function _newContPage(){
     doc.addPage('letter','portrait');
     drawPageHeader(doc, W, 'Bill of Materials (cont.)');
-    y = 80;
+    y = 52;
   }
 
   // Single-line row emitter. Description LEFT-anchored at x=45, regular
@@ -17535,7 +17576,7 @@ function drawProposalBOM(doc, W, H){
     var rowH = (displayLines.length * 14) + 4;
     if(y + rowH > H - 50) _newContPage();
 
-    doc.setFont('courier','normal'); doc.setFontSize(11); doc.setTextColor(60, 60, 70);
+    propFont(doc, 'normal'); doc.setFontSize(11); propText(doc, PROP.body);
     // First line + qty share the same baseline so qty column-aligns with
     // the desc's opening words.
     doc.text(displayLines[0] || '', 45, y);
@@ -17587,7 +17628,8 @@ function drawProposalBOM(doc, W, H){
     // column-less label cue (rows carry Qty inline on line 1).
     doc.setFillColor(BAND_NAVY_RGB[0], BAND_NAVY_RGB[1], BAND_NAVY_RGB[2]);
     doc.rect(BAND_LEFT, y, BAND_RIGHT - BAND_LEFT, BAND_H1, 'F');
-    doc.setFont('courier','bold'); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
+    propFill(doc, PROP.accent); doc.rect(BAND_LEFT, y, 3, BAND_H1, 'F');  // red section tab
+    propFont(doc, 'bold'); doc.setFontSize(12); doc.setTextColor(255, 255, 255);
     // Text baseline at ~75% of band height — visually vertically centered
     // for caps-height type. 12pt courier cap ~9pt, band 18pt → y+13 puts
     // the baseline 5pt above band bottom (cap-top sits 4pt below band top).
@@ -17611,7 +17653,7 @@ function drawProposalBOM(doc, W, H){
       // alignment as the tier-1 band so the hierarchy reads cleanly.
       doc.setFillColor(BAND_BLUE_RGB[0], BAND_BLUE_RGB[1], BAND_BLUE_RGB[2]);
       doc.rect(BAND_LEFT, y, BAND_RIGHT - BAND_LEFT, BAND_H2, 'F');
-      doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
+      propFont(doc, 'bold'); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
       doc.text(sub.title.toUpperCase(), BAND_TEXT_X, y + BAND_H2 - 4);
       // 11pt regular courier cap-height ~8pt, so a 14pt y-advance after
       // the band puts the row's first-line cap-top at band_bottom +
@@ -17638,16 +17680,17 @@ function drawProposalBOM(doc, W, H){
 }
 
 function drawPageHeader(doc, W, title){
-  doc.setFillColor(55, 65, 81); doc.rect(0, 0, W, 4, 'F');
-  doc.setFillColor(31, 41, 55); doc.rect(0, 4, W, 56, 'F');
-  doc.setTextColor(255,255,255);
-  doc.setFont('courier','bold'); doc.setFontSize(13);
-  doc.text(title.toUpperCase(), 40, 32);
-  doc.setFont('courier','normal'); doc.setFontSize(8);
-  doc.setTextColor(180,180,200);
+  // Slim header (Canva pass): no dark chrome band. Section label left,
+  // project · ref right, red hairline rule beneath. Occupies ~38 pt vs the
+  // old 60 pt band — body content starts at y = 52 (was 80) on every page.
+  propFont(doc, 'bold'); doc.setFontSize(11); propText(doc, PROP.ink);
+  doc.text(title.toUpperCase(), 40, 30);
+  propFont(doc, 'normal'); doc.setFontSize(PT.small); propText(doc, PROP.muted);
   var sub = (projectInfo.name || 'Security Proposal');
   if(projectInfo.ref) sub += '  ·  ' + projectInfo.ref;
-  doc.text(sub, 40, 48);
+  doc.text(sub, W - 40, 30, {align:'right'});
+  propDraw(doc, PROP.accent); doc.setLineWidth(1.5);
+  doc.line(40, 38, W - 40, 38);
 }
 
 // ─── Take-Off Page (M2) ──────────────────────────────────────────────────────
@@ -17664,11 +17707,11 @@ function drawPageHeader(doc, W, title){
 function drawTakeOffPage(doc, W, H){
   drawPageHeader(doc, W, 'Take-Off');
   var td = buildTakeOffData();
-  var y = 80;
+  var y = 52;
   var leftX = 40;
   var rightX = W - 40;
 
-  doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120, 120, 140);
+  propFont(doc, 'normal'); doc.setFontSize(PT.body); propText(doc, PROP.muted);
   doc.text('Schedule of Quantities — Equipment, Cabling, Labor', leftX, y);
   y += 18;
 
@@ -17677,7 +17720,7 @@ function drawTakeOffPage(doc, W, H){
       drawPageFooter(doc, W, H);
       doc.addPage('letter','portrait');
       drawPageHeader(doc, W, 'Take-Off (cont.)');
-      y = 80;
+      y = 52;
     }
   }
   function drawSubsectionHeader(text){
@@ -17687,16 +17730,16 @@ function drawTakeOffPage(doc, W, H){
     // need this most; the few non-tabular sections (6 Cabling, 7 Labor)
     // get extra padding but no harm.
     ensureSpace(40);
-    doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(200, 32, 44);
+    propFont(doc, 'bold'); doc.setFontSize(11); propText(doc, PROP.accent);
     doc.text(text.toUpperCase(), leftX, y);
     y += 14;
   }
   function drawColHeaders(cols){
     var rowH = 14;
     ensureSpace(rowH + 12);
-    doc.setFillColor(31, 41, 55);
+    propFill(doc, PROP.ink);
     doc.rect(leftX, y - 10, rightX - leftX, rowH, 'F');
-    doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+    propFont(doc, 'bold'); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
     cols.forEach(function(c){
       doc.text(c.label, c.x, y, c.align ? { align: c.align } : undefined);
     });
@@ -17723,7 +17766,7 @@ function drawTakeOffPage(doc, W, H){
   }
   function drawEmpty(){
     ensureSpace(16);
-    doc.setFont('courier','italic'); doc.setFontSize(9); doc.setTextColor(120, 120, 140);
+    propFont(doc, 'italic'); doc.setFontSize(9); propText(doc, PROP.muted);
     doc.text('— None placed —', leftX + 6, y);
     y += 14;
   }
@@ -17914,11 +17957,15 @@ function drawTakeOffPage(doc, W, H){
 }
 
 function drawPageFooter(doc, W, H){
-  doc.setFont('courier','normal'); doc.setFontSize(7);
-  doc.setTextColor(160,160,170);
-  doc.text((projectInfo.company || ''), 40, H - 24);
-  doc.text(new Date().toISOString().slice(0,10), W/2, H - 24, {align:'center'});
-  doc.text('Page ' + doc.internal.getNumberOfPages(), W - 40, H - 24, {align:'right'});
+  // Hairline rule + balanced 3-part footer. Page number in accent red,
+  // "Page X of Y" via putTotalPages (placeholder resolved before save).
+  propDraw(doc, PROP.hair); doc.setLineWidth(0.5);
+  doc.line(40, H - 34, W - 40, H - 34);
+  propFont(doc, 'normal'); doc.setFontSize(PT.micro); propText(doc, PROP.muted);
+  doc.text((projectInfo.company || ''), 40, H - 22);
+  doc.text(new Date().toISOString().slice(0,10), W/2, H - 22, {align:'center'});
+  propText(doc, PROP.accent);
+  doc.text('Page ' + doc.internal.getNumberOfPages() + ' of {total_pages_count_string}', W - 40, H - 22, {align:'right'});
 }
 
 // ─── Riser Diagram ───────────────────────────────────────────────────────────
@@ -17941,7 +17988,7 @@ function drawProposalRiser(doc, W, H, startSection){
   drawPageFooter(doc, W, H);
 
   var marginX = 40;
-  var headerEndY = 80;       // Pass A.7: was 70 — doubled padding below header bar
+  var headerEndY = 52;       // Canva pass: slim header (~38pt) — was 80 under the old 60pt band
   var bottomMargin = 40;
   var contentH = H - headerEndY - bottomMargin;
   var totalW = W - 2 * marginX;
@@ -19007,7 +19054,7 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
     startSection('letter','portrait');
     drawPageHeader(doc, pageW, 'System Riser — Schedule (cont.)');
     drawPageFooter(doc, pageW, pageH);
-    y = 80;
+    y = 52;
     doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
     doc.text('EQUIPMENT SCHEDULE (continued)', 40, y); y += 10;
     drawHeaderRow();
@@ -19120,7 +19167,7 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
 
   var leftX  = 40;
   var rightX = W - 40;
-  var y      = 80;
+  var y      = 52;
 
   // Empty-state guard. If there's no takeoff at all, render a one-line
   // notice so the page isn't a blank slab. (The page only renders when
@@ -19128,7 +19175,7 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
   // in without a takeoff is still preferable to a silent omission.)
   var hasTakeoff = !!(takeoff && Array.isArray(takeoff.lines) && takeoff.lines.length > 0);
   if(!hasTakeoff){
-    doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120,120,140);
+    propFont(doc, 'normal'); doc.setFontSize(PT.body); propText(doc, PROP.muted);
     doc.text('No hardware schedule data — no takeoff imported.', leftX, y + 8);
     drawPageFooter(doc, W, H);
     return;
@@ -19191,7 +19238,7 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
   var sumTotal = sumHardware + sumLabour;
 
   // Subtitle — describes the presentation mode in customer-friendly terms.
-  doc.setFont('courier','normal'); doc.setFontSize(10); doc.setTextColor(120, 120, 140);
+  propFont(doc, 'normal'); doc.setFontSize(PT.body); propText(doc, PROP.muted);
   var subtitle;
   if(detail === 'lump'){
     subtitle = supplyOnly
@@ -19289,9 +19336,9 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
   function drawColHeaders(){
     var rowH = 14;
     ensureSpace(rowH + 12);
-    doc.setFillColor(31, 41, 55);
+    propFill(doc, PROP.ink);
     doc.rect(leftX, y - 10, rightX - leftX, rowH, 'F');
-    doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+    propFont(doc, 'bold'); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
     cols.forEach(function(c){
       doc.text(c.label, c.x, y, { align: c.align });
     });
@@ -19317,7 +19364,7 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
       drawPageFooter(doc, W, H);
       doc.addPage('letter','portrait');
       drawPageHeader(doc, W, 'Hardware Schedule (cont.)');
-      y = 80;
+      y = 52;
       // Redraw column headers on continuation so the customer always sees
       // what each column means without flipping back to page 1.
       drawColHeaders();
