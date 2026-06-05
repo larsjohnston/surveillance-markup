@@ -2,7 +2,7 @@
 
 Canonical work queue for Smart Building Markup & Quoting Tool. Manually maintained — update at the end of any chat that shifts priorities.
 
-Main at `1879fe5`. Save schema v29.
+Main at `a333c22`. Save schema v30.
 
 ---
 
@@ -15,12 +15,17 @@ Per-vendor recurring-cost engine. Subscriptions are NOT BOM (BOM = equipment onl
   - M1b engine + data model: `computeSubscriptionRows()` (mode A Standard / mode B Multifamily by gateway presence; S1/S2/S3 reader tiers; `B-ACS-BASE-S/M`, `B-ACS-UC-M` ×gateway-units). `projectInfo.subscriptionTerm` + `subscriptionOverrides`. Save v28→v29. **Project default rule changed to discount 0%.**
   - M1c render: Subscriptions section in MATERIALS — term pill, editable sell + override flag, col-B-only desc.
   - M1d web rollup: single customer line "Cloud Based Multifamily Application, VMS & Cloud Storage, 24/7 Support & IP Integration" + term-aware/override-aware total below grand total.
-- **SUB-M2 — Brivo Mobile Pass.** `B-MP-100/500/1000`. NEEDS RULE: how pass count is determined (per unit? per reader? manual qty?) and whether always-present or optional. Reuses M1c/M1d render pattern.
-- **SUB-M3 — Eagle Eye Complete / VMS.** SKUs in the same Brivo workbook (`EN-CBC*` Complete plans + per-camera VMS). NEEDS RULE: per-camera vs per-bridge, which Complete tier, setup `-0` vs recurring `-1/-12`. Target PDF showed per-camera VMS ×28.
+- **SUB-M2 — Eagle Eye per-camera VMS** ✅ SHIPPED (this PR, save v30).
+  - New "6.2 Camera VMS" sub-section under "6. Subscriptions" (own subtotal). Per-camera line `EN-PR1-D{30|60|90|180|365|730}{-1|-12}`, qty = `multipliedTotal(cameras)` (matches BOM camera row).
+  - New project-wide `projectInfo.cameraStorageRetention` (`'30'` default). Retention pill (30/60/90/180/365/730 Day) + term pill in 6.2 header.
+  - `_subRenderRow` desc cleaner extended: strip-from-first-paren drops trailing `(24x7…) Monthly`/`Yearly` from EN-PR1 notes; AC rows unaffected.
+  - Web rollup unchanged — Eagle Eye lines fold into the existing single generic customer line.
+  - Eagle Eye Complete plans (`EN-CBC*` setup `-0` + recurring `-1/-12`) deferred — no rule yet for per-camera vs per-bridge / which Complete tier.
+- **SUB-M3 — Brivo Mobile Pass.** `B-MP-100/500/1000`. NEEDS RULE: how pass count is determined (per unit? per reader? manual qty?) and whether always-present or optional. Reuses M1c/M1d render pattern.
 - **SUB-M4 — DoorBird.** From DoorBird PDF (in project files). NEEDS RULE: per-intercom sub SKU + qty rule.
 - **SUB-M5 — Luxer.** Needs private-repo data + per-locker-bank rule.
 
-Known cosmetic debt: pricing-book `notes` carry a mojibake em-dash (`â€"`); subscription render strips col C + cleans it at display. Converter-side fix (clean encoding at source) is the durable fix — deferred.
+Known cosmetic debt: pricing-book `notes` carry a mojibake em-dash (`â€"`) and (for EN-PR1) a trailing parenthetical + `Monthly`/`Yearly` term word (sometimes with no preceding space — see `EN-PR1-D60-1`). Subscription render strips col C, cleans the em-dash, and drops everything from the first `(` to end of string. Converter-side fix (clean encoding + drop trailing term at source) is the durable fix — deferred.
 
 ---
 
@@ -80,6 +85,7 @@ Extend `_handleHardwareQuoteFile` for `.xlsx` via SheetJS → CSV → existing `
 
 ## Recently shipped (this chat)
 
+- **SUB-M2** (this PR) — Eagle Eye per-camera VMS subscription. New 6.2 Camera VMS sub-section with retention pill, project-wide `cameraStorageRetention`, EN-PR1 desc strip-from-paren. Save v30.
 - **SUB-M1a–d** (PRs #40–43) — Brivo AC subscriptions end-to-end (see arc above). Project default rule → discount 0%. Save v29.
 - **SQ custom-row per-section routing** (PR #39) — dedicated `bomCustomLines` keys for 2.2/2.3/3.1/3.2/4.2 so lines land in their own section.
 - **WP-M1** (PR #37) — Web Proposal preview modal + HTML renderer.

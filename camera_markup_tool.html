@@ -410,6 +410,10 @@ input[type="number"]::-webkit-outer-spin-button {
 .sub-term-pill { display:inline-flex; gap:0; margin-left:auto; border:1px solid var(--border); border-radius:3px; overflow:hidden; }
 .sub-term-btn { background:#fff; color:var(--text-muted); border:none; font:700 9px var(--font-ui); padding:3px 9px; cursor:pointer; text-transform:uppercase; letter-spacing:.04em; }
 .sub-term-btn.active { background:var(--primary); color:#fff; }
+.sub-retention-pill{ display:inline-flex; border:1px solid #d0d4dc; border-radius:6px; overflow:hidden; margin-left:8px; }
+.sub-ret-btn{ font:inherit; font-size:11px; padding:2px 8px; border:none; background:#fff; color:#374151; cursor:pointer; border-left:1px solid #e5e7eb; }
+.sub-ret-btn:first-child{ border-left:none; }
+.sub-ret-btn.active{ background:var(--primary); color:#fff; }
 .bom-cell-cost-ro { text-align:right; color:var(--text-muted); }
 .bom-cell-sell-edit input { width:100%; text-align:right; }
 .sub-override-flag { font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.03em; color:#b45309; background:#fef3c7; border-radius:2px; padding:1px 5px; margin-left:6px; cursor:pointer; }
@@ -9445,6 +9449,7 @@ var projectInfo = {
   credentials: { fobs: 0, cards: 0, mobilePasses: 0, ohTransmitters: 0, ohReceiver: 0 },
   subscriptionTerm: 'monthly',   // 'monthly' | 'annual' — project-wide. SUB-M1b.
   subscriptionOverrides: {},     // { '<sku>': <number> } sell override; presence = overridden flag. SUB-M1b.
+  cameraStorageRetention: '30',  // '30'|'60'|'90'|'180'|'365'|'730' — project-wide Eagle Eye VMS retention. SUB-M2.
   // Cleanup M5: per-family label-visibility flags. All default to true (labels
   // visible). Persisted in the project JSON; on load, applyProjectState
   // backfills missing keys to true. Replaces the per-session suitesHidden
@@ -16177,7 +16182,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 29,             // generation tag — v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
+      version: 30,             // generation tag — v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -16395,7 +16400,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 29,            // v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 30,            // v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -16725,6 +16730,7 @@ function applyProjectState(data){
   // unchanged. Both additive — older projects render identically.
   if(projectInfo.subscriptionTerm !== 'annual' && projectInfo.subscriptionTerm !== 'monthly') projectInfo.subscriptionTerm = 'monthly';
   if(!projectInfo.subscriptionOverrides || typeof projectInfo.subscriptionOverrides !== 'object') projectInfo.subscriptionOverrides = {};
+  if(!_CAM_RET_VALID[projectInfo.cameraStorageRetention]) projectInfo.cameraStorageRetention = '30';
   // Suites Polish M1: backfill per-unit-type iotCounts. Pre-pass saves
   // (every save before this milestone) lack iotCounts entirely; we seed
   // each unit type with 1 for currently-true flags, 0 for false. This
@@ -21258,23 +21264,39 @@ function recalcBom(){
   // recurring lines from computeSubscriptionRows(). Empty → omitted.
   var subRows = computeSubscriptionRows();
   if(subRows.length > 0){
+    var ovMap = projectInfo.subscriptionOverrides || {};
+    function _isCamSub(r){ return r.sku && r.sku.indexOf('EN-PR1') === 0; }
+    function _subSecTotals(arr){
+      var qc = 0, qs = 0, mg = 0;
+      arr.forEach(function(r){
+        var c = (typeof r.cost === 'number') ? r.cost : 0;
+        var l = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : 0;
+        var hasOv = Object.prototype.hasOwnProperty.call(ovMap, r.sku) && typeof ovMap[r.sku] === 'number' && isFinite(ovMap[r.sku]);
+        var s = hasOv ? ovMap[r.sku] : l;
+        var q = (typeof r.qty === 'number') ? r.qty : 0;
+        qc += q * c; qs += q * s; mg += (q * s - q * c);
+      });
+      return { sumQCost: qc, sumQSell: qs, sumMargin: mg };
+    }
+    var acSubRows  = subRows.filter(function(r){ return !_isCamSub(r); });
+    var camSubRows = subRows.filter(_isCamSub);
     html += '<div class="bom-tier1">';
     html += '<div class="bom-tier1-hdr">6. Subscriptions</div>';
-    html += '<div class="bom-section">';
-    html += '<div class="bom-sec-hdr"><span>6.1 Access Control</span>' + _subRenderTermPill() + '</div>';
-    var subQCost = 0, subQSell = 0, subMargin = 0;
-    var ovMap = projectInfo.subscriptionOverrides || {};
-    subRows.forEach(function(r){
-      html += _subRenderRow(r);
-      var c = (typeof r.cost === 'number') ? r.cost : 0;
-      var l = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : 0;
-      var hasOv = Object.prototype.hasOwnProperty.call(ovMap, r.sku) && typeof ovMap[r.sku] === 'number' && isFinite(ovMap[r.sku]);
-      var s = hasOv ? ovMap[r.sku] : l;
-      var q = (typeof r.qty === 'number') ? r.qty : 0;
-      subQCost += q * c; subQSell += q * s; subMargin += (q * s - q * c);
-    });
-    html += _sqRenderSectionSubtotal('subscriptions', { sumQCost: subQCost, sumQSell: subQSell, sumMargin: subMargin });
-    html += '</div></div>';
+    if(acSubRows.length > 0){
+      html += '<div class="bom-section">';
+      html += '<div class="bom-sec-hdr"><span>6.1 Access Control</span>' + _subRenderTermPill() + '</div>';
+      acSubRows.forEach(function(r){ html += _subRenderRow(r); });
+      html += _sqRenderSectionSubtotal('subscriptions', _subSecTotals(acSubRows));
+      html += '</div>';
+    }
+    if(camSubRows.length > 0){
+      html += '<div class="bom-section">';
+      html += '<div class="bom-sec-hdr"><span>6.2 Camera VMS</span>' + _subRenderRetentionPill() + _subRenderTermPill() + '</div>';
+      camSubRows.forEach(function(r){ html += _subRenderRow(r); });
+      html += _sqRenderSectionSubtotal('subscriptions-cam', _subSecTotals(camSubRows));
+      html += '</div>';
+    }
+    html += '</div>';
   }
 
   document.getElementById('bom-body').innerHTML = html;
@@ -21571,6 +21593,11 @@ function deriveSell(cost, list, rule){
 function _subTermSuffix(){
   return (projectInfo && projectInfo.subscriptionTerm === 'annual') ? '-12' : '-1';
 }
+var _CAM_RET_VALID = { '30':1,'60':1,'90':1,'180':1,'365':1,'730':1 };
+function _subRetention(){
+  var r = projectInfo && projectInfo.cameraStorageRetention;
+  return _CAM_RET_VALID[r] ? r : '30';
+}
 // Gateway unit count — mirrors the auto-sa-iot-gateway BOM qty exactly.
 function _subGatewayUnitCount(){
   var iot = projectInfo.iotDevices || {};
@@ -21633,6 +21660,12 @@ function computeSubscriptionRows(){
     _push('B-ACS-RDR-S1' + suffix, t1);
     _push('B-ACS-RDR-S2' + suffix, t2);
     _push('B-ACS-RDR-S3' + suffix, t3);
+  }
+  // Eagle Eye VMS — one per-camera subscription line. qty = BOM camera count. SUB-M2.
+  var camCount = 0;
+  try { camCount = multipliedTotal(cameras) || 0; } catch(e){ camCount = 0; }
+  if(camCount > 0){
+    _push('EN-PR1-D' + _subRetention() + suffix, camCount);
   }
   return rows;
 }
@@ -21761,6 +21794,22 @@ function _subSetTerm(t){
   var next = (t === 'annual') ? 'annual' : 'monthly';
   if(projectInfo.subscriptionTerm === next) return;
   projectInfo.subscriptionTerm = next;
+  markDirty();
+  recalcBom();
+}
+function _subRenderRetentionPill(){
+  var cur = _subRetention();
+  var opts = ['30','60','90','180','365','730'];
+  var html = '<span class="sub-retention-pill">';
+  opts.forEach(function(d){
+    html += '<button class="sub-ret-btn' + (cur === d ? ' active' : '') + '" onclick="_subSetRetention(\'' + d + '\')">' + d + ' Day</button>';
+  });
+  return html + '</span>';
+}
+function _subSetRetention(d){
+  if(!_CAM_RET_VALID[d]) return;
+  if(projectInfo.cameraStorageRetention === d) return;
+  projectInfo.cameraStorageRetention = d;
   markDirty();
   recalcBom();
 }
@@ -21967,6 +22016,7 @@ function _subRenderRow(row){
   var desc = (row.desc || '').replace(/â/g, '—');
   var _emDash = desc.indexOf(' — ');
   if(_emDash !== -1) desc = desc.slice(0, _emDash);
+  desc = desc.replace(/\s*\(.*$/, '');  // drop trailing parenthetical + term word (EN-PR1 VMS rows). SUB-M2.
   return '<div class="bom-row sub-row" data-sku="' + escapeHtml(sku) + '">'
        +   '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
        +   '<div class="bom-desc" title="Subscription line (auto-generated)">' + escapeHtml(desc) + flag + '</div>'
