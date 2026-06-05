@@ -509,12 +509,15 @@ input[type="number"]::-webkit-outer-spin-button {
    carries the $ glyph absolutely positioned at the left edge; the input
    inside fills the wrapper with extra left padding to clear the glyph.
    Applies to BOTH auto + custom rows (shared wrapper class). */
-.bom-row .bom-cell-cost { position:relative; }
-.bom-row .bom-cell-cost::before {
+.bom-row .bom-cell-cost,
+.bom-row .bom-cell-sell-edit { position:relative; }
+.bom-row .bom-cell-cost::before,
+.bom-row .bom-cell-sell-edit::before {
   content:'$'; position:absolute; left:5px; top:50%; transform:translateY(-50%);
   font:700 11px var(--font-mono); color:#9ca3af; pointer-events:none; z-index:1;
 }
-.bom-row .bom-cell-cost input { padding-left:14px; width:100%; box-sizing:border-box; }
+.bom-row .bom-cell-cost input,
+.bom-row .bom-cell-sell-edit input { padding-left:14px; width:100%; box-sizing:border-box; }
 /* SQ-wizard M2b: section subtotal + grand subtotal rows. Heavy top border,
    bold text. Grand has an extra accent. */
 .bom-row.section-subtotal { background:var(--surface-muted); border-top:1px solid #d1d5db; font-weight:700; }
@@ -17193,7 +17196,7 @@ function _wpRenderQuote(){
         var line = cust.line || {};
         var cost = (typeof line.unit === 'number') ? line.unit : 0;
         var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
-        var sell = deriveSell(cost, null, rule);
+        var sell = (typeof line.sell === 'number' && isFinite(line.sell)) ? line.sell : cost;
         var lab  = _sqRowLabour(sub.id, line.id || '', qty);
         var lbs  = bomLabourSupplyOnly ? 0 : lab.extSell;
         var tot  = (qty * sell) + lbs;
@@ -21226,7 +21229,7 @@ function recalcBom(){
         var line = cust.line || {};
         var cost = (typeof line.unit === 'number') ? line.unit : 0;
         var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
-        var sell = deriveSell(cost, null, sectionRule);
+        var sell = (typeof line.sell === 'number' && isFinite(line.sell)) ? line.sell : cost;
         var qc   = qty * cost;
         var qs   = qty * sell;
         secQCost  += qc;
@@ -21968,7 +21971,7 @@ function _sqRenderCustomRow(cust, rule){
   var line = cust.line || {};
   var cost = (typeof line.unit === 'number') ? line.unit : 0;
   var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
-  var sell = deriveSell(cost, null, rule);
+  var sell = (typeof line.sell === 'number' && isFinite(line.sell)) ? line.sell : cost;
   var qc   = qty * cost;
   var qs   = qty * sell;
   var mar  = qs - qc;
@@ -21978,7 +21981,7 @@ function _sqRenderCustomRow(cust, rule){
        +   '<input type="text" class="bom-desc" value="' + escapeHtml(line.desc || '') + '" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">'
        +   '<div class="bom-cell muted bom-cell-list">—</div>'
        +   '<div class="bom-cell-cost"><input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" oninput="updateCustomRow(this)"></div>'
-       +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
+       +   '<div class="bom-cell-sell-edit"><input type="number" data-field="sell" value="' + sell.toFixed(2) + '" step="0.01" min="0" oninput="updateCustomRow(this)"></div>'
        +   '<input type="number" data-field="qty" value="' + qty + '" step="0.25" min="0" oninput="updateCustomRow(this)">'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
        +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(qs) + '</div>'
@@ -22775,7 +22778,7 @@ function _sqRenderSummaryXlsxCustomRow(cust, sectionId, sectionRule, visibleCols
   var line = cust.line || {};
   var cost = (typeof line.unit === 'number') ? line.unit : 0;
   var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
-  var sell = deriveSell(cost, null, sectionRule);
+  var sell = (typeof line.sell === 'number' && isFinite(line.sell)) ? line.sell : cost;
   var hwc = qty * cost, hws = qty * sell;
   var lineKey = line.id || '';
   var lab = _sqRowLabour(sectionId, lineKey, qty);
@@ -23125,7 +23128,7 @@ function addBomLine(section){
   // Survives reorder/delete since id is the field of truth (not idx).
   var id = 'cust-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
   if(!Array.isArray(bomCustomLines[section])) bomCustomLines[section] = [];
-  bomCustomLines[section].push({ id: id, desc:'', qty:1, unit:0, sku:'' });
+  bomCustomLines[section].push({ id: id, desc:'', qty:1, unit:0, sku:'', sell:0 });
   markDirty();
   recalcBom();
 }
@@ -23145,11 +23148,12 @@ function updateCustomRow(input){
   if(!line) return;
   if(field === 'sku') { line.sku = input.value; markDirty(); return; }
   else if(field === 'desc') line.desc = input.value;
-  else if(field === 'unit'){
-    // SQ + DHW polish: cost is money — 2dp cap + canonical restamp.
-    var v = _sqRound2(input.value);
-    input.value = v.toFixed(2);
-    line[field] = v;
+  else if(field === 'unit' || field === 'sell'){
+    // Money fields: store rounded value to the model but do NOT restamp
+    // input.value during typing — restamping on each oninput moves the
+    // caret to the end after the first digit (cursor-jump bug). The 2dp
+    // display normalizes on the next full render.
+    line[field] = _sqRound2(input.value);
   }
   else line[field] = parseFloat(input.value) || 0;  // qty stays as-typed
   markDirty();
@@ -23187,10 +23191,19 @@ function _sqRecalcRowCells(row){
     if(qtyEl.tagName === 'INPUT') qty = parseFloat(qtyEl.value) || 0;
     else                          qty = parseFloat(qtyEl.dataset.qty || qtyEl.textContent) || 0;
   }
-  var listStr = row.dataset.list;
-  var list = (listStr === '' || listStr == null) ? null : parseFloat(listStr);
-  if(list != null && !isFinite(list)) list = null;
-  var sell = deriveSell(cost, list, rule);
+  // custom-row-sell: custom rows now carry an editable Sell input. When
+  // present, read sell from that input (first-class); section pricing rule
+  // never applies to custom rows. Auto rows fall through to deriveSell.
+  var sellInp = row.querySelector('input[data-field="sell"]');
+  var sell;
+  if(sellInp){
+    sell = parseFloat(sellInp.value) || 0;
+  } else {
+    var listStr = row.dataset.list;
+    var list = (listStr === '' || listStr == null) ? null : parseFloat(listStr);
+    if(list != null && !isFinite(list)) list = null;
+    sell = deriveSell(cost, list, rule);
+  }
   var qc = qty * cost;
   var qs = qty * sell;
   var margin = qs - qc;
