@@ -1834,7 +1834,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .tier2-tile.active         { border-color:#1d4ed8; background:#1d4ed8; color:#fff; }
 
 /* AC Tier 1 brand grid — same column layout as camera brand grid. */
-#ac-brand-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px; }
+#ac-brand-grid { display:grid; grid-template-columns:1fr; gap:6px; margin-bottom:6px; }
 
 /* Inline variant default — single row under the active Tier 3 leaf. */
 /* Panel-cleanup P5: #lp-ac-variant element removed — its inline
@@ -2618,12 +2618,10 @@ input[type="number"]::-webkit-outer-spin-button {
             <div class="brand-logo brand-hwa" style="background:linear-gradient(135deg,#0e7490 0%,#0c4a6e 100%);">BR</div>
             <div class="brand-name">Brivo</div>
           </div>
-          <div class="brand-tile tier1-tile" data-brand="other" onclick="lpPickAcBrand('other')">
-            <div class="brand-logo brand-custom">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 4v16M4 12h16"/></svg>
-            </div>
-            <div class="brand-name">Other</div>
-          </div>
+          <!-- AC "Other" tile hidden until a future custom-AC pass. Clicking it
+               armed an empty 'other' brand that locked the drill-down (no Tier 2/3,
+               no Back). Hidden here; the lock is also neutralized at its source in
+               selectReader's legacy-device fallback (now defaults to Brivo). -->
         </div>
         <!-- Tier-2 section header (Cleanup M1 follow-up — styling unify). -->
         <div class="sa-tier-breadcrumb" id="lp-ac-bc1"></div>
@@ -10312,6 +10310,10 @@ var CREDENTIAL_TYPE_LABELS = {
 var _credModalActiveType = null;  // session-only — set when modal opens.
 
 function lpOpenCredentials(){
+  // Disarm any placeable AC arm (Readers/Controllers) before entering
+  // credentials view — covers the "click Credentials tile then canvas"
+  // path that would otherwise place the stale reader SKU.
+  _cancelAllPlacement();
   acCredentialsView = true;
   _renderAcDrillDown();
 }
@@ -10383,6 +10385,11 @@ function lpSelectCredential(sku){
     closeRightPanel();
     return;
   }
+  // Disarm any placeable AC arm (e.g. a reader SKU left hot from the prior
+  // Readers/Controllers drill-down) so a subsequent canvas click places
+  // nothing. _cancelAllPlacement also clears _currentCredentialSku, so set
+  // the credential AFTER the call.
+  _cancelAllPlacement();
   _currentCredentialSku = sku;
   _repaintCredentialsTier3();
   updateRightPanelDisplayForCredential(sku);
@@ -10541,15 +10548,14 @@ function _renderAcDrillDown(){
   // Controllers) will be visible — i.e. brand chosen and not "Other".
   if(bc1) bc1.innerHTML = (currentACBrand && currentACBrand !== 'other') ? 'AC Devices' : '';
 
-  // "Other" Tier 1 hides Tier 2/3/variant entirely. Per acceptance #17.
+  // Legacy "Other" Tier 1 state used to lock the drill-down (no Tier 2/3,
+  // no Back). Tile is now hidden + selectReader's legacy fallback defaults to
+  // Brivo, but coerce defensively here so any in-memory 'other' state (loaded
+  // from older saves, etc.) falls through to the normal Brivo render path.
   if(currentACBrand === 'other'){
-    t2.innerHTML = '';
-    t3.innerHTML = '';
-    if(bc2){ bc2.innerHTML = ''; bc2.style.display = 'none'; }
-    if(vr){  vr.innerHTML = ''; }
-    t2.style.display = 'none';
-    t3.style.display = 'none';
-    return;
+    currentACBrand = 'brivo';
+    if(!currentACCategory)    currentACCategory    = 'Readers';
+    if(!currentACSubcategory) currentACSubcategory = 'Mullion';
   }
   t2.style.display = '';
   t3.style.display = '';
@@ -13480,6 +13486,9 @@ function setPanelMode(mode){
 }
 
 function placeReader(cssX, cssY){
+  // Credentials are non-placeable; a canvas click during credentials view
+  // must place nothing (the right panel is their only edit surface).
+  if(typeof acCredentialsView !== 'undefined' && acCredentialsView) return;
   // Pass Left-Pane M3: "Other" Tier 1 (currentACBrand='other') arms a
   // generic device with no SKU — currentReaderModel is null but the
   // placement is still allowed. The original error path only fires
@@ -13559,9 +13568,13 @@ function selectReader(id, opts){
     currentACCategory    = d.category;
     currentACSubcategory = d.subcategory;
   } else {
-    currentACBrand       = 'other';
-    currentACCategory    = null;
-    currentACSubcategory = null;
+    // Legacy AC devices (placed before Pass Left-Pane M3 metadata) lack
+    // category/subcategory. Previously fell through to currentACBrand='other'
+    // which locked the drill-down. Default to Brivo + Readers/Mullion so the
+    // pane stays navigable; the user can pick the correct sub from there.
+    currentACBrand       = 'brivo';
+    currentACCategory    = 'Readers';
+    currentACSubcategory = 'Mullion';
   }
   renderLeftPaneDrillDown('ac');
   redraw(); updateList(); updateAcList();
