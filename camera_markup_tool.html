@@ -408,6 +408,13 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .bom-sec-hdr .add-btn:hover { background:#1f2937; }
 
+.bom-sku-input {
+  width:100%; background:transparent; border:none; border-bottom:1px solid #d1d5db;
+  font:400 11px var(--font-mono); color:var(--text); padding:1px 2px;
+  outline:none; min-width:0;
+}
+.bom-sku-input:focus { border-bottom-color:#6b7280; background:#f9fafb; }
+
 /* BOM two-tier M7: warn variant for tier-2 sub-headings that need integrator
    attention (currently only "Unclassified — needs review" under §5). Amber
    palette via tokens — keeps SQ + DHW warn surfaces in lockstep. */
@@ -19483,6 +19490,7 @@ function _sqGoToStep(n){
   // already populates it on drawer open, but if the user opens the
   // wizard and goes straight to Summary before any edit fires another
   // recalcBom, this ensures the table is current. Cheap; safe to repeat.
+  if(n === 2) recalcBom();
   if(n === 3 && typeof recalcSummaryXlsx === 'function') recalcSummaryXlsx();
 }
 function _sqStepBack(){ if(_sqCurrentStep > 1) _sqGoToStep(_sqCurrentStep - 1); }
@@ -20683,9 +20691,11 @@ function recalcBom(){
       // SQ-wizard M2b: section header gains a clickable rule pill on the
       // right edge. Title + pill share a flex row via .bom-sec-hdr's
       // existing display:flex.
+      var _clineKey = _sqCustomLineKey(sub.id);
       html += '<div class="bom-sec-hdr">'
             +   '<span>' + escapeHtml(sub.title) + '</span>'
             +   _sqRenderRulePill(sub.id)
+            +   '<button class="add-btn" onclick="addBomLine(\'' + _clineKey + '\')" title="Add custom line">+ Add Line</button>'
             + '</div>';
 
       var secQCost = 0, secQSell = 0, secMargin = 0;
@@ -21299,7 +21309,7 @@ function _sqRenderCustomRow(cust, rule){
   var mar  = qs - qc;
   var gm   = qs > 0 ? (mar / qs) * 100 : null;
   return '<div class="bom-row" data-section="' + cust.section + '" data-idx="' + cust.idx + '">'
-       +   '<div class="bom-cell-sku"></div>'
+       +   '<input type="text" class="bom-cell-sku bom-sku-input" value="' + escapeHtml(line.sku || '') + '" placeholder="SKU" data-field="sku" oninput="updateCustomRow(this)">'
        +   '<input type="text" class="bom-desc" value="' + escapeHtml(line.desc || '') + '" placeholder="Description" data-field="desc" oninput="updateCustomRow(this)">'
        +   '<div class="bom-cell muted bom-cell-list">—</div>'
        +   '<div class="bom-cell-cost"><input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" oninput="updateCustomRow(this)"></div>'
@@ -21437,7 +21447,7 @@ function _sqRenderSectionLabourToggle(sectionId){
 // the Ext Sell + Margin $ cells (in BOTH modes). recalcSummaryOnly's
 // labour walk depends on these class names — DO NOT rename.
 function _sqRenderLabourRow(matRow, sectionId, lineKey, isCustom){
-  var sku  = isCustom ? '' : (matRow.sku || matRow.key || '');
+  var sku  = isCustom ? ((matRow.line && matRow.line.sku) || '') : (matRow.sku || matRow.key || '');
   var desc = matRow.desc || (isCustom && matRow.line && matRow.line.desc) || '';
   if(isCustom && (!matRow.desc) && matRow.line) desc = matRow.line.desc || '(unnamed)';
   var matQty = isCustom
@@ -22049,7 +22059,7 @@ function _sqRenderSummaryXlsxCustomRow(cust, sectionId, sectionRule, visibleCols
   var mar = cs - cc;
   var gm = cs > 0 ? (mar / cs) * 100 : null;
   var values = {
-    sku: '', description: line.desc || '', qty: qty,
+    sku: line.sku || '', description: line.desc || '', qty: qty,
     hwExtCost: _sqFmtMoney(hwc), hwExtSell: _sqFmtMoney(hws),
     labExtCost: _sqFmtMoney(lbc), labExtSell: _sqFmtMoney(lbs),
     combCost: _sqFmtMoney(cc), combSell: _sqFmtMoney(cs),
@@ -22366,13 +22376,30 @@ computeAutoRows = function(){
   return rows;
 };
 
+function _sqCustomLineKey(subId){
+  var map = {
+    '1.1': 'cameras',
+    '1.2': 'network',
+    '2.1': 'accessControl',
+    '2.2': 'other',
+    '2.3': 'other',
+    '3.1': 'other',
+    '3.2': 'other',
+    '4.1': 'smartApartment',
+    '4.2': 'smartApartment',
+    'other': 'other'
+  };
+  return map[subId] || 'other';
+}
+
 function addBomLine(section){
   // SQ-wizard M3: mint stable id at creation. Used as the line key for
   // per-line labour overrides (bomLabourLineRules) and any future
   // labour line-rule overrides. autos key by r.key; customs key by id.
   // Survives reorder/delete since id is the field of truth (not idx).
   var id = 'cust-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
-  bomCustomLines[section].push({ id: id, desc:'', qty:1, unit:0 });
+  if(!Array.isArray(bomCustomLines[section])) bomCustomLines[section] = [];
+  bomCustomLines[section].push({ id: id, desc:'', qty:1, unit:0, sku:'' });
   markDirty();
   recalcBom();
 }
@@ -22390,7 +22417,8 @@ function updateCustomRow(input){
   var field = input.dataset.field;
   var line = bomCustomLines[section][idx];
   if(!line) return;
-  if(field === 'desc') line.desc = input.value;
+  if(field === 'sku') { line.sku = input.value; markDirty(); return; }
+  else if(field === 'desc') line.desc = input.value;
   else if(field === 'unit'){
     // SQ + DHW polish: cost is money — 2dp cap + canonical restamp.
     var v = _sqRound2(input.value);
