@@ -407,6 +407,12 @@ input[type="number"]::-webkit-outer-spin-button {
   text-transform:uppercase; letter-spacing:.04em;
 }
 .bom-sec-hdr .add-btn:hover { background:#1f2937; }
+.sub-term-pill { display:inline-flex; gap:0; margin-left:auto; border:1px solid var(--border); border-radius:3px; overflow:hidden; }
+.sub-term-btn { background:#fff; color:var(--text-muted); border:none; font:700 9px var(--font-ui); padding:3px 9px; cursor:pointer; text-transform:uppercase; letter-spacing:.04em; }
+.sub-term-btn.active { background:var(--primary); color:#fff; }
+.bom-cell-cost-ro { text-align:right; color:var(--text-muted); }
+.bom-cell-sell-edit input { width:100%; text-align:right; }
+.sub-override-flag { font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.03em; color:#b45309; background:#fef3c7; border-radius:2px; padding:1px 5px; margin-left:6px; cursor:pointer; }
 
 .bom-sku-input {
   width:100%; background:transparent; border:none; border-bottom:1px solid #d1d5db;
@@ -9437,6 +9443,8 @@ var projectInfo = {
   // bomCredentialRows() (M3) so the catalogue pass swaps placeholder descs
   // for real SKUs in one place.
   credentials: { fobs: 0, cards: 0, mobilePasses: 0, ohTransmitters: 0, ohReceiver: 0 },
+  subscriptionTerm: 'monthly',   // 'monthly' | 'annual' — project-wide. SUB-M1b.
+  subscriptionOverrides: {},     // { '<sku>': <number> } sell override; presence = overridden flag. SUB-M1b.
   // Cleanup M5: per-family label-visibility flags. All default to true (labels
   // visible). Persisted in the project JSON; on load, applyProjectState
   // backfills missing keys to true. Replaces the per-session suitesHidden
@@ -16169,7 +16177,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 28,             // generation tag — v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
+      version: 29,             // generation tag — v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -16387,7 +16395,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 28,            // v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 29,            // v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -16712,6 +16720,11 @@ function applyProjectState(data){
       if(typeof v !== 'number' || !isFinite(v) || v < 0) projectInfo.credentials.brivoSkus[sku] = 0;
     });
   }
+  // SUB-M1b (v29): subscription state defaults. Pre-v29 saves get monthly term
+  // and empty overrides map so computeSubscriptionRows + render paths work
+  // unchanged. Both additive — older projects render identically.
+  if(projectInfo.subscriptionTerm !== 'annual' && projectInfo.subscriptionTerm !== 'monthly') projectInfo.subscriptionTerm = 'monthly';
+  if(!projectInfo.subscriptionOverrides || typeof projectInfo.subscriptionOverrides !== 'object') projectInfo.subscriptionOverrides = {};
   // Suites Polish M1: backfill per-unit-type iotCounts. Pre-pass saves
   // (every save before this milestone) lack iotCounts entirely; we seed
   // each unit type with 1 for currently-true flags, 0 for false. This
@@ -21211,6 +21224,29 @@ function recalcBom(){
   // left defined for an external diagnostic console call but unused by
   // the live render path.
 
+  // SUB-M1c — Subscriptions section (bottom of MATERIALS). Not a BOM tier —
+  // recurring lines from computeSubscriptionRows(). Empty → omitted.
+  var subRows = computeSubscriptionRows();
+  if(subRows.length > 0){
+    html += '<div class="bom-tier1">';
+    html += '<div class="bom-tier1-hdr">6. Subscriptions</div>';
+    html += '<div class="bom-section">';
+    html += '<div class="bom-sec-hdr"><span>6.1 Access Control</span>' + _subRenderTermPill() + '</div>';
+    var subQCost = 0, subQSell = 0, subMargin = 0;
+    var ovMap = projectInfo.subscriptionOverrides || {};
+    subRows.forEach(function(r){
+      html += _subRenderRow(r);
+      var c = (typeof r.cost === 'number') ? r.cost : 0;
+      var l = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : 0;
+      var hasOv = Object.prototype.hasOwnProperty.call(ovMap, r.sku) && typeof ovMap[r.sku] === 'number' && isFinite(ovMap[r.sku]);
+      var s = hasOv ? ovMap[r.sku] : l;
+      var q = (typeof r.qty === 'number') ? r.qty : 0;
+      subQCost += q * c; subQSell += q * s; subMargin += (q * s - q * c);
+    });
+    html += _sqRenderSectionSubtotal('subscriptions', { sumQCost: subQCost, sumQSell: subQSell, sumMargin: subMargin });
+    html += '</div></div>';
+  }
+
   document.getElementById('bom-body').innerHTML = html;
 
   // SQ-wizard M3: materials rendering done — repaint labour so a
@@ -21354,7 +21390,7 @@ var bomAutoOverrides = {}; // key -> { unit, qty }
 // (Sell = List × (1−v/100)). value is the percentage as a plain number
 // (e.g. 40 means 40%). getSectionRule + deriveSell are pure helpers —
 // no DOM, no state mutation — safe to call any time.
-var bomPricingRule  = { mode: 'markup', value: 40 };
+var bomPricingRule  = { mode: 'discount', value: 0 };
 var bomSectionRules = {};
 
 // SQ-wizard M3 (rework) — Labour state. Three-tier resolution + a
@@ -21490,6 +21526,87 @@ function deriveSell(cost, list, rule){
   return c * (1 + v / 100);
 }
 
+// ─── Subscriptions — Brivo Access (SUB-M1b) ───────────────────────────────
+// Computes recurring Brivo AC subscription line rows from canvas state.
+// Mode is set by Gateway presence (Multifamily if any gateway, else Standard).
+//   Standard:  B-ACS-BASE-S  + reader tiers
+//   Multifam:  B-ACS-BASE-M  + B-ACS-UC-M ×(gateway units) + reader tiers
+// Reader tiers (count = computeRiserModel().readerCount):
+//   1-2  → B-ACS-RDR-S1   (qty up to 2)
+//   3-12 → B-ACS-RDR-S2   (qty up to 10)
+//   13+  → B-ACS-RDR-S3   (remainder)
+// SKU suffix: -1 monthly, -12 annual (projectInfo.subscriptionTerm).
+// Each row: { sku, desc, qty, cost, list } where list=msrp (standard sell),
+// cost=unit_cost. Sell resolution + override flag handled at render (M1c).
+function _subTermSuffix(){
+  return (projectInfo && projectInfo.subscriptionTerm === 'annual') ? '-12' : '-1';
+}
+// Gateway unit count — mirrors the auto-sa-iot-gateway BOM qty exactly.
+function _subGatewayUnitCount(){
+  var iot = projectInfo.iotDevices || {};
+  if(!iot.gateway) return 0;
+  var unitTypesArr = projectInfo.unitTypes || [];
+  var suiteArr = (typeof suites !== 'undefined' && suites) ? suites : [];
+  var iotSuitesByType = {};
+  unitTypesArr.forEach(function(ut){ iotSuitesByType[ut.id] = 0; });
+  suiteArr.forEach(function(s){
+    if(s && s.unitType && iotSuitesByType.hasOwnProperty(s.unitType)){
+      iotSuitesByType[s.unitType] += pageMultiplier(s.page);
+    }
+  });
+  var total = 0;
+  unitTypesArr.forEach(function(ut){
+    var per = iotSuitesByType[ut.id] || 0;
+    var g = (ut.iotCounts && typeof ut.iotCounts.gateway === 'number') ? ut.iotCounts.gateway : 0;
+    total += per * g;
+  });
+  return total;
+}
+// Returns array of subscription rows. Empty when no readers AND no gateways
+// AND no base applicable (i.e. nothing access-control present).
+function computeSubscriptionRows(){
+  var suffix = _subTermSuffix();
+  var readers = 0;
+  try { readers = computeRiserModel().readerCount || 0; } catch(e){ readers = 0; }
+  var gwUnits = _subGatewayUnitCount();
+  var multifamily = gwUnits > 0;
+  var rows = [];
+  function _push(sku){
+    var qtyArg = arguments.length > 1 ? arguments[1] : 1;
+    if(qtyArg <= 0) return;
+    var cost = (typeof getUnitPrice === 'function') ? getUnitPrice(sku) : null;
+    var list = (typeof getListPrice === 'function') ? getListPrice(sku) : null;
+    var pb = (typeof getPricingBook === 'function') ? getPricingBook() : null;
+    var note = (pb && pb.items && pb.items[sku] && pb.items[sku].notes) ? pb.items[sku].notes : sku;
+    rows.push({
+      sku: sku,
+      desc: note,
+      qty: qtyArg,
+      cost: (typeof cost === 'number') ? cost : 0,
+      list: (typeof list === 'number' && isFinite(list)) ? list : null
+    });
+  }
+  // Base — only if there's any AC presence (readers or gateways).
+  if(readers > 0 || multifamily){
+    if(multifamily){
+      _push('B-ACS-BASE-M' + suffix, 1);
+      _push('B-ACS-UC-M' + suffix, gwUnits);
+    } else {
+      _push('B-ACS-BASE-S' + suffix, 1);
+    }
+  }
+  // Reader tiers (both modes).
+  if(readers > 0){
+    var t1 = Math.min(readers, 2);
+    var t2 = Math.min(Math.max(readers - 2, 0), 10);
+    var t3 = Math.max(readers - 12, 0);
+    _push('B-ACS-RDR-S1' + suffix, t1);
+    _push('B-ACS-RDR-S2' + suffix, t2);
+    _push('B-ACS-RDR-S3' + suffix, t3);
+  }
+  return rows;
+}
+
 // SQ-wizard M2b — display formatters. Money returns "$X.XX"; null/NaN
 // returns the em-dash "—" so cells that don't price for a row (no
 // catalog list, custom row sell when cost=0, etc.) read consistently.
@@ -21598,6 +21715,24 @@ function _sqRenderRulePill(sectionId){
     ? '<span class="sq-rule-reset" title="Reset to project default" onclick="event.stopPropagation();_sqResetPill(\'' + sectionId + '\')">&times;</span>'
     : '';
   return '<span class="' + cls + '" data-section="' + sectionId + '" onclick="_sqStartEditPill(\'' + sectionId + '\')" title="Click to edit section pricing rule">' + lbl + reset + '</span>';
+}
+
+// SUB-M1c — Subscriptions term pill (Monthly/Annual). Replaces the rule
+// pill in the Subscriptions section header. Writes projectInfo.subscriptionTerm
+// + markDirty + recalcBom (term changes the SKU suffix → different rows).
+function _subRenderTermPill(){
+  var term = (projectInfo.subscriptionTerm === 'annual') ? 'annual' : 'monthly';
+  return '<span class="sub-term-pill">'
+       +   '<button class="sub-term-btn' + (term === 'monthly' ? ' active' : '') + '" onclick="_subSetTerm(\'monthly\')">Monthly</button>'
+       +   '<button class="sub-term-btn' + (term === 'annual'  ? ' active' : '') + '" onclick="_subSetTerm(\'annual\')">Annual</button>'
+       + '</span>';
+}
+function _subSetTerm(t){
+  var next = (t === 'annual') ? 'annual' : 'monthly';
+  if(projectInfo.subscriptionTerm === next) return;
+  projectInfo.subscriptionTerm = next;
+  markDirty();
+  recalcBom();
 }
 
 // SQ-wizard M2b — Default-strip + per-section pill state writers. Each
@@ -21772,6 +21907,66 @@ function _sqRenderCustomRow(cust, rule){
        +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(gm) + '</div>'
        +   '<div class="bom-del" onclick="removeBomLine(\'' + cust.section + '\',' + cust.idx + ')" title="Remove">&times;</div>'
        + '</div>';
+}
+
+// SUB-M1c — Subscription row. 11-col grid like auto/custom rows, but Sell
+// is an editable input. Standard sell = list (msrp). An override in
+// projectInfo.subscriptionOverrides[sku] wins + shows the override flag.
+// Cost shown read-only; Qty locked (engine-derived). No del control.
+function _subRenderRow(row){
+  var sku  = row.sku;
+  var cost = (typeof row.cost === 'number') ? row.cost : 0;
+  var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
+  var qty  = (typeof row.qty  === 'number') ? row.qty  : 0;
+  var ov   = projectInfo.subscriptionOverrides || {};
+  var hasOverride = Object.prototype.hasOwnProperty.call(ov, sku) && typeof ov[sku] === 'number' && isFinite(ov[sku]);
+  var standardSell = (list != null) ? list : 0;          // standard sell = msrp
+  var sell = hasOverride ? ov[sku] : standardSell;
+  var qc   = qty * cost;
+  var qs   = qty * sell;
+  var mar  = qs - qc;
+  var gm   = qs > 0 ? (mar / qs) * 100 : null;
+  var flag = hasOverride
+    ? ' <span class="sub-override-flag" title="Sell overridden from standard (' + _sqFmtMoney(standardSell) + '). Click to reset." onclick="_subResetSell(\'' + escapeHtml(sku) + '\')">overridden</span>'
+    : '';
+  var listCell = (list == null)
+    ? '<div class="bom-cell muted bom-cell-list">—</div>'
+    : '<div class="bom-cell bom-cell-list">' + _sqFmtMoney(list) + '</div>';
+  // Clean the mojibake em-dash artifact, then keep only col B (the converter
+  // joins "description — spec/notes" with ' — '; we want just the description).
+  var desc = (row.desc || '').replace(/â/g, '—');
+  var _emDash = desc.indexOf(' — ');
+  if(_emDash !== -1) desc = desc.slice(0, _emDash);
+  return '<div class="bom-row sub-row" data-sku="' + escapeHtml(sku) + '">'
+       +   '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
+       +   '<div class="bom-desc" title="Subscription line (auto-generated)">' + escapeHtml(desc) + flag + '</div>'
+       +   listCell
+       +   '<div class="bom-cell bom-cell-cost-ro">' + _sqFmtMoney(cost) + '</div>'
+       +   '<div class="bom-cell-sell-edit"><input type="number" data-sku="' + escapeHtml(sku) + '" value="' + sell.toFixed(2) + '" step="0.01" min="0" onchange="_subUpdateSell(this)"></div>'
+       +   '<span class="bom-cell bom-cell-qty locked" data-qty="' + qty + '" title="Quantity is engine-derived" onclick="_sqShowQtyLockNotice()">' + qty + '</span>'
+       +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
+       +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(qs) + '</div>'
+       +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(mar) + '</div>'
+       +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(gm) + '</div>'
+       +   '<div></div>'
+       + '</div>';
+}
+function _subUpdateSell(input){
+  var sku = input.getAttribute('data-sku');
+  if(!sku) return;
+  var v = parseFloat(input.value);
+  if(!projectInfo.subscriptionOverrides) projectInfo.subscriptionOverrides = {};
+  if(!isFinite(v)){ delete projectInfo.subscriptionOverrides[sku]; }
+  else { projectInfo.subscriptionOverrides[sku] = v; }
+  markDirty();
+  recalcBom();
+}
+function _subResetSell(sku){
+  if(projectInfo.subscriptionOverrides && Object.prototype.hasOwnProperty.call(projectInfo.subscriptionOverrides, sku)){
+    delete projectInfo.subscriptionOverrides[sku];
+    markDirty();
+    recalcBom();
+  }
 }
 
 // SQ-wizard M2b — Warn-row renderer (e.g. "No CMVR Present"). Single
