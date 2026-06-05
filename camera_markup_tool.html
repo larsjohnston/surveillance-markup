@@ -21269,6 +21269,8 @@ function recalcBom(){
   if(subRows.length > 0){
     var ovMap = projectInfo.subscriptionOverrides || {};
     function _isCamSub(r){ return r.sku && r.sku.indexOf('EN-PR1') === 0; }
+    function _isLuxerSub(r){ return r.sku === 'SUB-LUXER'; }
+    function _isDoorBirdSub(r){ return r.sku === 'SUB-DOORBIRD'; }
     function _subSecTotals(arr){
       var qc = 0, qs = 0, mg = 0;
       arr.forEach(function(r){
@@ -21281,8 +21283,10 @@ function recalcBom(){
       });
       return { sumQCost: qc, sumQSell: qs, sumMargin: mg };
     }
-    var acSubRows  = subRows.filter(function(r){ return !_isCamSub(r); });
-    var camSubRows = subRows.filter(_isCamSub);
+    var acSubRows       = subRows.filter(function(r){ return !_isCamSub(r) && !_isLuxerSub(r) && !_isDoorBirdSub(r); });
+    var camSubRows      = subRows.filter(_isCamSub);
+    var luxerSubRows    = subRows.filter(_isLuxerSub);
+    var doorbirdSubRows = subRows.filter(_isDoorBirdSub);
     html += '<div class="bom-tier1">';
     html += '<div class="bom-tier1-hdr">6. Subscriptions</div>';
     if(acSubRows.length > 0){
@@ -21297,6 +21301,20 @@ function recalcBom(){
       html += '<div class="bom-sec-hdr"><span>6.2 Camera VMS</span>' + _subRenderRetentionPill() + _subRenderTermPill() + '</div>';
       camSubRows.forEach(function(r){ html += _subRenderRow(r); });
       html += _sqRenderSectionSubtotal('subscriptions-cam', _subSecTotals(camSubRows));
+      html += '</div>';
+    }
+    if(luxerSubRows.length > 0){
+      html += '<div class="bom-section">';
+      html += '<div class="bom-sec-hdr"><span>6.3 LuxerOne</span>' + _subRenderTermPill() + '</div>';
+      luxerSubRows.forEach(function(r){ html += _subRenderRow(r); });
+      html += _sqRenderSectionSubtotal('subscriptions-luxer', _subSecTotals(luxerSubRows));
+      html += '</div>';
+    }
+    if(doorbirdSubRows.length > 0){
+      html += '<div class="bom-section">';
+      html += '<div class="bom-sec-hdr"><span>6.4 DoorBird</span>' + _subRenderTermPill() + '</div>';
+      doorbirdSubRows.forEach(function(r){ html += _subRenderRow(r); });
+      html += _sqRenderSectionSubtotal('subscriptions-doorbird', _subSecTotals(doorbirdSubRows));
       html += '</div>';
     }
     html += '</div>';
@@ -21622,6 +21640,26 @@ function _subGatewayUnitCount(){
   });
   return total;
 }
+// SUB-M3 — Presence predicates for per-suite synthetic subscriptions.
+// LuxerOne parcel + DoorBird intercom each trigger a separate sub-section.
+// Brand strings MUST match the *_DB literal exactly: 'LuxerOne' (no space),
+// 'Doorbird' (lowercase b — see PARCEL_DB / INTERCOM_DB).
+function _subHasLuxerParcel(){
+  var arr = (typeof smartApartment !== 'undefined' && Array.isArray(smartApartment)) ? smartApartment : [];
+  return arr.some(function(d){
+    if(!d || d.type !== 'parcel') return false;
+    var row = (typeof PARCEL_DB !== 'undefined') ? PARCEL_DB[d.model] : null;
+    return !!(row && row.brand === 'LuxerOne');
+  });
+}
+function _subHasDoorBirdIntercom(){
+  var arr = (typeof smartApartment !== 'undefined' && Array.isArray(smartApartment)) ? smartApartment : [];
+  return arr.some(function(d){
+    if(!d || d.type !== 'intercom') return false;
+    var row = (typeof INTERCOM_DB !== 'undefined') ? INTERCOM_DB[d.model] : null;
+    return !!(row && row.brand === 'Doorbird');
+  });
+}
 // Returns array of subscription rows. Empty when no readers AND no gateways
 // AND no base applicable (i.e. nothing access-control present).
 function computeSubscriptionRows(){
@@ -21669,6 +21707,22 @@ function computeSubscriptionRows(){
   try { camCount = multipliedTotal(cameras) || 0; } catch(e){ camCount = 0; }
   if(camCount > 0){
     _push('EN-PR1-D' + _subRetention() + suffix, camCount);
+  }
+  // SUB-M3 — Per-suite synthetic subscriptions (LuxerOne, DoorBird).
+  // Internal pricing — NO price-book entry. Rate is $3.50 per-suite-per-month;
+  // when project-wide term flips to annual, list scales to 3.50 × 12 = 42.00.
+  // No -1/-12 SKU suffix (no book lookup). cost=0. Override key = SKU string,
+  // rides existing projectInfo.subscriptionOverrides map (no save bump).
+  var _perSuiteList = (projectInfo && projectInfo.subscriptionTerm === 'annual') ? 42.00 : 3.50;
+  var _suiteQty = 0;
+  try { _suiteQty = multipliedTotal(suites) || 0; } catch(e){ _suiteQty = 0; }
+  if(_suiteQty > 0){
+    if(_subHasLuxerParcel()){
+      rows.push({ sku:'SUB-LUXER', desc:'LuxerOne per-suite subscription', qty:_suiteQty, cost:0, list:_perSuiteList });
+    }
+    if(_subHasDoorBirdIntercom()){
+      rows.push({ sku:'SUB-DOORBIRD', desc:'DoorBird per-suite subscription', qty:_suiteQty, cost:0, list:_perSuiteList });
+    }
   }
   return rows;
 }
