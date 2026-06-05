@@ -993,6 +993,14 @@ input[type="number"]::-webkit-outer-spin-button {
 /* Pass A.6: × dismiss button in Export modal top-right. Scoped position
    to #export-modal so other modals using .modal-box aren't disturbed. */
 #export-modal .modal-box { position:relative; }
+.wp-layout { display:flex; gap:18px; align-items:stretch; min-height:60vh; }
+.wp-controls { flex:0 0 240px; display:flex; flex-direction:column; gap:6px; }
+.wp-controls .export-opts { display:flex; flex-direction:column; gap:6px; }
+.wp-actions-col { display:flex; flex-direction:column; gap:8px; }
+.wp-actions-col .btn { width:100%; }
+.wp-hint { font:italic 10px var(--font-ui); color:var(--text-muted); margin:4px 0 0; line-height:1.4; }
+.wp-preview-wrap { flex:1 1 auto; border:1px solid var(--border); border-radius:4px; overflow:hidden; background:#f3f4f6; min-width:0; }
+.wp-preview-frame { width:100%; height:100%; min-height:60vh; border:none; background:#fff; display:block; }
 .modal-close-x { position:absolute; top:10px; right:12px; background:transparent; border:none; font:700 22px sans-serif; line-height:1; color:var(--text-muted); cursor:pointer; padding:4px 8px; border-radius:4px; }
 .modal-close-x:hover { color:var(--text); background:var(--surface-soft); }
 
@@ -2183,6 +2191,7 @@ input[type="number"]::-webkit-outer-spin-button {
         <button class="menu-item" id="btn-dhw-manager" onclick="openDoorHardwareModal()"><span class="menu-check">&#10003;</span><span class="menu-label">Door Hardware&hellip;</span></button>
         <button class="menu-item" id="btn-bom" onclick="toggleBom()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Security Quote</span></button>
         <div class="menu-divider"></div>
+        <button class="menu-item" id="btn-web-proposal" onclick="openWebProposalModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Preview Web Proposal&hellip;</span></button>
         <button class="menu-item" id="btn-pdf" onclick="openExportModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Export Proposal PDF</span></button>
         <button class="menu-item" onclick="exportBomCSV()"><span class="menu-check">&#10003;</span><span class="menu-label">Export BOM as CSV</span></button>
       </div>
@@ -3284,6 +3293,35 @@ input[type="number"]::-webkit-outer-spin-button {
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeExportModal()">Cancel</button>
       <button class="btn btn-green" id="btn-export-go" onclick="runExportPDF()">Export PDF</button>
+    </div>
+  </div>
+</div>
+
+<div id="web-proposal-modal" class="big-modal" onclick="if(event.target===this) closeWebProposalModal()">
+  <div class="modal-box big-modal-box wp-modal-box" style="position:relative; min-width:880px; width:92vw; max-width:1100px;">
+    <button class="modal-close-x" onclick="closeWebProposalModal()" title="Close" aria-label="Close">&times;</button>
+    <h3>&#128196; Web Proposal Preview</h3>
+    <div class="wp-layout">
+      <div class="wp-controls">
+        <div class="export-section-hdr">Sections</div>
+        <div class="export-opts">
+          <label><input type="checkbox" id="wp-sec-cover"  onchange="renderWebProposalPreview()" checked> Cover Page</label>
+          <label><input type="checkbox" id="wp-sec-quote"  onchange="renderWebProposalPreview()" checked> Security Quote</label>
+        </div>
+        <p class="wp-hint">More sections (Riser, Hardware, Floor Plans) will appear here as they become available.</p>
+        <div class="export-section-hdr">Actions</div>
+        <div class="wp-actions-col">
+          <button class="btn btn-dark" onclick="renderWebProposalPreview()">Refresh Preview</button>
+          <button class="btn btn-green" id="wp-generate-url" onclick="generateWebProposalUrl()" disabled title="Available in a later update">Generate URL</button>
+          <p class="wp-hint" id="wp-url-hint">URL generation coming soon.</p>
+        </div>
+      </div>
+      <div class="wp-preview-wrap">
+        <iframe id="wp-preview-frame" class="wp-preview-frame" title="Proposal preview"></iframe>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-dark" onclick="closeWebProposalModal()">Close</button>
     </div>
   </div>
 </div>
@@ -10673,7 +10711,7 @@ async function loadImage(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-web-proposal','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -10729,7 +10767,7 @@ async function loadPDF(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-web-proposal','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -11157,7 +11195,7 @@ function rewindToNoPdf(){
   document.getElementById('dropzone').classList.remove('hidden');
   document.getElementById('tabs').innerHTML = '';
   // Disable menu items + corner icons
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-web-proposal','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.disabled = true;
   });
   document.body.classList.add('no-pdf');
@@ -16972,6 +17010,168 @@ function openExportModal(){
 function closeExportModal(){
   document.getElementById('export-modal').classList.remove('show');
 }
+
+function openWebProposalModal(){
+  var m = document.getElementById('web-proposal-modal');
+  if(!m) return;
+  m.classList.add('show');
+  renderWebProposalPreview();
+}
+function closeWebProposalModal(){
+  var m = document.getElementById('web-proposal-modal');
+  if(m) m.classList.remove('show');
+}
+// WP-M1b. Real HTML proposal renderer. Customer-facing, sell-only.
+// Palette navy #28365c / blue #4a6eb4 / greys / white — NO red. Builds a
+// self-contained HTML string (inline CSS + embedded logo) so the SAME
+// string can later POST to the proposals Worker unchanged (WP-M3).
+function _wpMoney(n){
+  return '$' + (Math.round((n||0)*100)/100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+// Builds the <head> + shared CSS for the proposal document.
+function _wpDocHead(){
+  return '<!doctype html><html><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<style>'
+    + '*{box-sizing:border-box;margin:0;padding:0;}'
+    + 'body{font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#374151;background:#fff;}'
+    + '.wp-page{max-width:850px;margin:0 auto;padding:48px 56px;}'
+    + '.wp-cover{border-bottom:3px solid #28365c;padding-bottom:28px;margin-bottom:36px;'
+    +   'display:flex;justify-content:space-between;align-items:flex-start;gap:24px;}'
+    + '.wp-cover-logo img{height:64px;width:auto;display:block;}'
+    + '.wp-cover-meta{text-align:right;}'
+    + '.wp-cover-meta .wp-proj{font-size:22px;font-weight:700;color:#28365c;line-height:1.2;}'
+    + '.wp-cover-meta .wp-row{font-size:13px;color:#6b7280;margin-top:6px;}'
+    + '.wp-cover-meta .wp-row b{color:#374151;font-weight:600;}'
+    + '.wp-quote-hdr{display:grid;grid-template-columns:1fr 70px 150px;gap:8px;'
+    +   'background:#28365c;color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;'
+    +   'text-transform:uppercase;padding:9px 14px;border-radius:3px 3px 0 0;}'
+    + '.wp-quote-hdr .r{text-align:right;}'
+    + '.wp-tier1{background:#28365c;color:#fff;font-size:14px;font-weight:700;'
+    +   'padding:9px 14px;margin-top:18px;}'
+    + '.wp-tier2{background:#4a6eb4;color:#fff;font-size:12px;font-weight:600;'
+    +   'padding:7px 14px;}'
+    + '.wp-line{display:grid;grid-template-columns:1fr 70px 150px;gap:8px;'
+    +   'padding:7px 14px;font-size:13px;border-bottom:1px solid #eef0f3;}'
+    + '.wp-line:nth-child(even){background:#fafbfc;}'
+    + '.wp-line .r{text-align:right;font-variant-numeric:tabular-nums;}'
+    + '.wp-line .q{text-align:right;color:#6b7280;font-variant-numeric:tabular-nums;}'
+    + '.wp-subtotal{display:grid;grid-template-columns:1fr 150px;gap:8px;'
+    +   'background:#e1e4e9;padding:8px 14px;font-size:12px;font-weight:700;color:#3a3f4a;}'
+    + '.wp-subtotal .r{text-align:right;font-variant-numeric:tabular-nums;}'
+    + '.wp-grand{display:grid;grid-template-columns:1fr 150px;gap:8px;'
+    +   'background:#28365c;color:#fff;padding:12px 14px;font-size:15px;font-weight:700;margin-top:8px;border-radius:0 0 3px 3px;}'
+    + '.wp-grand .r{text-align:right;font-variant-numeric:tabular-nums;}'
+    + '.wp-tax{display:grid;grid-template-columns:1fr 150px;gap:8px;'
+    +   'padding:8px 14px;font-size:13px;color:#6b7280;}'
+    + '.wp-tax .r{text-align:right;font-variant-numeric:tabular-nums;}'
+    + '.wp-empty{color:#9ca3af;font-style:italic;padding:32px 0;text-align:center;}'
+    + '.wp-sec-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;'
+    +   'color:#9ca3af;margin:32px 0 4px;}'
+    + '</style></head><body><div class="wp-page">';
+}
+// Cover block (clean branded — no hero image in M1b).
+function _wpRenderCover(){
+  var logo = (typeof SMARTMF_LOGO_DATAURI === 'string' && SMARTMF_LOGO_DATAURI.indexOf('data:image') === 0)
+    ? '<div class="wp-cover-logo"><img src="' + SMARTMF_LOGO_DATAURI + '" alt="Smart MF"></div>'
+    : '<div class="wp-cover-logo" style="font-size:24px;font-weight:700;color:#28365c;">SMART MF</div>';
+  var name = escapeHtml(projectInfo.name || 'Security Proposal');
+  var rows = '';
+  if(projectInfo.client) rows += '<div class="wp-row"><b>Client:</b> ' + escapeHtml(projectInfo.client) + '</div>';
+  if(projectInfo.ref)    rows += '<div class="wp-row"><b>Quote:</b> ' + escapeHtml(projectInfo.ref) + '</div>';
+  var dateStr = projectInfo.date || new Date().toISOString().slice(0,10);
+  rows += '<div class="wp-row"><b>Date:</b> ' + escapeHtml(dateStr) + '</div>';
+  return '<div class="wp-cover">' + logo
+    + '<div class="wp-cover-meta"><div class="wp-proj">' + name + '</div>' + rows + '</div></div>';
+}
+// Quote section — sell-only. Description / Qty / Total Price. Tier-1 navy,
+// tier-2 blue, grey subtotals, navy grand total. Tax row if tax % > 0.
+function _wpRenderQuote(){
+  var buckets = computeBomTree();
+  var taxPct  = _sqReadNum('bom-tax-pct');
+  var html = '<div class="wp-sec-title">Security Quote</div>';
+  html += '<div class="wp-quote-hdr"><div>Description</div><div class="r">Qty</div><div class="r">Equipment &amp; Installation</div></div>';
+  var grand = 0;
+  var anyAtAll = false;
+  BOM_TEMPLATE.tiers.forEach(function(tier){
+    var tierHas = tier.subs.some(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return false;
+      return b.auto.filter(function(r){return !r.warn;}).length > 0 || b.custom.length > 0;
+    });
+    if(!tierHas) return;
+    anyAtAll = true;
+    html += '<div class="wp-tier1">' + escapeHtml(tier.title) + '</div>';
+    tier.subs.forEach(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return;
+      var realAuto = b.auto.filter(function(r){return !r.warn;});
+      if(realAuto.length === 0 && b.custom.length === 0) return;
+      var rule = getSectionRule(sub.id);
+      var secTotal = 0;
+      html += '<div class="wp-tier2">' + escapeHtml(sub.title) + '</div>';
+      realAuto.forEach(function(r){
+        var cost = (typeof r.cost === 'number') ? r.cost : 0;
+        var list = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : null;
+        var qty  = (typeof r.qty  === 'number') ? r.qty  : 0;
+        var sell = deriveSell(cost, list, rule);
+        var lab  = _sqRowLabour(sub.id, r.key || '', qty);
+        var lbs  = bomLabourSupplyOnly ? 0 : lab.extSell;
+        var tot  = (qty * sell) + lbs;
+        secTotal += tot;
+        html += '<div class="wp-line"><div>' + escapeHtml(r.desc || r.key || '')
+          + '</div><div class="q">' + qty + '</div><div class="r">' + _wpMoney(tot) + '</div></div>';
+      });
+      b.custom.forEach(function(cust){
+        var line = cust.line || {};
+        var cost = (typeof line.unit === 'number') ? line.unit : 0;
+        var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
+        var sell = deriveSell(cost, null, rule);
+        var lab  = _sqRowLabour(sub.id, line.id || '', qty);
+        var lbs  = bomLabourSupplyOnly ? 0 : lab.extSell;
+        var tot  = (qty * sell) + lbs;
+        secTotal += tot;
+        html += '<div class="wp-line"><div>' + escapeHtml(line.desc || '')
+          + '</div><div class="q">' + qty + '</div><div class="r">' + _wpMoney(tot) + '</div></div>';
+      });
+      html += '<div class="wp-subtotal"><div>Subtotal &mdash; ' + escapeHtml(sub.title)
+        + '</div><div class="r">' + _wpMoney(secTotal) + '</div></div>';
+      grand += secTotal;
+    });
+  });
+  if(!anyAtAll){
+    return '<div class="wp-sec-title">Security Quote</div><div class="wp-empty">No priced items to display.</div>';
+  }
+  if(taxPct > 0){
+    var taxAmt = grand * (taxPct / 100);
+    html += '<div class="wp-tax"><div>Tax (' + taxPct.toFixed(2) + '%)</div><div class="r">' + _wpMoney(taxAmt) + '</div></div>';
+    grand += taxAmt;
+  }
+  html += '<div class="wp-grand"><div>Grand Total</div><div class="r">' + _wpMoney(grand) + '</div></div>';
+  return html;
+}
+// Assemble the full proposal HTML string from the active section toggles.
+// Returned standalone-complete so WP-M3 can POST it verbatim.
+function buildWebProposalHtml(){
+  var secCover = document.getElementById('wp-sec-cover');
+  var secQuote = document.getElementById('wp-sec-quote');
+  var body = '';
+  if(secCover && secCover.checked) body += _wpRenderCover();
+  if(secQuote && secQuote.checked) body += _wpRenderQuote();
+  if(!body) body = '<div class="wp-empty">No sections selected.</div>';
+  return _wpDocHead() + body + '</div></body></html>';
+}
+function renderWebProposalPreview(){
+  var frame = document.getElementById('wp-preview-frame');
+  if(!frame) return;
+  var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+  if(!doc) return;
+  doc.open();
+  doc.write(buildWebProposalHtml());
+  doc.close();
+}
+// WP-M1a STUB — wired in WP-M3.
+function generateWebProposalUrl(){ /* no-op until WP-M3 */ }
 
 // Pass A.6: toggle the subtle "all sections off" hint reactively as the
 // user (un)checks the four section boxes. Soft warning only — Export PDF
