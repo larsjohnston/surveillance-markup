@@ -17108,6 +17108,10 @@ function _wpDocHead(){
     + '.wp-empty{color:#9ca3af;font-style:italic;padding:32px 0;text-align:center;}'
     + '.wp-sec-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;'
     +   'color:#9ca3af;margin:32px 0 4px;}'
+    + '.wp-sub-line{display:flex;justify-content:space-between;align-items:center;gap:18px;'
+    +   'background:#eef1f5;border-left:3px solid #4a6eb4;padding:12px 16px;margin-top:14px;border-radius:3px;}'
+    + '.wp-sub-desc{font-size:12px;color:#374151;line-height:1.4;}'
+    + '.wp-sub-total{font-size:15px;font-weight:700;color:#28365c;white-space:nowrap;font-variant-numeric:tabular-nums;}'
     + '</style></head><body><div class="wp-page">';
 }
 // Cover block (clean branded — no hero image in M1b).
@@ -17123,6 +17127,23 @@ function _wpRenderCover(){
   rows += '<div class="wp-row"><b>Date:</b> ' + escapeHtml(dateStr) + '</div>';
   return '<div class="wp-cover">' + logo
     + '<div class="wp-cover-meta"><div class="wp-proj">' + name + '</div>' + rows + '</div></div>';
+}
+// SUB-M1d — Customer rollup total for subscriptions. Sums each subscription
+// row's SELL (override-aware; standard sell = list/msrp) × qty, under the
+// active term (rows already carry term-correct SKUs + prices). Returns
+// { total, term } where term is 'monthly'|'annual'. total=0 → caller omits.
+function _wpSubscriptionRollup(){
+  var rows = (typeof computeSubscriptionRows === 'function') ? computeSubscriptionRows() : [];
+  var ov = projectInfo.subscriptionOverrides || {};
+  var total = 0;
+  rows.forEach(function(r){
+    var list = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : 0;
+    var hasOv = Object.prototype.hasOwnProperty.call(ov, r.sku) && typeof ov[r.sku] === 'number' && isFinite(ov[r.sku]);
+    var sell = hasOv ? ov[r.sku] : list;
+    var qty = (typeof r.qty === 'number') ? r.qty : 0;
+    total += qty * sell;
+  });
+  return { total: total, term: (projectInfo.subscriptionTerm === 'annual') ? 'annual' : 'monthly' };
 }
 // Quote section — sell-only. Description / Qty / Total Price. Tier-1 navy,
 // tier-2 blue, grey subtotals, navy grand total. Tax row if tax % > 0.
@@ -17188,6 +17209,15 @@ function _wpRenderQuote(){
     grand += taxAmt;
   }
   html += '<div class="wp-grand"><div>Grand Total</div><div class="r">' + _wpMoney(grand) + '</div></div>';
+  // SUB-M1d — single customer-facing subscription line (generic desc + term total).
+  var _subRoll = _wpSubscriptionRollup();
+  if(_subRoll.total > 0){
+    var _periodLabel = (_subRoll.term === 'annual') ? '/year' : '/month';
+    html += '<div class="wp-sub-line">'
+         +    '<div class="wp-sub-desc">Cloud Based Multifamily Application, VMS &amp; Cloud Storage, 24/7 Support &amp; IP Integration</div>'
+         +    '<div class="wp-sub-total">' + _wpMoney(_subRoll.total) + _periodLabel + '</div>'
+         +  '</div>';
+  }
   return html;
 }
 // Assemble the full proposal HTML string from the active section toggles.
