@@ -298,7 +298,8 @@ Subscriptions are recurring costs, kept OUT of `computeBomTree`/BOM (BOM = equip
 - Gateway unit count: `_subGatewayUnitCount()` mirrors the auto-sa-iot-gateway BOM qty exactly (Σ suites-of-type × ut.iotCounts.gateway).
 - Pricing-book `notes` carry a mojibake em-dash + merged "B — C" desc; subscription render keeps col B only + cleans the artifact at display. Converter-side fix deferred.
 - Web rollup: `_wpSubscriptionRollup()` + render in `_wpRenderQuote` — generic desc "Cloud Based Multifamily Application, VMS & Cloud Storage, 24/7 Support & IP Integration" + term-aware total (/month or /year). Override-aware.
-- Queued: Mobile Pass (SUB-M2), Eagle Eye VMS (M3), DoorBird (M4), Luxer (M5) — same render pattern, see QUEUE.md.
+- Shipped: SUB-M1 (Brivo Access, 6.1) + SUB-M2 (Eagle Eye per-camera VMS, 6.2) + SUB-M3/M4 (LuxerOne 6.3 + DoorBird 6.4, per-suite $3.50/mo, ×12 annual, internal pricing no price-book, PR #45).
+- Queued: Mobile Pass (sole remaining SUB follow-on).
 
 ### Web Proposal — hosted HTML (PDF being retired)
 

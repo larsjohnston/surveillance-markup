@@ -1,103 +1,69 @@
+@'
 # QUEUE.md
 
 Canonical work queue for Smart Building Markup & Quoting Tool. Manually maintained — update at the end of any chat that shifts priorities.
 
-Main at `a333c22`. Save schema v30.
+---
+
+## Active / next
+
+1. **Proposal Wizard** (PASS_PROPOSAL_WIZARD_BRIEF.md) — 4-step wizard (Setup / Review / Output / Generate). Absorbs deferred SQ Tax row + DHW Summary warning banner + internal-review prose + Combine-hw-labour toggle. Multi-tax model (GST + PST/QST, tax-on-tax for QC, province presets). PDF orchestration. Cover redesign folds into P4. All 6 decisions locked.
+
+2. **SUB-M5 — Mobile Pass subscription** — remaining queued subscription follow-on. (SUB-M3 Mobile Pass / M4 DoorBird-as-subscription numbering in CLAUDE.md is now superseded — see note below.)
+
+3. **M5 — persistence** — Section pricing rules + labour rules + supply-only flag + custom-row ids + credential brivoSkus into save shape. Migrate older versions in applyProjectState.
+
+4. **Luxer Deep Dive** — full Luxer PDF extraction (Outdoor Lockers + Fridge + Camera + Accessories + Room Kit) + catalog reconciliation + Tier-3 variant drill-down.
+
+5. **V2 Tab focus restoration** — cherry-pick orphan commit `1590519`.
 
 ---
 
-## Active arc — Subscriptions & Operating Expenses
+## Recently shipped
 
-Per-vendor recurring-cost engine. Subscriptions are NOT BOM (BOM = equipment only) — they live in the SQ wizard MATERIALS step as section "6. Subscriptions" (bottom) and as a single rolled-up customer line in the web proposal. Project-wide Monthly/Annual term toggle (pill in section header, replaces rule pill). Sell is editable per-line with an override flag; standard sell = msrp. Term suffix: `-1` monthly / `-12` annual.
-
-- **SUB-M1 — Brivo Access** ✅ SHIPPED (PRs #40–43, main `1879fe5`).
-  - M1a converter: no-op — `parse_brivo` already ingests sub SKUs (no suffix filter on Access sheet).
-  - M1b engine + data model: `computeSubscriptionRows()` (mode A Standard / mode B Multifamily by gateway presence; S1/S2/S3 reader tiers; `B-ACS-BASE-S/M`, `B-ACS-UC-M` ×gateway-units). `projectInfo.subscriptionTerm` + `subscriptionOverrides`. Save v28→v29. **Project default rule changed to discount 0%.**
-  - M1c render: Subscriptions section in MATERIALS — term pill, editable sell + override flag, col-B-only desc.
-  - M1d web rollup: single customer line "Cloud Based Multifamily Application, VMS & Cloud Storage, 24/7 Support & IP Integration" + term-aware/override-aware total below grand total.
-- **SUB-M2 — Eagle Eye per-camera VMS** ✅ SHIPPED (this PR, save v30).
-  - New "6.2 Camera VMS" sub-section under "6. Subscriptions" (own subtotal). Per-camera line `EN-PR1-D{30|60|90|180|365|730}{-1|-12}`, qty = `multipliedTotal(cameras)` (matches BOM camera row).
-  - New project-wide `projectInfo.cameraStorageRetention` (`'30'` default). Retention pill (30/60/90/180/365/730 Day) + term pill in 6.2 header.
-  - `_subRenderRow` desc cleaner extended: strip-from-first-paren drops trailing `(24x7…) Monthly`/`Yearly` from EN-PR1 notes; AC rows unaffected.
-  - Web rollup unchanged — Eagle Eye lines fold into the existing single generic customer line.
-  - Eagle Eye Complete plans (`EN-CBC*` setup `-0` + recurring `-1/-12`) deferred — no rule yet for per-camera vs per-bridge / which Complete tier.
-- **SUB-M3 — Brivo Mobile Pass.** `B-MP-100/500/1000`. NEEDS RULE: how pass count is determined (per unit? per reader? manual qty?) and whether always-present or optional. Reuses M1c/M1d render pattern.
-- **SUB-M4 — DoorBird.** From DoorBird PDF (in project files). NEEDS RULE: per-intercom sub SKU + qty rule.
-- **SUB-M5 — Luxer.** Needs private-repo data + per-locker-bank rule.
-
-Known cosmetic debt: pricing-book `notes` carry a mojibake em-dash (`â€"`) and (for EN-PR1) a trailing parenthetical + `Monthly`/`Yearly` term word (sometimes with no preceding space — see `EN-PR1-D60-1`). Subscription render strips col C, cleans the em-dash, and drops everything from the first `(` to end of string. Converter-side fix (clean encoding + drop trailing term at source) is the durable fix — deferred.
+- **SUB-M3/M4 — LuxerOne + DoorBird per-suite subscriptions** (PR #45 / `c253c94`) — Two synthetic per-suite subscription lines, internal pricing (no price book). qty = multipliedTotal(suites); $3.50/suite/month, x12 (42.00) on annual term. Presence-gated (SUB-LUXER on LuxerOne parcel, SUB-DOORBIRD on Doorbird intercom). Editable sell via existing subscriptionOverrides map. SQ section 6 split 6.3 LuxerOne / 6.4 DoorBird, presence-driven auto-hide. Web rollup automatic. No save bump (v30). Branch base a63cf31.
+- **SUB-M2 — Eagle Eye per-camera VMS** (PR #43 / `81931d3`) — 6.2 Camera VMS sub-section, retention pill (30/60/90/180/365/730), EN-PR1-D{retention}{term} line, qty = multipliedTotal(cameras). Schema v30 (projectInfo.cameraStorageRetention).
+- **SUB-M1 — Brivo Access subscription** (PR #__ / `<hash>`) — 6.1 Access Control sub-section. Base S/M + reader tiers S1/S2/S3 + gateway-unit UC. Monthly/annual term pill. Schema v29 (subscriptionTerm, subscriptionOverrides). *(verify PR# / hash)*
+- **DHW Revamp M1–M6** (PR #23–#26 / `314c32a`–`(M6 commit)`) — Complete 4-step wizard (Import / Pricing / Labour / Summary). Save v25→v26→v27.
+- **DHW Quote Column-Map Modal** (PR #22 / `8f3a6cf`) — Column-mapping confirmation step in hardware quote import flow. Fixes $0 prices on non-Allegion supplier CSV formats.
+- **Credential pricing — lazy-load fallback** (PR #19 / `45190a0`) — _sqRenderAutoRow lazy-loads cost/list from pricing book if not set at emit time.
+- **Brivo credentials converter extension** (PR #18 / `e486714`) — build_pricing_json.py --brivo-credentials adapter. 11 SKUs; pricingBook.json 1125 items, 5 vendors.
+- **Credentials wiring** (PR #16 / `523a7f9`) — BRIVO_CRED_CATALOG (11 SKUs) + Tier-3 grouped render + right-panel + Add-to-BOM. v26 bump.
+- **DoorBird pricing extract** — manual CSV from DoorBird price book PDF (6 SKUs). pricingBook.json regenerated, uploaded to cloud.
+- **Pricing Cloud P3 — modal UI** (PR #15) — Pricing modal Status/Actions/Advanced. File menu entry. 13 handlers.
+- **Pricing Cloud — UTF-8 fix** (Worker `86f2bcb9-9dc8-44f3-a8cc-284deb04774f`) — toBase64Utf8() replaces btoa() in githubWrite.
+- **Pricing Cloud P2 — tool-side fetch** (PR #14) — fetchRemotePricing + uploadPricing + localStorage cache + offline fallback.
+- **Pricing Cloud P0/P1 — backend infra** — Cloudflare Worker pricing.mf-quoting-tool.workers.dev deployed.
+- **Pricing Vendor Expansion** (PR #13) — converter refactor + per-vendor adapters. Luxer Indoor Lockers (37 SKUs).
+- **SQ + DHW parity arc** (PR #12) — P1–P7 + follow-ups.
 
 ---
 
-## Web Proposal arc (hosted, replaces PDF export)
-
-Tool generates self-contained HTML → POSTs to dedicated proposals Worker → Cloudflare R2/KV → unguessable slug URL. Client opens URL → open-ping on load. Download = client-side print-to-PDF. Portal wraps stored proposals later.
-v1 decisions locked: separate Worker + R2/KV · open/timestamp tracking only · unguessable slug, no login · HTML-first.
-
-- **WP-M1 — Preview modal + HTML renderer** ✅ SHIPPED (PR #37). Proposal-menu "Preview Web Proposal…" → print-dialog modal (section toggles + iframe preview). Clean branded cover + sell-only Security Quote (navy/blue/grey). `buildWebProposalHtml()` returns standalone HTML. + SUB-M1d subscription rollup line.
-- **WP-M2 — Proposals Worker + R2 storage.** `POST /proposals`→slug; `GET /p/:slug` serves. Multi-tenant X-Auth-Token. wrangler deploy. *(R2 vs KV decided at M2 — recommend R2.)*
-- **WP-M3 — Wire Generate-URL button.** POST buildWebProposalHtml output → slug → copyable link. localStorage cache.
-- **WP-M4 — Open tracking.** Ping on GET (timestamp + count). Status view.
-- **WP-M5 — Download button** on hosted page (native print stylesheet, no new dep).
-- **WP-M6 (later) — Customer portal.** Auth + per-client index.
-
-Renderer growth (fold into WP follow-ups): Riser, Hardware Schedule, Floor Plans section toggles; hero-image cover polish.
-
----
-
-## Next up (pre-pivot, still valid)
-
-1. **M5 — persistence** — section pricing/labour rules + supply-only flag + custom-row ids (incl. `line.sku`) + credential brivoSkus into save shape. (Partly advanced by v29 — subscription state already persists.) Audit remaining gaps.
-2. **Luxer Deep Dive** — full Luxer PDF extraction (Outdoor Lockers + Fridge + Camera + Accessories + Room Kit) + catalog reconciliation + Tier-3 variant drill-down.
-3. **V2 Tab focus restoration** — cherry-pick orphan commit `1590519`.
-
----
-
-## New feature items (need full briefs)
-
-- **CMVR auto-recommendation** — camera-count-driven CMVR model rec; manual override. Right-panel / BOM auto-row.
-- **Network switch auto-recommendation** — same count-driven pattern.
-- **Power supply auto-recommendation** — same count-driven pattern.
-- **AC door hardware components** — per-door: door contact, REX, power supply, electric strike/lockset.
-- **DoorBird mounting boxes** — catalog expansion.
-- **Access control switches** — new AC sub-category.
-- **Elevator controls** — new module (call station + floor access control).
-- **Suite IoT specifics** — expand suite module with device-specific detail.
-
----
-
-## Queued passes (backlog)
+## Queued passes
 
 ### Classifier v2 — DHW keyword expansion
-Extend `DHW_CLASSIFIER_RULES`: rule 4 (→5.2) astragal, coordinator, threshold, gasketing, door bottom/sweep, track, viewer, pocket door lock, latching bolt, mounting plate; rule 3 fire exit hardware; rule 5 (→5.3) `cyl` abbrev. Door-operator components → §2.2. "By others" → W7-excludes. `\b` boundaries on `SECURITY_HARDWARE_PATTERN`. Drops unclassified ~28→~5.
+- Extend DHW_CLASSIFIER_RULES: rule 4 (→5.2) astragal, coordinator, threshold, gasketing, door bottom/sweep, track, viewer, pocket door lock, latching bolt, mounting plate; rule 3 fire exit hardware; rule 5 (→5.3) cyl abbrev. Drops unclassified ~28→~5.
+- Door-operator components (column actuator, surf. auto operator, power supply, wire harness) → §2.2.
+- "By others" lines → integrator W7-excludes at import; user-guide note.
+- Ride-along: add \b word boundaries to SECURITY_HARDWARE_PATTERN.
 
 ### DHW Quote — Excel support
-Extend `_handleHardwareQuoteFile` for `.xlsx` via SheetJS → CSV → existing `_dhwShowColMapModal` flow.
+- Follow-up to PR #22. Extend _handleHardwareQuoteFile to accept .xlsx. Parse via SheetJS (vendored in lib/). Convert first sheet to CSV, then feed existing _dhwShowColMapModal flow unchanged.
 
 ### Other backlog
-- **Switch Topology** (partial) — two-tier camera→switch→CMVR cabling; multi-switch array; switch right-panel.
+- **Switch Topology** (partial — Network tile place/drag/delete/persist exists). Two-tier camera→switch→CMVR cabling; multi-switch-per-page array; switch right-panel.
 - **Manual Cable Routing + Conduit** — user-drawn polylines replacing straight-line × multiplier; conduit per-segment → BOM row.
 - **Camera Details Panel Redesign** — sliders w/ two-way canvas sync.
 - **PDF scale-marker auto-recognition** — select scale bar → calibration. OCR lib TBD.
-- **Catalog / rules** — Rules Page editor; LuxerOne / Doorbird / Hanwha SKU imports.
-
----
-
-## Recently shipped (this chat)
-
-- **SUB-M2** (this PR) — Eagle Eye per-camera VMS subscription. New 6.2 Camera VMS sub-section with retention pill, project-wide `cameraStorageRetention`, EN-PR1 desc strip-from-paren. Save v30.
-- **SUB-M1a–d** (PRs #40–43) — Brivo AC subscriptions end-to-end (see arc above). Project default rule → discount 0%. Save v29.
-- **SQ custom-row per-section routing** (PR #39) — dedicated `bomCustomLines` keys for 2.2/2.3/3.1/3.2/4.2 so lines land in their own section.
-- **WP-M1** (PR #37) — Web Proposal preview modal + HTML renderer.
-- **PDF Security Quote page + logo header** (PR #35) — `drawProposalQuote` + white-band logo `drawPageHeader`. (Retained as fallback; PDF being retired.)
-- **SQ custom row add button + SKU field** (PR #36).
+- **Catalog / rules** — Rules Page editor; Hanwha SKU imports. (LuxerOne/Doorbird device-catalog imports still open; subscription side now shipped via SUB-M3/M4.)
 
 ---
 
 ## Notes
 
-- One brief per pass under `PASS_*_BRIEF.md`; fold into final commit.
-- Commit per milestone after browser review. Multi-feature arcs stack on one branch/PR.
-- Direct push to main blocked; all merges via PR. Push branch to origin BEFORE `gh pr create`.
-- Project-knowledge file copies LAG main by several passes — CC must recon against live main, never the uploaded copy.
-- Update QUEUE.md at end of any chat that shifts the queue. CLAUDE.md + project-instructions panel must stay in sync.
+- SUB milestone numbering: CLAUDE.md lists SUB-M3 Mobile Pass / M4 DoorBird / M5 Luxer as queued. ACTUAL ship order diverged — LuxerOne + DoorBird shipped together as the per-suite subscription pass (commit base a63cf31). Mobile Pass remains the sole open SUB follow-on. Reconcile CLAUDE.md SUB numbering on next edit.
+- One brief per pass under PASS_*_BRIEF.md; fold into final commit.
+- Commit per milestone after browser review. Multi-feature arcs may stack on one branch/PR.
+- Direct push to main blocked; all merges via PR.
+- Update QUEUE.md at end of any chat that shifts the queue.
+'@ | Set-Content -Path QUEUE.md -Encoding utf8
