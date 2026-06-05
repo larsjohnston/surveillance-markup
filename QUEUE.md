@@ -1,92 +1,97 @@
-# Queue
+# QUEUE.md
 
-Last regenerated 2026-06-01 after PR #12 (SQ + DHW parity arc) merged into main.
+Canonical work queue for Smart Building Markup & Quoting Tool. Manually maintained — update at the end of any chat that shifts priorities.
 
-## Recently shipped
+Main at `1879fe5`. Save schema v29.
 
-- **PR #12 — SQ + DHW parity arc** (P1 → P7 + follow-ups). Visual + functional parity across both wizards. Chrome / controls / column-hide / default cols / Project Totals box / col-hdr two-line wrap / supply-only hides labour body / xlsx full-justify. SQ Tax row + Sub-Total/Grand Total stack DEFERRED to Proposal Wizard. DHW Summary internal-review prose + warning banner + combine-hw-labour toggle DEFERRED to Proposal Wizard.
-- **PR #11 — SQ + DHW polish 2** (blue outline on every editable input; `$` prefix; money 2dp / percent 1dp rounding; tax label / GST default).
-- **PR #10 — SQ networking pricing fix** (bomRowSku resolves recording + network rows; CMVR + switch pricing unblocked). Labour V1 Tab focus restore (`1590519`) is an orphan local commit lost in this merge — queued for revival.
-- **PR #9 — SQ polish + Summary redesign + tax label** (UI polish, recalcBom throw fix, Sub-Total relocated to Summary, editable tax label, etc.).
-- **PRs #1–8 — preceding SQ wizard arc** (M0–M4 + various polish).
+---
 
-## Active queue (in order)
+## Active arc — Subscriptions & Operating Expenses
 
-### 1. Pricing Vendor Expansion
+Per-vendor recurring-cost engine. Subscriptions are NOT BOM (BOM = equipment only) — they live in the SQ wizard MATERIALS step as section "6. Subscriptions" (bottom) and as a single rolled-up customer line in the web proposal. Project-wide Monthly/Annual term toggle (pill in section header, replaces rule pill). Sell is editable per-line with an override flag; standard sell = msrp. Term suffix: `-1` monthly / `-12` annual.
 
-Brief: `PASS_PRICING_VENDOR_EXPANSION_BRIEF.md`
+- **SUB-M1 — Brivo Access** ✅ SHIPPED (PRs #40–43, main `1879fe5`).
+  - M1a converter: no-op — `parse_brivo` already ingests sub SKUs (no suffix filter on Access sheet).
+  - M1b engine + data model: `computeSubscriptionRows()` (mode A Standard / mode B Multifamily by gateway presence; S1/S2/S3 reader tiers; `B-ACS-BASE-S/M`, `B-ACS-UC-M` ×gateway-units). `projectInfo.subscriptionTerm` + `subscriptionOverrides`. Save v28→v29. **Project default rule changed to discount 0%.**
+  - M1c render: Subscriptions section in MATERIALS — term pill, editable sell + override flag, col-B-only desc.
+  - M1d web rollup: single customer line "Cloud Based Multifamily Application, VMS & Cloud Storage, 24/7 Support & IP Integration" + term-aware/override-aware total below grand total.
+- **SUB-M2 — Brivo Mobile Pass.** `B-MP-100/500/1000`. NEEDS RULE: how pass count is determined (per unit? per reader? manual qty?) and whether always-present or optional. Reuses M1c/M1d render pattern.
+- **SUB-M3 — Eagle Eye Complete / VMS.** SKUs in the same Brivo workbook (`EN-CBC*` Complete plans + per-camera VMS). NEEDS RULE: per-camera vs per-bridge, which Complete tier, setup `-0` vs recurring `-1/-12`. Target PDF showed per-camera VMS ×28.
+- **SUB-M4 — DoorBird.** From DoorBird PDF (in project files). NEEDS RULE: per-intercom sub SKU + qty rule.
+- **SUB-M5 — Luxer.** Needs private-repo data + per-locker-bank rule.
 
-Extend pricing pipeline to merge **3 vendors** into one `pricingBook.json`:
-- Eagle Eye (already wired).
-- **DoorBird** (intercoms) — new.
-- **Luxer One** (parcel lockers) — new.
-- **Brivo** (access control) — new.
+Known cosmetic debt: pricing-book `notes` carry a mojibake em-dash (`â€"`); subscription render strips col C + cleans it at display. Converter-side fix (clean encoding at source) is the durable fix — deferred.
 
-Per-vendor adapter pattern in `build_pricing_json.py`. Manual xlsx/CSV extraction from vendor PDFs. Catalog SKU audit + fixup. Acceptance: every priced auto row carries Cost + List.
+---
 
-### 2. Credentials wiring
+## Web Proposal arc (hosted, replaces PDF export)
 
-Brief: `PASS_CREDENTIALS_BRIEF.md`
+Tool generates self-contained HTML → POSTs to dedicated proposals Worker → Cloudflare R2/KV → unguessable slug URL. Client opens URL → open-ping on load. Download = client-side print-to-PDF. Portal wraps stored proposals later.
+v1 decisions locked: separate Worker + R2/KV · open/timestamp tracking only · unguessable slug, no login · HTML-first.
 
-Wire AC Tier 2 credential tiles to the price book (currently disconnected). Catalog 11 Brivo credential SKUs from price book rows 317–327 (bulk packs + custom encryption + punch services). Right-panel qty input + Add to BOM flow. **Fixes broken qty-modal OK button** (current bug). Replaces derived `auto-ac-credentials` stub. Mobile passes deferred (subscription model — separate pass).
+- **WP-M1 — Preview modal + HTML renderer** ✅ SHIPPED (PR #37). Proposal-menu "Preview Web Proposal…" → print-dialog modal (section toggles + iframe preview). Clean branded cover + sell-only Security Quote (navy/blue/grey). `buildWebProposalHtml()` returns standalone HTML. + SUB-M1d subscription rollup line.
+- **WP-M2 — Proposals Worker + R2 storage.** `POST /proposals`→slug; `GET /p/:slug` serves. Multi-tenant X-Auth-Token. wrangler deploy. *(R2 vs KV decided at M2 — recommend R2.)*
+- **WP-M3 — Wire Generate-URL button.** POST buildWebProposalHtml output → slug → copyable link. localStorage cache.
+- **WP-M4 — Open tracking.** Ping on GET (timestamp + count). Status view.
+- **WP-M5 — Download button** on hosted page (native print stylesheet, no new dep).
+- **WP-M6 (later) — Customer portal.** Auth + per-client index.
 
-### 3. DHW Revamp
+Renderer growth (fold into WP follow-ups): Riser, Hardware Schedule, Floor Plans section toggles; hero-image cover polish.
 
-Brief: `PASS_DHW_REVAMP_BRIEF.md`
+---
 
-Replace 5-step horizontal stepper with **2 left-pane tile launchers** (Door Hardware Schedule Import + Door Schedule Import placeholder) + **4-step wizard** (Import / Pricing / Labour / Summary). Comparison + Hardware merged into Import. AC Overlap becomes per-row pill toggle in Pricing. Labour mirrors SQ exactly. Summary mirrors SQ exactly. Section grouping auto-derived by hardware category. Decisions all locked in brief.
+## Next up (pre-pivot, still valid)
 
-### 4. Proposal Wizard
+1. **M5 — persistence** — section pricing/labour rules + supply-only flag + custom-row ids (incl. `line.sku`) + credential brivoSkus into save shape. (Partly advanced by v29 — subscription state already persists.) Audit remaining gaps.
+2. **Luxer Deep Dive** — full Luxer PDF extraction (Outdoor Lockers + Fridge + Camera + Accessories + Room Kit) + catalog reconciliation + Tier-3 variant drill-down.
+3. **V2 Tab focus restoration** — cherry-pick orphan commit `1590519`.
 
-Brief: `PASS_PROPOSAL_WIZARD_BRIEF.md`
+---
 
-Top-level customer-facing output orchestration. **4-step wizard** (Setup / Review / Output / Generate). Absorbs:
-- SQ Tax row + Sub-Total/Grand Total stack (deferred from P7).
-- DHW Summary warning banner + internal-review prose + combine-hw-labour toggle (deferred from P7).
-- **Multi-tax** support (GST + PST/QST + tax-on-tax for QC, province presets).
-- Customer-facing live preview pane.
-- PDF generation orchestration (cover + hardware schedule + security list + pricing summary).
-- **Cover page redesign** folds into P4 of this pass.
+## New feature items (need full briefs)
 
-Decisions locked: province overwrites labels; PDF blocks on errors / warns on unpriced; single live state (no versioning); auto-save; multi-currency/US deferred.
+- **CMVR auto-recommendation** — camera-count-driven CMVR model rec; manual override. Right-panel / BOM auto-row.
+- **Network switch auto-recommendation** — same count-driven pattern.
+- **Power supply auto-recommendation** — same count-driven pattern.
+- **AC door hardware components** — per-door: door contact, REX, power supply, electric strike/lockset.
+- **DoorBird mounting boxes** — catalog expansion.
+- **Access control switches** — new AC sub-category.
+- **Elevator controls** — new module (call station + floor access control).
+- **Suite IoT specifics** — expand suite module with device-specific detail.
 
-### 5. M5 (persistence)
+---
 
-Bump save version (lite + full). Migrate in `applyProjectState`:
-- SQ per-section materials pricing rules + per-section labour rules + per-line labour overrides + supply-only flag + tax label.
-- Multi-tax array (from Proposal Wizard).
-- Province preset.
-- Combine-hw-labour project-wide flag.
-- Proposal includes flags.
-- Customer/proposal metadata.
-- Credential per-SKU qtys.
-- DHW: new per-section pricing rules + labour state from revamp.
+## Queued passes (backlog)
 
-Legacy global-margin pipeline removal (the 9 sites we hid in M2b/M2c). CSV + PDF reflect new model. Legacy `bom.config.taxPct`/`taxLabel` migrate to `bom.config.taxes` array.
+### Classifier v2 — DHW keyword expansion
+Extend `DHW_CLASSIFIER_RULES`: rule 4 (→5.2) astragal, coordinator, threshold, gasketing, door bottom/sweep, track, viewer, pocket door lock, latching bolt, mounting plate; rule 3 fire exit hardware; rule 5 (→5.3) `cyl` abbrev. Door-operator components → §2.2. "By others" → W7-excludes. `\b` boundaries on `SECURITY_HARDWARE_PATTERN`. Drops unclassified ~28→~5.
 
-### 6. Polish — V2 Tab focus restoration
+### DHW Quote — Excel support
+Extend `_handleHardwareQuoteFile` for `.xlsx` via SheetJS → CSV → existing `_dhwShowColMapModal` flow.
 
-Cherry-pick orphan commit `1590519` (Labour V1 Tab focus restore) lost during PR #10 merge. Apply against new main. Plus mirror the same fix for V2 (default-strip Sell Tab → first section's first input) per CC's earlier flagged follow-up. Render-discipline class of bug.
+### Other backlog
+- **Switch Topology** (partial) — two-tier camera→switch→CMVR cabling; multi-switch array; switch right-panel.
+- **Manual Cable Routing + Conduit** — user-drawn polylines replacing straight-line × multiplier; conduit per-segment → BOM row.
+- **Camera Details Panel Redesign** — sliders w/ two-way canvas sync.
+- **PDF scale-marker auto-recognition** — select scale bar → calibration. OCR lib TBD.
+- **Catalog / rules** — Rules Page editor; LuxerOne / Doorbird / Hanwha SKU imports.
 
-## Deferred / future passes
+---
 
-- **Mobile Passes** for AC Credentials (subscription model — needs subscription line-item architecture).
-- **HID credentials** catalog (book rows 328–330).
-- **Manual cable routing + conduit** — replace straight-line × multiplier with user-drawn polylines.
-- **PDF scale-marker auto-recognition** — OCR-assisted calibration.
-- **DHW Export CSV** — DHW has no CSV export today; SQ does. Parity gap, flagged in parity recon.
-- **Customer signature / e-sign** on proposal output.
-- **US tax jurisdictions** (state/county/city compounding).
-- **Cover page templating** — beyond the redesign in Proposal Wizard P4.
-- **Quote versioning / revision history**.
-- **DHW + SQ merge-by-SKU re-import** (currently destructive).
-- **XLSX schedule import** for DHW.
-- **PDF table extraction** for vendor price books.
+## Recently shipped (this chat)
 
-## Conventions
+- **SUB-M1a–d** (PRs #40–43) — Brivo AC subscriptions end-to-end (see arc above). Project default rule → discount 0%. Save v29.
+- **SQ custom-row per-section routing** (PR #39) — dedicated `bomCustomLines` keys for 2.2/2.3/3.1/3.2/4.2 so lines land in their own section.
+- **WP-M1** (PR #37) — Web Proposal preview modal + HTML renderer.
+- **PDF Security Quote page + logo header** (PR #35) — `drawProposalQuote` + white-band logo `drawPageHeader`. (Retained as fallback; PDF being retired.)
+- **SQ custom row add button + SKU field** (PR #36).
+
+---
+
+## Notes
 
 - One brief per pass under `PASS_*_BRIEF.md`; fold into final commit.
-- Recon-gate any multi-site change.
-- Each pass = its own branch + PR.
-- QUEUE.md is canonical and manually maintained — regenerate at end of any chat that shifts the queue.
-- All current decisions locked in the briefs above.
+- Commit per milestone after browser review. Multi-feature arcs stack on one branch/PR.
+- Direct push to main blocked; all merges via PR. Push branch to origin BEFORE `gh pr create`.
+- Project-knowledge file copies LAG main by several passes — CC must recon against live main, never the uploaded copy.
+- Update QUEUE.md at end of any chat that shifts the queue. CLAUDE.md + project-instructions panel must stay in sync.
