@@ -9391,6 +9391,14 @@ var bomCustomLines = {
   // Pass N+1 M8: SMART APARTMENT section. Holds custom lines for intercoms,
   // parcel lockers, mailbox banks, and in-unit IoT devices.
   smartApartment: [],
+  // sq-custom-row-sections: dedicated keys so custom lines added to these
+  // tier-2 sections route to their OWN bucket (previously fell through to
+  // 'other' / 'smartApartment', surfacing under §5.1 or §4.1).
+  overheadDoor: [],
+  intercom: [],
+  parcel: [],
+  mailbox: [],
+  iot: [],
   other: []
 };
 var bomOpen = false;
@@ -16774,7 +16782,13 @@ function applyProjectState(data){
     });
   }
   if(data.bom){
-    if(data.bom.customLines) bomCustomLines = data.bom.customLines;
+    if(data.bom.customLines){
+      bomCustomLines = data.bom.customLines;
+      // sq-custom-row-sections: backfill keys absent in older saves.
+      ['cameras','recording','network','accessControl','smartApartment','overheadDoor','intercom','parcel','mailbox','iot','other'].forEach(function(k){
+        if(!Array.isArray(bomCustomLines[k])) bomCustomLines[k] = [];
+      });
+    }
     // SQ-wizard M3: backfill stable id on any legacy custom line missing
     // it. Pre-M3 saves stored lines as {desc,qty,unit} only. New writes
     // include {id,desc,qty,unit}. Backfilling at load is additive +
@@ -21038,7 +21052,12 @@ function computeBomTree(){
   _routeCustom('recording',      '1.2');
   _routeCustom('network',        '1.2');
   _routeCustom('accessControl',  '2.1');
+  _routeCustom('overheadDoor',   '2.2');
+  _routeCustom('intercom',       '2.3');
+  _routeCustom('parcel',         '3.1');
+  _routeCustom('mailbox',        '3.2');
   _routeCustom('smartApartment', '4.1');
+  _routeCustom('iot',            '4.2');
   _routeCustom('other',          'other');
 
   return buckets;
@@ -22813,12 +22832,12 @@ function _sqCustomLineKey(subId){
     '1.1': 'cameras',
     '1.2': 'network',
     '2.1': 'accessControl',
-    '2.2': 'other',
-    '2.3': 'other',
-    '3.1': 'other',
-    '3.2': 'other',
+    '2.2': 'overheadDoor',
+    '2.3': 'intercom',
+    '3.1': 'parcel',
+    '3.2': 'mailbox',
     '4.1': 'smartApartment',
-    '4.2': 'smartApartment',
+    '4.2': 'iot',
     'other': 'other'
   };
   return map[subId] || 'other';
