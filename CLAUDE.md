@@ -99,9 +99,10 @@ Surface uncertainty, don't hide it.
 - **Conventions worth knowing:**
   - Vanilla JS, `var` declarations (not `let`/`const`). Match existing style.
   - No new dependencies. Vendored libs in `lib/`: pdf.js, jsPDF, SheetJS (xlsx.full.min.js). All loaded as local `<script src="./lib/...">`.
-  - Save files use a single JSON version literal (currently v27). Bump on shape change.
+  - Save files use a JSON version literal in TWO places (autosave wrapper + full save). Bump BOTH on shape change. Currently v29.
   - State changes call `markDirty()` for auto-save tracking.
   - Selection uses `selectCamera(id)` / `selectReader(id)` — never bare assignment to `selectedId` / `acSelectedId`.
+  - Project default pricing rule is `{ mode: 'discount', value: 0 }` (was markup 40% pre-Subscriptions). Discount mode = Sell from List(msrp); list-less rows fall back to cost-markup. `bomPricingRule` / `bomSectionRules` / `deriveSell` unchanged in mechanics.
 
 ## Step report format
 
@@ -273,6 +274,8 @@ Each pass that changes the save shape bumps the version literal in saveJSON. Cur
 - v25 — Pricing Cloud (pricingBook, upload modal, fetch)
 - v26 — Credentials wiring (projectInfo.credentials.brivoSkus)
 - v27 — DHW Revamp M6 (legacy labour fields removed; securityContractor field added)
+- v28 — DHW B-lite
+- v29 — Subscriptions (projectInfo.subscriptionTerm 'monthly'|'annual' + subscriptionOverrides {sku:sell}). applyProjectState defaults term='monthly', overrides={} on older saves.
 
 When bumping the version: read all older versions cleanly in `applyProjectState`. Default missing fields rather than rejecting the file. Add a one-time info banner if the migration is user-visible (e.g., reach values updated in Pass C).
 
@@ -284,6 +287,26 @@ To suppress both the auto-calibration prompt and the autosave recovery prompt du
     localStorage.removeItem('dev_quiet')      // disable
 
 Persists across reloads. Init reads the flag and sets `SUPPRESS_AUTO_CALIBRATION_PROMPT` and `SUPPRESS_AUTOSAVE_RECOVERY` accordingly. Edge case: `loadProjectFromFile`'s finally block resets both flags after a v10+ save load; reload the page to re-enable dev_quiet after loading a project file.
+
+### Subscriptions — SQ-only, NOT BOM
+
+Subscriptions are recurring costs, kept OUT of `computeBomTree`/BOM (BOM = equipment only). They render as section "6. Subscriptions" at the bottom of the SQ wizard MATERIALS step, and as ONE rolled-up line in the customer web proposal (below Grand Total).
+
+- Engine: `computeSubscriptionRows()` returns `[{sku, desc, qty, cost, list}]`. Mode is set by Gateway presence: any gateway → Multifamily (`B-ACS-BASE-M` + `B-ACS-UC-M` ×gateway-units), else Standard (`B-ACS-BASE-S`). Reader tiers (count = `computeRiserModel().readerCount`): 1-2 → `B-ACS-RDR-S1`, 3-12 → `B-ACS-RDR-S2`, 13+ → `B-ACS-RDR-S3`.
+- Term: project-wide `projectInfo.subscriptionTerm`. SKU suffix `-1` monthly / `-12` annual via `_subTermSuffix()`. Pill (Monthly/Annual) in the section header REPLACES the rule pill.
+- Sell is editable per-line; standard sell = list(msrp). Override stored in `projectInfo.subscriptionOverrides[sku]`; presence = override flag (amber "overridden" badge, click to reset).
+- Gateway unit count: `_subGatewayUnitCount()` mirrors the auto-sa-iot-gateway BOM qty exactly (Σ suites-of-type × ut.iotCounts.gateway).
+- Pricing-book `notes` carry a mojibake em-dash + merged "B — C" desc; subscription render keeps col B only + cleans the artifact at display. Converter-side fix deferred.
+- Web rollup: `_wpSubscriptionRollup()` + render in `_wpRenderQuote` — generic desc "Cloud Based Multifamily Application, VMS & Cloud Storage, 24/7 Support & IP Integration" + term-aware total (/month or /year). Override-aware.
+- Queued: Mobile Pass (SUB-M2), Eagle Eye VMS (M3), DoorBird (M4), Luxer (M5) — same render pattern, see QUEUE.md.
+
+### Web Proposal — hosted HTML (PDF being retired)
+
+The proposal is moving from client-side PDF to a hosted HTML page. WP-M1 shipped: Proposal-menu "Preview Web Proposal…" opens a print-dialog modal (section toggles + iframe preview). `buildWebProposalHtml()` returns a self-contained HTML string (inline CSS via `_wpDocHead`, embedded logo). `_wpRenderQuote` = sell-only customer quote (navy/blue/grey, NO red). Remaining: Worker + R2 storage (WP-M2), Generate-URL wiring (M3), open tracking (M4), download (M5), portal (M6). The PDF path (`drawProposalQuote`, `drawPageHeader`) is RETAINED but being retired — don't invest in PDF parity for new customer-facing features.
+
+### Custom-row section routing
+
+`bomCustomLines` has a dedicated key per SQ section: cameras, recording, network, accessControl, overheadDoor, intercom, parcel, mailbox, smartApartment, iot, other. `_sqCustomLineKey(subId)` maps tier-2 id → key; `_routeCustom` routes each to its bucket. Load-time backfill defaults missing keys. Don't collapse 2.2/2.3/3.1/3.2/4.2 back into 'other'/'smartApartment'.
 
 ## How to talk to me
 
