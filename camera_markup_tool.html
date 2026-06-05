@@ -993,6 +993,14 @@ input[type="number"]::-webkit-outer-spin-button {
 /* Pass A.6: × dismiss button in Export modal top-right. Scoped position
    to #export-modal so other modals using .modal-box aren't disturbed. */
 #export-modal .modal-box { position:relative; }
+.wp-layout { display:flex; gap:18px; align-items:stretch; min-height:60vh; }
+.wp-controls { flex:0 0 240px; display:flex; flex-direction:column; gap:6px; }
+.wp-controls .export-opts { display:flex; flex-direction:column; gap:6px; }
+.wp-actions-col { display:flex; flex-direction:column; gap:8px; }
+.wp-actions-col .btn { width:100%; }
+.wp-hint { font:italic 10px var(--font-ui); color:var(--text-muted); margin:4px 0 0; line-height:1.4; }
+.wp-preview-wrap { flex:1 1 auto; border:1px solid var(--border); border-radius:4px; overflow:hidden; background:#f3f4f6; min-width:0; }
+.wp-preview-frame { width:100%; height:100%; min-height:60vh; border:none; background:#fff; display:block; }
 .modal-close-x { position:absolute; top:10px; right:12px; background:transparent; border:none; font:700 22px sans-serif; line-height:1; color:var(--text-muted); cursor:pointer; padding:4px 8px; border-radius:4px; }
 .modal-close-x:hover { color:var(--text); background:var(--surface-soft); }
 
@@ -2183,6 +2191,7 @@ input[type="number"]::-webkit-outer-spin-button {
         <button class="menu-item" id="btn-dhw-manager" onclick="openDoorHardwareModal()"><span class="menu-check">&#10003;</span><span class="menu-label">Door Hardware&hellip;</span></button>
         <button class="menu-item" id="btn-bom" onclick="toggleBom()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Security Quote</span></button>
         <div class="menu-divider"></div>
+        <button class="menu-item" id="btn-web-proposal" onclick="openWebProposalModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Preview Web Proposal&hellip;</span></button>
         <button class="menu-item" id="btn-pdf" onclick="openExportModal()" disabled><span class="menu-check">&#10003;</span><span class="menu-label">Export Proposal PDF</span></button>
         <button class="menu-item" onclick="exportBomCSV()"><span class="menu-check">&#10003;</span><span class="menu-label">Export BOM as CSV</span></button>
       </div>
@@ -3284,6 +3293,35 @@ input[type="number"]::-webkit-outer-spin-button {
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeExportModal()">Cancel</button>
       <button class="btn btn-green" id="btn-export-go" onclick="runExportPDF()">Export PDF</button>
+    </div>
+  </div>
+</div>
+
+<div id="web-proposal-modal" class="big-modal" onclick="if(event.target===this) closeWebProposalModal()">
+  <div class="modal-box big-modal-box wp-modal-box" style="position:relative; min-width:880px; width:92vw; max-width:1100px;">
+    <button class="modal-close-x" onclick="closeWebProposalModal()" title="Close" aria-label="Close">&times;</button>
+    <h3>&#128196; Web Proposal Preview</h3>
+    <div class="wp-layout">
+      <div class="wp-controls">
+        <div class="export-section-hdr">Sections</div>
+        <div class="export-opts">
+          <label><input type="checkbox" id="wp-sec-cover"  onchange="renderWebProposalPreview()" checked> Cover Page</label>
+          <label><input type="checkbox" id="wp-sec-quote"  onchange="renderWebProposalPreview()" checked> Security Quote</label>
+        </div>
+        <p class="wp-hint">More sections (Riser, Hardware, Floor Plans) will appear here as they become available.</p>
+        <div class="export-section-hdr">Actions</div>
+        <div class="wp-actions-col">
+          <button class="btn btn-dark" onclick="renderWebProposalPreview()">Refresh Preview</button>
+          <button class="btn btn-green" id="wp-generate-url" onclick="generateWebProposalUrl()" disabled title="Available in a later update">Generate URL</button>
+          <p class="wp-hint" id="wp-url-hint">URL generation coming soon.</p>
+        </div>
+      </div>
+      <div class="wp-preview-wrap">
+        <iframe id="wp-preview-frame" class="wp-preview-frame" title="Proposal preview"></iframe>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-dark" onclick="closeWebProposalModal()">Close</button>
     </div>
   </div>
 </div>
@@ -10673,7 +10711,7 @@ async function loadImage(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-web-proposal','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -10729,7 +10767,7 @@ async function loadPDF(file){
   document.getElementById('panel').style.display = '';
   document.body.classList.remove('no-pdf');
   document.getElementById('zoom-bar').classList.remove('hidden');
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-web-proposal','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.disabled=false;
   });
   switchPage(0);
@@ -11157,7 +11195,7 @@ function rewindToNoPdf(){
   document.getElementById('dropzone').classList.remove('hidden');
   document.getElementById('tabs').innerHTML = '';
   // Disable menu items + corner icons
-  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
+  ['btn-save','btn-undo','btn-clear','btn-pdf','btn-web-proposal','btn-blind','btn-calib','btn-dori','btn-bom','btn-headend','btn-project','btn-heatmap','btn-fov','btn-labels-master','btn-label-camera','btn-label-accessControl','btn-label-intercom','btn-label-parcel','btn-label-mailbox','btn-label-suite','btn-cables','btn-eye'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.disabled = true;
   });
   document.body.classList.add('no-pdf');
@@ -16972,6 +17010,44 @@ function openExportModal(){
 function closeExportModal(){
   document.getElementById('export-modal').classList.remove('show');
 }
+
+function openWebProposalModal(){
+  var m = document.getElementById('web-proposal-modal');
+  if(!m) return;
+  m.classList.add('show');
+  renderWebProposalPreview();
+}
+function closeWebProposalModal(){
+  var m = document.getElementById('web-proposal-modal');
+  if(m) m.classList.remove('show');
+}
+// WP-M1a STUB. WP-M1b replaces the body with the real HTML proposal
+// renderer (reads computeBomTree / deriveSell / _sqRowLabour and writes
+// the section HTML into the iframe per the wp-sec-* toggles).
+function renderWebProposalPreview(){
+  var frame = document.getElementById('wp-preview-frame');
+  if(!frame) return;
+  var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+  if(!doc) return;
+  var secCover = document.getElementById('wp-sec-cover');
+  var secQuote = document.getElementById('wp-sec-quote');
+  var on = [];
+  if(secCover && secCover.checked) on.push('Cover Page');
+  if(secQuote && secQuote.checked) on.push('Security Quote');
+  doc.open();
+  doc.write('<!doctype html><html><head><meta charset="utf-8"><style>'
+    + 'body{font:13px system-ui,sans-serif;color:#374151;padding:40px;}'
+    + 'h1{color:#28365c;font-size:18px;}'
+    + '.ph{color:#9ca3af;font-style:italic;margin-top:24px;}'
+    + '</style></head><body>'
+    + '<h1>Web Proposal Preview</h1>'
+    + '<p>Sections selected: ' + (on.length ? on.join(', ') : '(none)') + '</p>'
+    + '<p class="ph">Section rendering arrives in the next update (WP-M1b).</p>'
+    + '</body></html>');
+  doc.close();
+}
+// WP-M1a STUB — wired in WP-M3.
+function generateWebProposalUrl(){ /* no-op until WP-M3 */ }
 
 // Pass A.6: toggle the subtle "all sections off" hint reactively as the
 // user (un)checks the four section boxes. Soft warning only — Export PDF
