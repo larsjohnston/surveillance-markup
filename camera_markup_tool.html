@@ -17680,6 +17680,11 @@ function bomRowSku(row){
   }
   if(row.src === 'doorHardware') return { sku: row.sku || '', typeLabel: row.sku ? '' : 'HARDWARE' };
   if(k === 'auto-ac-credentials') return { sku: '', typeLabel: 'CREDENTIALS' };
+  // Credential (brivoSkus) + any accessControl auto-row that carries its real
+  // catalog SKU: prefer it directly. The generic auto-ac- slice below would
+  // otherwise synthesize a non-catalog key ('cred-brivo-<SKU>') that misses
+  // the price book, zeroing credential cost/list in the compute wrapper.
+  if(row && row.src === 'accessControl' && typeof row.sku === 'string' && row.sku) return { sku: row.sku, typeLabel: '' };
   if(k.indexOf('auto-ac-') === 0) return { sku: _stripOhPrefix(k.slice('auto-ac-'.length)), typeLabel: '' };
   if(k.indexOf('auto-sa-intercom-') === 0) return { sku: k.slice('auto-sa-intercom-'.length), typeLabel: '' };
   if(k.indexOf('auto-sa-parcel-')   === 0) return { sku: k.slice('auto-sa-parcel-'.length),   typeLabel: '' };
