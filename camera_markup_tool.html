@@ -407,6 +407,12 @@ input[type="number"]::-webkit-outer-spin-button {
   text-transform:uppercase; letter-spacing:.04em;
 }
 .bom-sec-hdr .add-btn:hover { background:#1f2937; }
+.sub-term-pill { display:inline-flex; gap:0; margin-left:auto; border:1px solid var(--border); border-radius:3px; overflow:hidden; }
+.sub-term-btn { background:#fff; color:var(--text-muted); border:none; font:700 9px var(--font-ui); padding:3px 9px; cursor:pointer; text-transform:uppercase; letter-spacing:.04em; }
+.sub-term-btn.active { background:var(--primary); color:#fff; }
+.bom-cell-cost-ro { text-align:right; color:var(--text-muted); }
+.bom-cell-sell-edit input { width:100%; text-align:right; }
+.sub-override-flag { font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.03em; color:#b45309; background:#fef3c7; border-radius:2px; padding:1px 5px; margin-left:6px; cursor:pointer; }
 
 .bom-sku-input {
   width:100%; background:transparent; border:none; border-bottom:1px solid #d1d5db;
@@ -21218,6 +21224,29 @@ function recalcBom(){
   // left defined for an external diagnostic console call but unused by
   // the live render path.
 
+  // SUB-M1c — Subscriptions section (bottom of MATERIALS). Not a BOM tier —
+  // recurring lines from computeSubscriptionRows(). Empty → omitted.
+  var subRows = computeSubscriptionRows();
+  if(subRows.length > 0){
+    html += '<div class="bom-tier1">';
+    html += '<div class="bom-tier1-hdr">6. Subscriptions</div>';
+    html += '<div class="bom-section">';
+    html += '<div class="bom-sec-hdr"><span>6.1 Access Control</span>' + _subRenderTermPill() + '</div>';
+    var subQCost = 0, subQSell = 0, subMargin = 0;
+    var ovMap = projectInfo.subscriptionOverrides || {};
+    subRows.forEach(function(r){
+      html += _subRenderRow(r);
+      var c = (typeof r.cost === 'number') ? r.cost : 0;
+      var l = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : 0;
+      var hasOv = Object.prototype.hasOwnProperty.call(ovMap, r.sku) && typeof ovMap[r.sku] === 'number' && isFinite(ovMap[r.sku]);
+      var s = hasOv ? ovMap[r.sku] : l;
+      var q = (typeof r.qty === 'number') ? r.qty : 0;
+      subQCost += q * c; subQSell += q * s; subMargin += (q * s - q * c);
+    });
+    html += _sqRenderSectionSubtotal('subscriptions', { sumQCost: subQCost, sumQSell: subQSell, sumMargin: subMargin });
+    html += '</div></div>';
+  }
+
   document.getElementById('bom-body').innerHTML = html;
 
   // SQ-wizard M3: materials rendering done — repaint labour so a
@@ -21688,6 +21717,24 @@ function _sqRenderRulePill(sectionId){
   return '<span class="' + cls + '" data-section="' + sectionId + '" onclick="_sqStartEditPill(\'' + sectionId + '\')" title="Click to edit section pricing rule">' + lbl + reset + '</span>';
 }
 
+// SUB-M1c — Subscriptions term pill (Monthly/Annual). Replaces the rule
+// pill in the Subscriptions section header. Writes projectInfo.subscriptionTerm
+// + markDirty + recalcBom (term changes the SKU suffix → different rows).
+function _subRenderTermPill(){
+  var term = (projectInfo.subscriptionTerm === 'annual') ? 'annual' : 'monthly';
+  return '<span class="sub-term-pill">'
+       +   '<button class="sub-term-btn' + (term === 'monthly' ? ' active' : '') + '" onclick="_subSetTerm(\'monthly\')">Monthly</button>'
+       +   '<button class="sub-term-btn' + (term === 'annual'  ? ' active' : '') + '" onclick="_subSetTerm(\'annual\')">Annual</button>'
+       + '</span>';
+}
+function _subSetTerm(t){
+  var next = (t === 'annual') ? 'annual' : 'monthly';
+  if(projectInfo.subscriptionTerm === next) return;
+  projectInfo.subscriptionTerm = next;
+  markDirty();
+  recalcBom();
+}
+
 // SQ-wizard M2b — Default-strip + per-section pill state writers. Each
 // writes the in-memory rule state, calls markDirty (state IS persisted
 // via M5 — this pass leaves them flagged dirty so the user's intent
@@ -21860,6 +21907,66 @@ function _sqRenderCustomRow(cust, rule){
        +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(gm) + '</div>'
        +   '<div class="bom-del" onclick="removeBomLine(\'' + cust.section + '\',' + cust.idx + ')" title="Remove">&times;</div>'
        + '</div>';
+}
+
+// SUB-M1c — Subscription row. 11-col grid like auto/custom rows, but Sell
+// is an editable input. Standard sell = list (msrp). An override in
+// projectInfo.subscriptionOverrides[sku] wins + shows the override flag.
+// Cost shown read-only; Qty locked (engine-derived). No del control.
+function _subRenderRow(row){
+  var sku  = row.sku;
+  var cost = (typeof row.cost === 'number') ? row.cost : 0;
+  var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
+  var qty  = (typeof row.qty  === 'number') ? row.qty  : 0;
+  var ov   = projectInfo.subscriptionOverrides || {};
+  var hasOverride = Object.prototype.hasOwnProperty.call(ov, sku) && typeof ov[sku] === 'number' && isFinite(ov[sku]);
+  var standardSell = (list != null) ? list : 0;          // standard sell = msrp
+  var sell = hasOverride ? ov[sku] : standardSell;
+  var qc   = qty * cost;
+  var qs   = qty * sell;
+  var mar  = qs - qc;
+  var gm   = qs > 0 ? (mar / qs) * 100 : null;
+  var flag = hasOverride
+    ? ' <span class="sub-override-flag" title="Sell overridden from standard (' + _sqFmtMoney(standardSell) + '). Click to reset." onclick="_subResetSell(\'' + escapeHtml(sku) + '\')">overridden</span>'
+    : '';
+  var listCell = (list == null)
+    ? '<div class="bom-cell muted bom-cell-list">—</div>'
+    : '<div class="bom-cell bom-cell-list">' + _sqFmtMoney(list) + '</div>';
+  // Clean the mojibake em-dash artifact, then keep only col B (the converter
+  // joins "description — spec/notes" with ' — '; we want just the description).
+  var desc = (row.desc || '').replace(/â/g, '—');
+  var _emDash = desc.indexOf(' — ');
+  if(_emDash !== -1) desc = desc.slice(0, _emDash);
+  return '<div class="bom-row sub-row" data-sku="' + escapeHtml(sku) + '">'
+       +   '<div class="bom-cell-sku" title="' + escapeHtml(sku) + '">' + escapeHtml(sku) + '</div>'
+       +   '<div class="bom-desc" title="Subscription line (auto-generated)">' + escapeHtml(desc) + flag + '</div>'
+       +   listCell
+       +   '<div class="bom-cell bom-cell-cost-ro">' + _sqFmtMoney(cost) + '</div>'
+       +   '<div class="bom-cell-sell-edit"><input type="number" data-sku="' + escapeHtml(sku) + '" value="' + sell.toFixed(2) + '" step="0.01" min="0" onchange="_subUpdateSell(this)"></div>'
+       +   '<span class="bom-cell bom-cell-qty locked" data-qty="' + qty + '" title="Quantity is engine-derived" onclick="_sqShowQtyLockNotice()">' + qty + '</span>'
+       +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
+       +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(qs) + '</div>'
+       +   '<div class="bom-cell bom-line-margin">' + _sqFmtMoney(mar) + '</div>'
+       +   '<div class="bom-cell bom-line-gm">' + _sqFmtPct(gm) + '</div>'
+       +   '<div></div>'
+       + '</div>';
+}
+function _subUpdateSell(input){
+  var sku = input.getAttribute('data-sku');
+  if(!sku) return;
+  var v = parseFloat(input.value);
+  if(!projectInfo.subscriptionOverrides) projectInfo.subscriptionOverrides = {};
+  if(!isFinite(v)){ delete projectInfo.subscriptionOverrides[sku]; }
+  else { projectInfo.subscriptionOverrides[sku] = v; }
+  markDirty();
+  recalcBom();
+}
+function _subResetSell(sku){
+  if(projectInfo.subscriptionOverrides && Object.prototype.hasOwnProperty.call(projectInfo.subscriptionOverrides, sku)){
+    delete projectInfo.subscriptionOverrides[sku];
+    markDirty();
+    recalcBom();
+  }
 }
 
 // SQ-wizard M2b — Warn-row renderer (e.g. "No CMVR Present"). Single
