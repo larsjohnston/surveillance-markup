@@ -17021,29 +17021,153 @@ function closeWebProposalModal(){
   var m = document.getElementById('web-proposal-modal');
   if(m) m.classList.remove('show');
 }
-// WP-M1a STUB. WP-M1b replaces the body with the real HTML proposal
-// renderer (reads computeBomTree / deriveSell / _sqRowLabour and writes
-// the section HTML into the iframe per the wp-sec-* toggles).
+// WP-M1b. Real HTML proposal renderer. Customer-facing, sell-only.
+// Palette navy #28365c / blue #4a6eb4 / greys / white — NO red. Builds a
+// self-contained HTML string (inline CSS + embedded logo) so the SAME
+// string can later POST to the proposals Worker unchanged (WP-M3).
+function _wpMoney(n){
+  return '$' + (Math.round((n||0)*100)/100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+// Builds the <head> + shared CSS for the proposal document.
+function _wpDocHead(){
+  return '<!doctype html><html><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    + '<style>'
+    + '*{box-sizing:border-box;margin:0;padding:0;}'
+    + 'body{font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#374151;background:#fff;}'
+    + '.wp-page{max-width:850px;margin:0 auto;padding:48px 56px;}'
+    + '.wp-cover{border-bottom:3px solid #28365c;padding-bottom:28px;margin-bottom:36px;'
+    +   'display:flex;justify-content:space-between;align-items:flex-start;gap:24px;}'
+    + '.wp-cover-logo img{height:64px;width:auto;display:block;}'
+    + '.wp-cover-meta{text-align:right;}'
+    + '.wp-cover-meta .wp-proj{font-size:22px;font-weight:700;color:#28365c;line-height:1.2;}'
+    + '.wp-cover-meta .wp-row{font-size:13px;color:#6b7280;margin-top:6px;}'
+    + '.wp-cover-meta .wp-row b{color:#374151;font-weight:600;}'
+    + '.wp-quote-hdr{display:grid;grid-template-columns:1fr 70px 150px;gap:8px;'
+    +   'background:#28365c;color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;'
+    +   'text-transform:uppercase;padding:9px 14px;border-radius:3px 3px 0 0;}'
+    + '.wp-quote-hdr .r{text-align:right;}'
+    + '.wp-tier1{background:#28365c;color:#fff;font-size:14px;font-weight:700;'
+    +   'padding:9px 14px;margin-top:18px;}'
+    + '.wp-tier2{background:#4a6eb4;color:#fff;font-size:12px;font-weight:600;'
+    +   'padding:7px 14px;}'
+    + '.wp-line{display:grid;grid-template-columns:1fr 70px 150px;gap:8px;'
+    +   'padding:7px 14px;font-size:13px;border-bottom:1px solid #eef0f3;}'
+    + '.wp-line:nth-child(even){background:#fafbfc;}'
+    + '.wp-line .r{text-align:right;font-variant-numeric:tabular-nums;}'
+    + '.wp-line .q{text-align:right;color:#6b7280;font-variant-numeric:tabular-nums;}'
+    + '.wp-subtotal{display:grid;grid-template-columns:1fr 150px;gap:8px;'
+    +   'background:#e1e4e9;padding:8px 14px;font-size:12px;font-weight:700;color:#3a3f4a;}'
+    + '.wp-subtotal .r{text-align:right;font-variant-numeric:tabular-nums;}'
+    + '.wp-grand{display:grid;grid-template-columns:1fr 150px;gap:8px;'
+    +   'background:#28365c;color:#fff;padding:12px 14px;font-size:15px;font-weight:700;margin-top:8px;border-radius:0 0 3px 3px;}'
+    + '.wp-grand .r{text-align:right;font-variant-numeric:tabular-nums;}'
+    + '.wp-tax{display:grid;grid-template-columns:1fr 150px;gap:8px;'
+    +   'padding:8px 14px;font-size:13px;color:#6b7280;}'
+    + '.wp-tax .r{text-align:right;font-variant-numeric:tabular-nums;}'
+    + '.wp-empty{color:#9ca3af;font-style:italic;padding:32px 0;text-align:center;}'
+    + '.wp-sec-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;'
+    +   'color:#9ca3af;margin:32px 0 4px;}'
+    + '</style></head><body><div class="wp-page">';
+}
+// Cover block (clean branded — no hero image in M1b).
+function _wpRenderCover(){
+  var logo = (typeof SMARTMF_LOGO_DATAURI === 'string' && SMARTMF_LOGO_DATAURI.indexOf('data:image') === 0)
+    ? '<div class="wp-cover-logo"><img src="' + SMARTMF_LOGO_DATAURI + '" alt="Smart MF"></div>'
+    : '<div class="wp-cover-logo" style="font-size:24px;font-weight:700;color:#28365c;">SMART MF</div>';
+  var name = escapeHtml(projectInfo.name || 'Security Proposal');
+  var rows = '';
+  if(projectInfo.client) rows += '<div class="wp-row"><b>Client:</b> ' + escapeHtml(projectInfo.client) + '</div>';
+  if(projectInfo.ref)    rows += '<div class="wp-row"><b>Quote:</b> ' + escapeHtml(projectInfo.ref) + '</div>';
+  var dateStr = projectInfo.date || new Date().toISOString().slice(0,10);
+  rows += '<div class="wp-row"><b>Date:</b> ' + escapeHtml(dateStr) + '</div>';
+  return '<div class="wp-cover">' + logo
+    + '<div class="wp-cover-meta"><div class="wp-proj">' + name + '</div>' + rows + '</div></div>';
+}
+// Quote section — sell-only. Description / Qty / Total Price. Tier-1 navy,
+// tier-2 blue, grey subtotals, navy grand total. Tax row if tax % > 0.
+function _wpRenderQuote(){
+  var buckets = computeBomTree();
+  var taxPct  = _sqReadNum('bom-tax-pct');
+  var html = '<div class="wp-sec-title">Security Quote</div>';
+  html += '<div class="wp-quote-hdr"><div>Description</div><div class="r">Qty</div><div class="r">Equipment &amp; Installation</div></div>';
+  var grand = 0;
+  var anyAtAll = false;
+  BOM_TEMPLATE.tiers.forEach(function(tier){
+    var tierHas = tier.subs.some(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return false;
+      return b.auto.filter(function(r){return !r.warn;}).length > 0 || b.custom.length > 0;
+    });
+    if(!tierHas) return;
+    anyAtAll = true;
+    html += '<div class="wp-tier1">' + escapeHtml(tier.title) + '</div>';
+    tier.subs.forEach(function(sub){
+      var b = buckets[sub.id];
+      if(!b) return;
+      var realAuto = b.auto.filter(function(r){return !r.warn;});
+      if(realAuto.length === 0 && b.custom.length === 0) return;
+      var rule = getSectionRule(sub.id);
+      var secTotal = 0;
+      html += '<div class="wp-tier2">' + escapeHtml(sub.title) + '</div>';
+      realAuto.forEach(function(r){
+        var cost = (typeof r.cost === 'number') ? r.cost : 0;
+        var list = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : null;
+        var qty  = (typeof r.qty  === 'number') ? r.qty  : 0;
+        var sell = deriveSell(cost, list, rule);
+        var lab  = _sqRowLabour(sub.id, r.key || '', qty);
+        var lbs  = bomLabourSupplyOnly ? 0 : lab.extSell;
+        var tot  = (qty * sell) + lbs;
+        secTotal += tot;
+        html += '<div class="wp-line"><div>' + escapeHtml(r.desc || r.key || '')
+          + '</div><div class="q">' + qty + '</div><div class="r">' + _wpMoney(tot) + '</div></div>';
+      });
+      b.custom.forEach(function(cust){
+        var line = cust.line || {};
+        var cost = (typeof line.unit === 'number') ? line.unit : 0;
+        var qty  = (typeof line.qty  === 'number') ? line.qty  : 0;
+        var sell = deriveSell(cost, null, rule);
+        var lab  = _sqRowLabour(sub.id, line.id || '', qty);
+        var lbs  = bomLabourSupplyOnly ? 0 : lab.extSell;
+        var tot  = (qty * sell) + lbs;
+        secTotal += tot;
+        html += '<div class="wp-line"><div>' + escapeHtml(line.desc || '')
+          + '</div><div class="q">' + qty + '</div><div class="r">' + _wpMoney(tot) + '</div></div>';
+      });
+      html += '<div class="wp-subtotal"><div>Subtotal &mdash; ' + escapeHtml(sub.title)
+        + '</div><div class="r">' + _wpMoney(secTotal) + '</div></div>';
+      grand += secTotal;
+    });
+  });
+  if(!anyAtAll){
+    return '<div class="wp-sec-title">Security Quote</div><div class="wp-empty">No priced items to display.</div>';
+  }
+  if(taxPct > 0){
+    var taxAmt = grand * (taxPct / 100);
+    html += '<div class="wp-tax"><div>Tax (' + taxPct.toFixed(2) + '%)</div><div class="r">' + _wpMoney(taxAmt) + '</div></div>';
+    grand += taxAmt;
+  }
+  html += '<div class="wp-grand"><div>Grand Total</div><div class="r">' + _wpMoney(grand) + '</div></div>';
+  return html;
+}
+// Assemble the full proposal HTML string from the active section toggles.
+// Returned standalone-complete so WP-M3 can POST it verbatim.
+function buildWebProposalHtml(){
+  var secCover = document.getElementById('wp-sec-cover');
+  var secQuote = document.getElementById('wp-sec-quote');
+  var body = '';
+  if(secCover && secCover.checked) body += _wpRenderCover();
+  if(secQuote && secQuote.checked) body += _wpRenderQuote();
+  if(!body) body = '<div class="wp-empty">No sections selected.</div>';
+  return _wpDocHead() + body + '</div></body></html>';
+}
 function renderWebProposalPreview(){
   var frame = document.getElementById('wp-preview-frame');
   if(!frame) return;
   var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
   if(!doc) return;
-  var secCover = document.getElementById('wp-sec-cover');
-  var secQuote = document.getElementById('wp-sec-quote');
-  var on = [];
-  if(secCover && secCover.checked) on.push('Cover Page');
-  if(secQuote && secQuote.checked) on.push('Security Quote');
   doc.open();
-  doc.write('<!doctype html><html><head><meta charset="utf-8"><style>'
-    + 'body{font:13px system-ui,sans-serif;color:#374151;padding:40px;}'
-    + 'h1{color:#28365c;font-size:18px;}'
-    + '.ph{color:#9ca3af;font-style:italic;margin-top:24px;}'
-    + '</style></head><body>'
-    + '<h1>Web Proposal Preview</h1>'
-    + '<p>Sections selected: ' + (on.length ? on.join(', ') : '(none)') + '</p>'
-    + '<p class="ph">Section rendering arrives in the next update (WP-M1b).</p>'
-    + '</body></html>');
+  doc.write(buildWebProposalHtml());
   doc.close();
 }
 // WP-M1a STUB — wired in WP-M3.
