@@ -2885,6 +2885,29 @@ input[type="number"]::-webkit-outer-spin-button {
             <span>For use with Overhead Door</span>
           </label>
         </div>
+
+        <!-- SecHw M2: per-Reader security-hardware bundle. Reader-ONLY
+             (hidden for Controllers via #rp-reader-sechw-field display
+             toggle in updateRightPanelDisplayForReader, gated on isReader).
+             Each checkbox toggles dev.secHw.{strike,rex,dps} → drives §2.4
+             qty (one Estrike/REX/DPS row per checked component, qty = count
+             of readers with it on). First-open seeds all three on via
+             openRightPanelForReader. -->
+        <div class="rp-field" id="rp-reader-sechw-field" style="display:none">
+          <label class="rp-label">Security Hardware</label>
+          <label style="display:flex; align-items:center; gap:8px; font:500 11px var(--font-ui); color:var(--text); cursor:pointer; margin-bottom:6px;">
+            <input type="checkbox" id="inp-sechw-strike-reader" onchange="updateReaderSecHwStrike(this.checked)">
+            <span>Electric Strike</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font:500 11px var(--font-ui); color:var(--text); cursor:pointer; margin-bottom:6px;">
+            <input type="checkbox" id="inp-sechw-rex-reader" onchange="updateReaderSecHwRex(this.checked)">
+            <span>Request to Exit (REX)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font:500 11px var(--font-ui); color:var(--text); cursor:pointer;">
+            <input type="checkbox" id="inp-sechw-dps-reader" onchange="updateReaderSecHwDps(this.checked)">
+            <span>Door Position Sensor</span>
+          </label>
+        </div>
       </div>
 
       <!-- Credentials-wiring v26: per-SKU credential right-panel block.
@@ -15374,6 +15397,20 @@ function updateRightPanelDisplayForReader(dev){
   if(fField){
     fField.style.display = isReader ? '' : 'none';
   }
+  // SecHw M2: Reader-only visibility + checkbox state (read-only; seed
+  // happens in openRightPanelForReader). dev.secHw may be undefined for a
+  // Controller or an as-yet-unopened reader — checkboxes default unchecked.
+  var secHwField = document.getElementById('rp-reader-sechw-field');
+  if(secHwField){
+    secHwField.style.display = isReader ? '' : 'none';
+  }
+  var _sh = dev.secHw || {};
+  var shStrike = document.getElementById('inp-sechw-strike-reader');
+  var shRex    = document.getElementById('inp-sechw-rex-reader');
+  var shDps    = document.getElementById('inp-sechw-dps-reader');
+  if(shStrike) shStrike.checked = !!_sh.strike;
+  if(shRex)    shRex.checked    = !!_sh.rex;
+  if(shDps)    shDps.checked    = !!_sh.dps;
   if(fEl && isReader){
     if(spec){
       var mount = spec.mount === 'mullion' ? 'Mullion' : 'Single-Gang';
@@ -15473,8 +15510,50 @@ function updateReaderOverheadDoor(checked){
   recalcBom();
 }
 
+// SecHw M2: three per-Reader security-hardware toggles. Clone of
+// updateReaderOverheadDoor. dev.secHw is seeded on first panel-open
+// (openRightPanelForReader) so it exists by the time these fire; the
+// `dev.secHw || {}` guard is belt-and-suspenders. Each drives one §2.4
+// row's qty via the computeAutoRows secHw emitter (M1).
+function updateReaderSecHwStrike(checked){
+  if(!acSelectedId) return;
+  var dev = acDevices.find(function(x){ return x.id === acSelectedId; });
+  if(!dev) return;
+  dev.secHw = dev.secHw || {};
+  dev.secHw.strike = !!checked;
+  markDirty();
+  recalcBom();
+}
+function updateReaderSecHwRex(checked){
+  if(!acSelectedId) return;
+  var dev = acDevices.find(function(x){ return x.id === acSelectedId; });
+  if(!dev) return;
+  dev.secHw = dev.secHw || {};
+  dev.secHw.rex = !!checked;
+  markDirty();
+  recalcBom();
+}
+function updateReaderSecHwDps(checked){
+  if(!acSelectedId) return;
+  var dev = acDevices.find(function(x){ return x.id === acSelectedId; });
+  if(!dev) return;
+  dev.secHw = dev.secHw || {};
+  dev.secHw.dps = !!checked;
+  markDirty();
+  recalcBom();
+}
+
 function openRightPanelForReader(dev){
   if(!dev) return;
+  // SecHw M2: first-open seed. A Reader opened for the first time gets the
+  // full bundle on (strike+rex+dps). Presence of dev.secHw IS the seeded
+  // flag — idempotent, only seeds once. Controllers never seed (gated on
+  // acCategoryOf). recalcBom so §2.4 populates the instant a reader opens.
+  if(acCategoryOf(dev) === 'Readers' && !dev.secHw){
+    dev.secHw = { strike: true, rex: true, dps: true };
+    markDirty();
+    recalcBom();
+  }
   updateRightPanelDisplayForReader(dev);
   var rp = document.getElementById('right-panel');
   if(!rp) return;
