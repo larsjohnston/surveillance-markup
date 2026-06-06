@@ -710,7 +710,8 @@ input[type="number"]::-webkit-outer-spin-button {
    stacking context — common gotcha). */
 :root { --z-notice-modal: 80; }
 #sq-qty-lock-modal,
-#dhw-colmap-modal { z-index: var(--z-notice-modal); }
+#dhw-colmap-modal,
+#sechw-migration-modal { z-index: var(--z-notice-modal); }
 /* SQ polish: Tier Filter band hidden — the chip filter was retired in
    M5. Markup at #sq-tier-filter-host stays so setTierFilter() still
    resolves if invoked from a future re-introduction; the layout
@@ -3492,6 +3493,23 @@ input[type="number"]::-webkit-outer-spin-button {
     <p style="margin:0 0 14px 0;">To change equipment quantity, add or remove devices from floorplans so drawings always match takeoffs.</p>
     <div class="modal-actions">
       <button class="btn btn-dark" onclick="_sqCloseQtyLockNotice()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- SecHw M3: predated-file migration prompt. Fires once from
+     applyProjectState when a loaded file has >=1 reader lacking secHw and
+     migration not yet dismissed. Yes seeds all unseeded readers; No leaves
+     them. Both set projectInfo.secHwMigrationDismissed=true (never re-prompt).
+     Body-child + z-index var(--z-notice-modal) per notice-modal convention.
+     No click-outside dismiss — force an explicit Yes/No choice. -->
+<div id="sechw-migration-modal" class="big-modal">
+  <div class="modal-box" style="min-width:420px; max-width:520px;">
+    <h3>Add security hardware?</h3>
+    <p style="margin:0 0 14px 0;">This quote's readers predate Security Hardware. Do you want to add security hardware to this quote? This adds an Electric Strike, Request to Exit, and Door Position Sensor for each reader.</p>
+    <div class="modal-actions">
+      <button class="btn" onclick="_sechwMigrationDismiss()">No</button>
+      <button class="btn btn-dark" onclick="_sechwMigrationSeedAll()">Yes, add hardware</button>
     </div>
   </div>
 </div>
@@ -9476,7 +9494,8 @@ var projectInfo = {
   credentials: { fobs: 0, cards: 0, mobilePasses: 0, ohTransmitters: 0, ohReceiver: 0 },
   subscriptionTerm: 'monthly',   // 'monthly' | 'annual' — project-wide. SUB-M1b.
   subscriptionOverrides: {},     // { '<sku>': <number> } sell override; presence = overridden flag. SUB-M1b.
-  cameraStorageRetention: '30',  // '30'|'60'|'90'|'180'|'365'|'730' — project-wide Eagle Eye VMS retention. SUB-M2.
+  cameraStorageRetention: '30',
+  secHwMigrationDismissed: false,  // '30'|'60'|'90'|'180'|'365'|'730' — project-wide Eagle Eye VMS retention. SUB-M2.
   // Cleanup M5: per-family label-visibility flags. All default to true (labels
   // visible). Persisted in the project JSON; on load, applyProjectState
   // backfills missing keys to true. Replaces the per-session suitesHidden
@@ -16814,6 +16833,7 @@ function applyProjectState(data){
   if(projectInfo.subscriptionTerm !== 'annual' && projectInfo.subscriptionTerm !== 'monthly') projectInfo.subscriptionTerm = 'monthly';
   if(!projectInfo.subscriptionOverrides || typeof projectInfo.subscriptionOverrides !== 'object') projectInfo.subscriptionOverrides = {};
   if(!_CAM_RET_VALID[projectInfo.cameraStorageRetention]) projectInfo.cameraStorageRetention = '30';
+  if(typeof projectInfo.secHwMigrationDismissed !== 'boolean') projectInfo.secHwMigrationDismissed = false;
   // Suites Polish M1: backfill per-unit-type iotCounts. Pre-pass saves
   // (every save before this milestone) lack iotCounts entirely; we seed
   // each unit type with 1 for currently-true flags, 0 for false. This
@@ -17031,6 +17051,7 @@ function applyProjectState(data){
   if(_legacyAcMigrated){
     console.info('[migration] AC readers backfilled to v15 metadata; SKUs unchanged.');
   }
+  _maybeShowSecHwMigration();
 }
 
 // Single entry point for "the user gave us a project file" — handles both
@@ -22137,6 +22158,42 @@ function _sqShowQtyLockNotice(){
 function _sqCloseQtyLockNotice(){
   var modal = document.getElementById('sq-qty-lock-modal');
   if(modal) modal.classList.remove('show');
+}
+
+// SecHw M3: migration-prompt handlers. _maybeShowSecHwMigration() is the
+// fire-gate, called at the end of applyProjectState. Suppressed under
+// dev_quiet (matches auto-calibration / autosave-recovery suppression).
+// Gate: not yet dismissed AND >=1 reader lacks secHw. Seed loop only
+// touches unseeded readers (!d.secHw) so an intentional all-off bundle
+// from M2 toggling is preserved. Single markDirty+recalcBom at the end
+// (pure-data mutation, no canvas change — mirrors updateReaderOverheadDoor).
+function _maybeShowSecHwMigration(){
+  try { if(localStorage.getItem('dev_quiet') === '1') return; } catch(e){}
+  if(projectInfo.secHwMigrationDismissed === true) return;
+  var needs = acDevices.some(function(d){
+    return acCategoryOf(d) === 'Readers' && !d.secHw;
+  });
+  if(!needs) return;
+  var m = document.getElementById('sechw-migration-modal');
+  if(m) m.classList.add('show');
+}
+function _sechwMigrationSeedAll(){
+  acDevices.forEach(function(d){
+    if(acCategoryOf(d) === 'Readers' && !d.secHw){
+      d.secHw = { strike: true, rex: true, dps: true };
+    }
+  });
+  projectInfo.secHwMigrationDismissed = true;
+  markDirty();
+  recalcBom();
+  var m = document.getElementById('sechw-migration-modal');
+  if(m) m.classList.remove('show');
+}
+function _sechwMigrationDismiss(){
+  projectInfo.secHwMigrationDismissed = true;
+  markDirty();
+  var m = document.getElementById('sechw-migration-modal');
+  if(m) m.classList.remove('show');
 }
 
 // SQ-wizard M2b — Custom-row renderer. User-typed line: Cost is the
