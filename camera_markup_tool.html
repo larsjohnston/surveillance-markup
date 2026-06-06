@@ -417,6 +417,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .bom-cell-cost-ro { text-align:right; color:var(--text-muted); }
 .bom-cell-sell-edit input { width:100%; text-align:right; }
 .sub-override-flag { font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.03em; color:#b45309; background:#fef3c7; border-radius:2px; padding:1px 5px; margin-left:6px; cursor:pointer; }
+.sechw-unpriced-flag { font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.03em; color:#b45309; background:#fef3c7; border-radius:2px; padding:1px 5px; margin-left:6px; }
 
 .bom-sku-input {
   width:100%; background:transparent; border:none; border-bottom:1px solid #d1d5db;
@@ -17290,7 +17291,7 @@ function _wpRenderQuote(){
         var cost = (typeof r.cost === 'number') ? r.cost : 0;
         var list = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : null;
         var qty  = (typeof r.qty  === 'number') ? r.qty  : 0;
-        var sell = deriveSell(cost, list, rule);
+        var sell = _sqResolveAutoRowSell(r, sub.id, rule);
         var lab  = _sqRowLabour(sub.id, r.key || '', qty);
         var lbs  = bomLabourSupplyOnly ? 0 : lab.extSell;
         var tot  = (qty * sell) + lbs;
@@ -18121,7 +18122,7 @@ function drawProposalQuote(doc, W, H){
         var cost = (typeof r.cost === 'number') ? r.cost : 0;
         var list = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : null;
         var qty  = (typeof r.qty  === 'number') ? r.qty  : 0;
-        var sell = deriveSell(cost, list, sectionRule);
+        var sell = _sqResolveAutoRowSell(r, sub.id, sectionRule);
         var lab  = _sqRowLabour(sub.id, r.key || '', qty);
         var lbs  = bomLabourSupplyOnly ? 0 : lab.extSell;
         var tot  = (qty * sell) + lbs;
@@ -21366,7 +21367,7 @@ function recalcBom(){
         var cost = (typeof row.cost === 'number') ? row.cost : 0;
         var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
         var qty  = (typeof row.qty  === 'number') ? row.qty  : 0;
-        var sell = deriveSell(cost, list, sectionRule);
+        var sell = _sqResolveAutoRowSell(row, sub.id, sectionRule);
         var qc   = qty * cost;
         var qs   = qty * sell;
         secQCost  += qc;
@@ -21735,6 +21736,27 @@ function _sqRowLabour(sectionId, lineKey, matQty){
 // falling back to cost-markup math under both modes, so the function
 // never returns NaN. Inputs coerced via Number(); any non-finite input
 // is treated as 0.
+// SecHw M4: §2.4 Security Hardware is MANUALLY priced — Sell is typed by
+// the user (stored in bomAutoOverrides[key].sell), NOT derived from a
+// pricing rule. Fallback is 0 (not cost) so an unpriced row reads $0 and
+// keeps its "unpriced" badge until the user explicitly enters a Sell.
+// Every auto-row sell site (Materials render + totals, Summary render +
+// totals, web proposal, PDF) routes through this single helper so the
+// four output surfaces never diverge. Non-2.4 rows fall through to the
+// existing deriveSell rule path unchanged.
+function _sqResolveAutoRowSell(row, sectionId, rule){
+  if(sectionId === '2.4' || (row && row.section === '2.4')){
+    var key = _normalizeBomKey(row.key);
+    if(bomAutoOverrides[key] && typeof bomAutoOverrides[key].sell === 'number' && isFinite(bomAutoOverrides[key].sell)){
+      return bomAutoOverrides[key].sell;
+    }
+    return 0;
+  }
+  var cost = (typeof row.cost === 'number') ? row.cost : 0;
+  var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
+  return deriveSell(cost, list, rule);
+}
+
 function deriveSell(cost, list, rule){
   var c = Number(cost);
   if(!isFinite(c)) c = 0;
@@ -22123,20 +22145,29 @@ function _sqRenderAutoRow(row, sectionId, rule){
   var cost = (typeof row.cost === 'number') ? row.cost : 0;
   var list = (typeof row.list === 'number' && isFinite(row.list)) ? row.list : null;
   var qty  = (typeof row.qty  === 'number') ? row.qty  : 0;
-  var sell = deriveSell(cost, list, rule);
+  var sell = _sqResolveAutoRowSell(row, sectionId, rule);
   var qc   = qty * cost;
   var qs   = qty * sell;
   var mar  = qs - qc;
   var gm   = qs > 0 ? (mar / qs) * 100 : null;
+  // SecHw M4: §2.4 rows are manually priced — Sell becomes an editable
+  // input; an amber "unpriced" badge flags a row whose Cost OR Sell is 0.
+  var _isSecHwManual = (sectionId === '2.4');
+  var _secHwBadge = (_isSecHwManual && (cost === 0 || sell === 0))
+    ? '<span class="sechw-unpriced-flag" title="Cost or Sell is $0 — enter pricing for this line">unpriced</span>'
+    : '';
+  var _sellCellHtml = _isSecHwManual
+    ? '<div class="bom-cell-sell-edit"><input type="number" data-field="sell" value="' + sell.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)"></div>'
+    : '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>';
   var listCell = (list == null)
     ? '<div class="bom-cell muted bom-cell-list">—</div>'
     : '<div class="bom-cell bom-cell-list">' + _sqFmtMoney(list) + '</div>';
   return '<div class="bom-row auto-row" data-section="' + sectionId + '" data-key="' + escapeHtml(row.key || '') + '" data-list="' + (list == null ? '' : list) + '">'
        +   skuCellHtml
-       +   '<div class="bom-desc" title="Auto-generated from your placements">' + escapeHtml(row.desc || '') + '</div>'
+       +   '<div class="bom-desc" title="Auto-generated from your placements">' + escapeHtml(row.desc || '') + _secHwBadge + '</div>'
        +   listCell
        +   '<div class="bom-cell-cost"><input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)"></div>'
-       +   '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>'
+       +   _sellCellHtml
        +   '<span class="bom-cell bom-cell-qty locked" data-field="qty" data-qty="' + qty + '" title="Quantity is set by the floor plan — click for details" onclick="_sqShowQtyLockNotice()">' + qty + '</span>'
        +   '<div class="bom-cell bom-line-qcost">' + _sqFmtMoney(qc) + '</div>'
        +   '<div class="bom-cell bom-line-qsell">' + _sqFmtMoney(qs) + '</div>'
@@ -22986,7 +23017,7 @@ function _sqRenderSummaryXlsxAutoRow(matRow, sectionId, sectionRule, visibleCols
   var cost = (typeof matRow.cost === 'number') ? matRow.cost : 0;
   var list = (typeof matRow.list === 'number' && isFinite(matRow.list)) ? matRow.list : null;
   var qty  = (typeof matRow.qty  === 'number') ? matRow.qty  : 0;
-  var sell = deriveSell(cost, list, sectionRule);
+  var sell = _sqResolveAutoRowSell(matRow, sectionId, sectionRule);
   var hwc = qty * cost, hws = qty * sell;
   var lineKey = matRow.key || '';
   var lab = _sqRowLabour(sectionId, lineKey, qty);
@@ -23191,7 +23222,7 @@ function _sqRenderSummaryXlsx(){
         var cost = (typeof r.cost === 'number') ? r.cost : 0;
         var list = (typeof r.list === 'number' && isFinite(r.list)) ? r.list : null;
         var qty  = (typeof r.qty  === 'number') ? r.qty  : 0;
-        var sell = deriveSell(cost, list, sectionRule);
+        var sell = _sqResolveAutoRowSell(r, sub.id, sectionRule);
         var hwc = qty * cost;
         var hws = qty * sell;
         var lab = _sqRowLabour(sub.id, r.key || '', qty);
@@ -23441,6 +23472,23 @@ function _sqRecalcRowCells(row){
   var qs = qty * sell;
   var margin = qs - qc;
   var gm = qs > 0 ? (margin / qs) * 100 : null;
+  // SecHw M4: keep the §2.4 "unpriced" badge in sync with the current
+  // cost/sell on every in-row edit (full recalcBom isn't triggered by an
+  // input onchange). Badge is a decorative span in .bom-desc — remove it
+  // always, re-add when this §2.4 row has cost===0 OR sell===0. Idempotent;
+  // no focus disturbance (span has no inputs/handlers). Non-2.4 rows have
+  // no badge so the gate skips them.
+  if(sectionId === '2.4'){
+    var _descEl = row.querySelector('.bom-desc');
+    if(_descEl){
+      var _existingFlag = _descEl.querySelector('.sechw-unpriced-flag');
+      if(_existingFlag) _existingFlag.remove();
+      if(cost === 0 || sell === 0){
+        _descEl.insertAdjacentHTML('beforeend',
+          '<span class="sechw-unpriced-flag" title="Cost or Sell is $0 — enter pricing for this line">unpriced</span>');
+      }
+    }
+  }
   var sellEl   = row.querySelector('.bom-cell-sell');
   var qcEl     = row.querySelector('.bom-line-qcost');
   var qsEl     = row.querySelector('.bom-line-qsell');
