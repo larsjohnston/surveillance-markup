@@ -64,6 +64,7 @@ Single-file browser-based tool for security camera placement, coverage analysis,
 **Local testing protocol.** Run `python -m http.server 8000` from the project folder and open http://localhost:8000/camera_markup_tool.html for testing. Do NOT open the HTML directly via file:// — Edge caches aggressively at file:// origins and creates phantom bugs where on-disk code disagrees with browser behavior. This has bitten us twice during the scale UI pass and cost real session time.
 
 **Pre-commit check.** Before `git push`, verify HEAD is current: `git log -1 --oneline` should show the expected HEAD from the CC block (or the most recent merge). Never push directly to main — all commits go via branch + PR. If you notice a direct push happened, flag it immediately (even if the work is correct).
+**PR workflow (gh authed).** `gh` CLI is installed and authenticated on this machine — PRs no longer go through the GitHub web UI. After the user browser-tests and says ship it, CC runs the full chain itself: branch off the stated HEAD, `git add`/`commit`, `git push` the branch to origin, then `gh pr create`. Report the PR URL. Git/gh/node commands are pre-allowed via local-only `.claude/settings.local.json` (gitignored, not shared) so the chain runs without per-command re-prompts. The browser-test gate and the `git branch --show-current` pre-commit branch gate still apply — pre-allow removes prompts, not gates. Do NOT add an auto-commit hook; the trigger is always the user's explicit go.
 
 # General rules
 
