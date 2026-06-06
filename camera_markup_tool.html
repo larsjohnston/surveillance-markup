@@ -9409,6 +9409,7 @@ var bomCustomLines = {
   // 'other' / 'smartApartment', surfacing under §5.1 or §4.1).
   overheadDoor: [],
   intercom: [],
+  securityHardware: [],
   parcel: [],
   mailbox: [],
   iot: [],
@@ -16185,7 +16186,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 30,             // generation tag — v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
+      version: 31,             // generation tag — v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -16403,7 +16404,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 30,            // v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 31,            // v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -16758,6 +16759,11 @@ function applyProjectState(data){
   // all devices stay routed to §2.1 until the user opts a device in via
   // the right-panel checkbox.
   acDevices.forEach(function(dev){ if(typeof dev.overheadDoor !== 'boolean') dev.overheadDoor = false; });
+  // SecHw M1 (v30 → v31): dev.secHw holds the per-Reader security-hardware
+  // bundle {strike,rex,dps}. Intentionally left undefined on load — an
+  // unseeded reader emits no §2.4 rows. M2 right-panel first-open seeds new
+  // readers; M3 fires the predated-file prompt to bulk-seed old saves. No
+  // backfill assignment here by design (leave-empty is the default).
   // Pass Left-Pane M5 (v15 migration): legacy v14 AC devices were stored
   // as just {id, page, x, y, model, label, notes}. M3 added per-device
   // category/subcategory/variantValue/sku metadata for the drill-down.
@@ -20289,6 +20295,37 @@ function computeAutoRows(){
     }
     acRows.push(row);
   });
+
+  // ─── Security Hardware (§2.4) ───────────────────────────────────────
+  // Per-Reader auto-attached bundle: Estrike + REX + DPS, each toggled
+  // via dev.secHw.{strike,rex,dps}. dev.secHw undefined = unseeded
+  // reader (M2 right-panel first-open seeds it; M3 migration seeds old
+  // saves). Group-by-component, qty = sum of pageMultiplier over readers
+  // with that component true. Section '2.4' marker bypasses the
+  // _isSecurityHardwareRow guard in computeBomTree. Book-less SKUs ($0).
+  var secHwQty = { strike: 0, rex: 0, dps: 0 };
+  acDevices.forEach(function(d){
+    if(acCategoryOf(d) !== 'Readers') return;
+    if(!d.secHw) return;
+    var mult = pageMultiplier(d.page);
+    if(d.secHw.strike) secHwQty.strike += mult;
+    if(d.secHw.rex)    secHwQty.rex    += mult;
+    if(d.secHw.dps)    secHwQty.dps    += mult;
+  });
+  var secHwDefs = [
+    { flag:'strike', sku:'Estrike', desc:'Electric Strike',      key:'auto-ac-sechw-strike' },
+    { flag:'rex',    sku:'REX',     desc:'Request to Exit',      key:'auto-ac-sechw-rex' },
+    { flag:'dps',    sku:'DPS',     desc:'Door Position Sensor', key:'auto-ac-sechw-dps' }
+  ];
+  secHwDefs.forEach(function(def){
+    var q = secHwQty[def.flag];
+    if(q <= 0) return;
+    acRows.push({
+      auto: true, src: 'accessControl', sku: def.sku, desc: def.desc,
+      key: def.key, qty: q, unit: 0, cost: 0, list: null,
+      sectionAuto: true, section: '2.4'
+    });
+  });
   // Credentials rows — manual per-type entries from projectInfo.credentials
   // (kept dead this pass; see Credentials-wiring v26 note in _renderAcDrillDown).
   // Credentials-wiring v26 removed the derived "auto-ac-credentials" reader-
@@ -20948,7 +20985,8 @@ var BOM_TEMPLATE = {
     { id:'2', title:'2. Access Control & Intercom', subs: [
       { id:'2.1', title:'2.1 Access Control' },
       { id:'2.2', title:'2.2 Overhead Door Control' },
-      { id:'2.3', title:'2.3 Intercom' }
+      { id:'2.3', title:'2.3 Intercom' },
+      { id:'2.4', title:'2.4 Security Hardware' }
     ]},
     { id:'3', title:'3. Parcel & Mailboxes', subs: [
       { id:'3.1', title:'3.1 Parcel Lockers' },
@@ -21015,6 +21053,7 @@ function computeBomTree(){
     '2.1':          { auto: [], custom: [] },
     '2.2':          { auto: [], custom: [] },
     '2.3':          { auto: [], custom: [] },
+    '2.4':          { auto: [], custom: [] },
     '3.1':          { auto: [], custom: [] },
     '3.2':          { auto: [], custom: [] },
     '4.1':          { auto: [], custom: [] },
@@ -21053,6 +21092,14 @@ function computeBomTree(){
   //                          controllers.
   auto.accessControl.forEach(function(r){
     var k = r.key || '';
+    if(r.section === '2.4'){
+      // SecHw rows are SECURITY_HARDWARE_PATTERN matches BY DESIGN
+      // (Estrike/REX/Door Position). Explicit-section routing wins —
+      // must NOT run _isSecurityHardwareRow guard or they self-dump to
+      // 'other'. Mirrors the 2.2 overhead-door exemption directly below.
+      buckets['2.4'].auto.push(r);
+      return;
+    }
     if(r.section === '2.2'){
       buckets['2.2'].auto.push(r);  // explicit OD routing marker
       return;
@@ -23161,6 +23208,7 @@ function _sqCustomLineKey(subId){
     '2.1': 'accessControl',
     '2.2': 'overheadDoor',
     '2.3': 'intercom',
+    '2.4': 'securityHardware',
     '3.1': 'parcel',
     '3.2': 'mailbox',
     '4.1': 'smartApartment',
