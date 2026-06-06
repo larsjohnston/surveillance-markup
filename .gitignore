@@ -50,3 +50,7 @@ docs/package-lock.json
 .claude/
 
 pricing-worker/
+
+__pycache__/
+skills/
+.agents/
