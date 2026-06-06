@@ -51,6 +51,10 @@ Renderer growth (fold into WP follow-ups): Riser, Hardware Schedule, Floor Plans
 2. **Luxer Deep Dive** — full Luxer PDF extraction (Outdoor Lockers + Fridge + Camera + Accessories + Room Kit) + catalog reconciliation + Tier-3 variant drill-down.
 3. **V2 Tab focus restoration** — cherry-pick orphan commit `1590519`.
 
+### SecHw backlog (post-M4)
+- **Estrike/REX/DPS into the price book** — currently generic book-less SKUs, manually priced via §2.4. If stable prices emerge, add via build_pricing_json.py (new adapter or manual-extract CSV) so §2.4 can default to real cost/list instead of $0. Optional — manual pricing is the deliberate v1.
+- **Dead sell-write cleanup** — `_sqRecalcRowCells` writes Sell textContent to `.bom-cell-sell`, which doesn't exist on §2.4 rows (they use `.bom-cell-sell-edit`). Harmless no-op; tidy when next touching that function.
+
 ---
 
 ## New feature items (need full briefs)
@@ -85,6 +89,7 @@ Extend `_handleHardwareQuoteFile` for `.xlsx` via SheetJS → CSV → existing `
 
 ## Recently shipped (this chat)
 
+- **Security Hardware M1–M4** (PR #48–#51 / `8cccca8`–`ed1508a`) — Per-reader auto-attached security-hardware bundle surfacing as SQ §2.4. M1: dev.secHw model + computeAutoRows §2.4 emitter + computeBomTree 2.4 bucket/routing + BOM_TEMPLATE subsection (v30→v31). M2: reader right-panel 3 checkboxes (Reader-only) + first-open seed in openRightPanelForReader. M3: predated-file migration prompt (Yes seeds all / No dismisses; secHwMigrationDismissed flag; dev_quiet-suppressed). M4: §2.4 manual pricing — editable Cost+Sell via `_sqResolveAutoRowSell` helper (all 5 sell sites), amber "unpriced" badge, no pricing rule. Generic book-less SKUs (Estrike/REX/DPS).
 - **SUB-M2** (this PR) — Eagle Eye per-camera VMS subscription. New 6.2 Camera VMS sub-section with retention pill, project-wide `cameraStorageRetention`, EN-PR1 desc strip-from-paren. Save v30.
 - **SUB-M1a–d** (PRs #40–43) — Brivo AC subscriptions end-to-end (see arc above). Project default rule → discount 0%. Save v29.
 - **SQ custom-row per-section routing** (PR #39) — dedicated `bomCustomLines` keys for 2.2/2.3/3.1/3.2/4.2 so lines land in their own section.
