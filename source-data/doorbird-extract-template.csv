@@ -5,3 +5,5 @@ DB-D2103V-SSV2A,DoorBird D2103V Video Door Station (SSV2A finish),,Stainless ste
 DB-D21DKV-SSV2A,DoorBird D21DKV Doorkeeper Video Door Station (SSV2A finish),,Stainless steel V2A brushed
 DB-D31TDV-SSV2A,DoorBird D31TDV Touchscreen Video Door Station (SSV2A finish),,Stainless steel V2A brushed
 DB-A1101-SSV2A,DoorBird A1101 Indoor Station (SSV2A finish),,Stainless steel V2A brushed
+DB-D31TDV-BB-SSV2A,DoorBird D31TDV Surface Backbox (SSV2A finish),,Surface-mount backbox for D31TDV touchscreen door station — price TBD
+33PE1-DOOR-01-CRS,DoorBird 45" Heavy Duty Gooseneck Pedestal (CRS finish),1400,Universal gooseneck pedestal for DoorBird door stations; unit_cost=963.50 (add as 5th column once parse_doorbird supports unit_cost)

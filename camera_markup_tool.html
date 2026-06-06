@@ -3084,6 +3084,23 @@ input[type="number"]::-webkit-outer-spin-button {
             <textarea id="inp-notes-intercom" placeholder="e.g. Mounted by main entry, calls to all units" oninput="updateSelectedIntercom()"></textarea>
           </div>
         </div>
+
+        <!-- DoorBird M1: per-device mounting accessories. Surface-mount adds the
+             device-specific backbox SKU (from INTERCOM_DB[dev.model].bracketSku);
+             Pedestal adds the universal 45" gooseneck pedestal (33PE1-DOOR-01-CRS).
+             Shown only when the placed device is brand 'Doorbird' (Custom intercoms
+             have no known bracket). Visibility toggled in updateRightPanelDisplayForIntercom. -->
+        <div class="rp-field" id="rp-intercom-doorbird-accessories" style="display:none">
+          <label class="rp-label">Mounting</label>
+          <label style="display:flex; align-items:center; gap:8px; font:500 11px var(--font-ui); color:var(--text); cursor:pointer; margin-bottom:6px;">
+            <input type="checkbox" id="inp-intercom-surface-mount" onchange="updateIntercomSurfaceMount(this.checked)">
+            <span>Surface-mounted (adds backbox)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font:500 11px var(--font-ui); color:var(--text); cursor:pointer;">
+            <input type="checkbox" id="inp-intercom-pedestal" onchange="updateIntercomPedestal(this.checked)">
+            <span>Pedestal (45&quot; Heavy-Duty Gooseneck)</span>
+          </label>
+        </div>
       </div>
 
       <div class="rp-parcel-fields">
@@ -4181,10 +4198,16 @@ var INTERCOM_DB = {
   'DB-D2102V-SSV2A': { brand:'Doorbird', code:'D2102V SSV2A', model:'D2102V',  seriesType:'door-station',   unitCapacity:2,    desc:'IP Video Door Station — 2 Units / 2 Call Buttons / Stainless V2A Brushed' },
   'DB-D2103V-SSV2A': { brand:'Doorbird', code:'D2103V SSV2A', model:'D2103V',  seriesType:'door-station',   unitCapacity:3,    desc:'IP Video Door Station — 3 Units / Stainless V2A Brushed' },
   'DB-D21DKV-SSV2A': { brand:'Doorbird', code:'D21DKV SSV2A', model:'D21DKV',  seriesType:'door-station',   unitCapacity:500,  desc:'IP Video Door Station with Keypad — up to 500 Units / Stainless V2A Brushed' },
-  'DB-D31TDV-SSV2A': { brand:'Doorbird', code:'D31TDV SSV2A', model:'D31TDV',  seriesType:'door-station',   unitCapacity:1000, desc:'IP Video Door Station Touchscreen — up to 1000 Units / Stainless V2A Brushed' },
+  'DB-D31TDV-SSV2A': { brand:'Doorbird', code:'D31TDV SSV2A', model:'D31TDV',  seriesType:'door-station',   unitCapacity:1000, bracketSku:'DB-D31TDV-BB-SSV2A', bracketDesc:'D31TDV Surface Backbox', desc:'IP Video Door Station Touchscreen — up to 1000 Units / Stainless V2A Brushed' },
   'DB-A1101-SSV2A':  { brand:'Doorbird', code:'A1101 SSV2A',  model:'A1101',   seriesType:'indoor-station', unitCapacity:null, desc:'4-inch Indoor Video Monitor — Per-Unit Answering Station / Stainless V2A Brushed' },
   'CUSTOM-INTERCOM': { brand:'Custom',   code:'Custom',       model:'',        seriesType:'door-station',   unitCapacity:null, desc:'Custom Intercom — user-defined' }
 };
+
+// DoorBird M1: Universal accessory SKUs that apply to all DoorBird door
+// stations (not model-specific). Surface-mount backbox is per-model via
+// INTERCOM_DB[sku].bracketSku; the pedestal is one SKU for all models.
+var DOORBIRD_PEDESTAL_SKU = '33PE1-DOOR-01-CRS';
+var DOORBIRD_PEDESTAL_DESC = '45" Heavy Duty Gooseneck Pedestal';
 
 // Pricing Vendor Expansion P1-C: LuxerOne placeholder replaced with the
 // real RAL9005 (black) finish per-variant SKUs from the Luxer One Canada
@@ -14032,7 +14055,12 @@ function placeIntercom(cssX, cssY){
   };
   smartApartment.push(dev);
   markDirty();
-  // Sticky-placement pass: no auto-select. Arm stays active.
+  // DoorBird M1: auto-open the right pane on intercom placement so the user
+  // can immediately configure surface-mount / pedestal flags. Diverges from
+  // the "Sticky-placement pass: no auto-select" convention used by other
+  // families (cameras, readers, parcel, mailbox) — intercoms are typically
+  // placed in low quantity and each needs configuration.
+  selectIntercom(dev.id);
   redraw();
   updateIntercomList();
 }
@@ -15624,6 +15652,15 @@ function updateRightPanelDisplayForIntercom(dev){
   var notesInput = document.getElementById('inp-notes-intercom');
   if(labelInput) labelInput.value = dev.label || '';
   if(notesInput) notesInput.value = dev.notes || '';
+  // DoorBird M1: gate the mounting-accessories field on brand. Show only
+  // for DoorBird devices (Custom intercoms have no known bracket).
+  var accessoriesField = document.getElementById('rp-intercom-doorbird-accessories');
+  var isDoorbird = (spec && spec.brand === 'Doorbird');
+  if(accessoriesField) accessoriesField.style.display = isDoorbird ? '' : 'none';
+  var smInp = document.getElementById('inp-intercom-surface-mount');
+  var pedInp = document.getElementById('inp-intercom-pedestal');
+  if(smInp)  smInp.checked  = !!dev.surfaceMount;
+  if(pedInp) pedInp.checked = !!dev.pedestal;
 }
 
 function updateRightPanelDisplayForParcel(dev){
@@ -15807,6 +15844,28 @@ function updateSelectedIntercom(){
   if(notesInput) dev.notes = notesInput.value;
   markDirty();
   redraw(); updateIntercomList();
+}
+// DoorBird M1: two per-Intercom mounting toggles. Clone of
+// updateReaderOverheadDoor. Each drives one §2.3 Intercom accessory row
+// via the computeAutoRows DoorBird emitter — surface-mount adds the
+// device-specific backbox (INTERCOM_DB[dev.model].bracketSku); pedestal
+// adds the universal 45" gooseneck. No canvas redraw — flags are
+// non-visual; only the BOM emission changes.
+function updateIntercomSurfaceMount(checked){
+  if(!intercomSelectedId) return;
+  var dev = smartApartment.find(function(x){ return x.id === intercomSelectedId; });
+  if(!dev) return;
+  dev.surfaceMount = !!checked;
+  markDirty();
+  recalcBom();
+}
+function updateIntercomPedestal(checked){
+  if(!intercomSelectedId) return;
+  var dev = smartApartment.find(function(x){ return x.id === intercomSelectedId; });
+  if(!dev) return;
+  dev.pedestal = !!checked;
+  markDirty();
+  recalcBom();
 }
 function updateSelectedParcel(){
   if(!parcelSelectedId) return;
@@ -16287,7 +16346,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 31,             // generation tag — v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
+      version: 32,             // generation tag — v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -16505,7 +16564,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 31,            // v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 32,            // v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -16861,6 +16920,17 @@ function applyProjectState(data){
   // all devices stay routed to §2.1 until the user opts a device in via
   // the right-panel checkbox.
   acDevices.forEach(function(dev){ if(typeof dev.overheadDoor !== 'boolean') dev.overheadDoor = false; });
+  // DoorBird M1 (v31 → v32): smartApartment intercom devices gain optional
+  // surfaceMount + pedestal booleans. Default false on older saves so the
+  // BOM emitter's truthiness check is reliable. No-op for fresh saves where
+  // both fields were written by the right-pane handlers; defensive against
+  // hand-edited saves and v31 files that predate this milestone.
+  smartApartment.forEach(function(dev){
+    if(dev && dev.type === 'intercom'){
+      if(typeof dev.surfaceMount !== 'boolean') dev.surfaceMount = false;
+      if(typeof dev.pedestal     !== 'boolean') dev.pedestal     = false;
+    }
+  });
   // SecHw M1 (v30 → v31): dev.secHw holds the per-Reader security-hardware
   // bundle {strike,rex,dps}. Intentionally left undefined on load — an
   // unseeded reader emits no §2.4 rows. M2 right-panel first-open seeds new
@@ -17795,6 +17865,12 @@ function bomRowSku(row){
   // the price book, zeroing credential cost/list in the compute wrapper.
   if(row && row.src === 'accessControl' && typeof row.sku === 'string' && row.sku) return { sku: row.sku, typeLabel: '' };
   if(k.indexOf('auto-ac-') === 0) return { sku: _stripOhPrefix(k.slice('auto-ac-'.length)), typeLabel: '' };
+  // DoorBird M1: accessory rows (auto-sa-intercom-mount-<SKU> /
+  // auto-sa-intercom-pedestal-<SKU>) carry their backbox/pedestal SKU on
+  // row.sku directly. The generic auto-sa-intercom- slice below would
+  // otherwise return 'mount-<SKU>' / 'pedestal-<SKU>' and miss the pricing
+  // book. Mirrors the accessControl precedence at the auto-ac- branch above.
+  if(row && row.src === 'smartApartment' && typeof row.sku === 'string' && row.sku && k.indexOf('auto-sa-intercom-') === 0) return { sku: row.sku, typeLabel: '' };
   if(k.indexOf('auto-sa-intercom-') === 0) return { sku: k.slice('auto-sa-intercom-'.length), typeLabel: '' };
   if(k.indexOf('auto-sa-parcel-')   === 0) return { sku: k.slice('auto-sa-parcel-'.length),   typeLabel: '' };
   if(k.indexOf('auto-sa-mailbox-')  === 0) return { sku: '', typeLabel: 'MAILBOX BANK' };
@@ -20508,6 +20584,48 @@ function computeAutoRows(){
       desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
     });
   });
+
+  // DoorBird M1: per-device accessory auto-rows. Surface-mounted DoorBirds
+  // add a device-specific backbox (from INTERCOM_DB[dev.model].bracketSku).
+  // Pedestal-mounted DoorBirds add the universal 45" gooseneck pedestal.
+  // Mirrors the §2.4 secHw pattern. Both row classes land in §2.3 Intercom
+  // (key prefix 'auto-sa-intercom-' routes there in computeBomTree).
+  // Custom intercoms have no bracket and don't carry these flags via the
+  // right-pane UI — defensive brand check skips them anyway.
+  var doorBirdBracketGroups = {};
+  var pedestalQty = 0;
+  smartApartment.forEach(function(d){
+    if(d.type !== 'intercom') return;
+    var spec = INTERCOM_DB[d.model];
+    if(!spec || spec.brand !== 'Doorbird') return;
+    var mult = pageMultiplier(d.page);
+    if(d.surfaceMount && spec.bracketSku){
+      var bk = spec.bracketSku;
+      if(!doorBirdBracketGroups[bk]){
+        doorBirdBracketGroups[bk] = { qty: 0, desc: spec.bracketDesc || (spec.model + ' Surface Backbox') };
+      }
+      doorBirdBracketGroups[bk].qty += mult;
+    }
+    if(d.pedestal){
+      pedestalQty += mult;
+    }
+  });
+  Object.keys(doorBirdBracketGroups).sort().forEach(function(bk){
+    var g = doorBirdBracketGroups[bk];
+    smartAptRows.push({
+      auto: true, src: 'smartApartment',
+      key: 'auto-sa-intercom-mount-' + bk,
+      sku: bk, desc: g.desc, qty: g.qty, unit: 0, sectionAuto: true
+    });
+  });
+  if(pedestalQty > 0){
+    smartAptRows.push({
+      auto: true, src: 'smartApartment',
+      key: 'auto-sa-intercom-pedestal-' + DOORBIRD_PEDESTAL_SKU,
+      sku: DOORBIRD_PEDESTAL_SKU, desc: DOORBIRD_PEDESTAL_DESC,
+      qty: pedestalQty, unit: 0, sectionAuto: true
+    });
+  }
 
   // 2. Parcel lockers.
   var parcelGroups = {};
