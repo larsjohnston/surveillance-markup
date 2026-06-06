@@ -4160,7 +4160,14 @@ var BRIVO_CATALOG = [
   // zones only this pass; PDF riser stays AC-empty until queue item 4).
   { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Mullion',      sku:'B-ACS100-E-BSPM-B', name:'Brivo ACS100 Controller + Mullion Reader' },
   { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Single',       sku:'B-ACS100-E-BSPS-B', name:'Brivo ACS100 Controller + Single Gang Reader' },
-  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Keypad',       sku:'B-ACS100-E-BSPK-B', name:'Brivo ACS100 Controller + Keypad Reader' }
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Keypad',       sku:'B-ACS100-E-BSPK-B', name:'Brivo ACS100 Controller + Keypad Reader' },
+  // Elevator M1: ACS6100 I/O Expansion Board. Standalone controller tile
+  // (no variants). Placed like any other controller; emits one row per
+  // placement into §2.1 Access Control via the existing computeAutoRows
+  // AC emitter. Pricing resolved from pricingBook.json (cost $564.90,
+  // msrp $1,129.80). Layer A only — cab-reader flagging and floor-select
+  // relay derivation are queued for a later pass.
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS6100-IO', variant_axis:null, variant_value:null, sku:'B-ACS6100-IO', name:'Brivo ACS6100 I/O Expansion Board (Elevator Control)' }
 ];
 
 // Overhead-door-flag M2: the OVERHEAD_DOOR_SKUS allowlist was removed
@@ -10310,6 +10317,12 @@ var AC_ICONS = {
   ACS300:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="6" y="9" width="12" height="1.2" fill="currentColor"/><rect x="6" y="13" width="12" height="1.2" fill="currentColor"/><circle cx="17" cy="7.5" r="0.5" fill="currentColor"/></svg>',
   SDC:         '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg>',
   ACS100:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="9" width="10" height="1.2" fill="currentColor"/><rect x="5" y="13" width="10" height="1.2" fill="currentColor"/><rect x="14" y="3" width="6" height="9" rx="0.8" fill="white" stroke="currentColor" stroke-width="1.2"/><circle cx="17" cy="6" r="0.6" fill="currentColor"/><rect x="15.5" y="8" width="3" height="0.6" fill="currentColor"/></svg>',
+  // Elevator M1: ACS6100-IO icon — small board outline in centre with 3
+  // big input arrows feeding DOWN into the top of the box and 3 big
+  // output arrows exiting DOWN from the bottom. Reads as a signal-flow
+  // I/O board, visually distinct from the plain horizontal-bar
+  // controller icons (ACS6100 / ACS300 / SDC / ACS100).
+  'ACS6100-IO':'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="8" width="18" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><polygon points="5,2 9,2 7,7" fill="currentColor"/><polygon points="10,2 14,2 12,7" fill="currentColor"/><polygon points="15,2 19,2 17,7" fill="currentColor"/><polygon points="5,17 9,17 7,22" fill="currentColor"/><polygon points="10,17 14,17 12,22" fill="currentColor"/><polygon points="15,17 19,17 17,22" fill="currentColor"/></svg>',
   // Credentials-entry M1: key-shaped icon. Circular bow (stroke) +
   // solid pin centre + horizontal shaft + two tooth notches. Matches the
   // AC_ICONS style (24×24 viewBox, currentColor, stroke 1.5 outlines +
