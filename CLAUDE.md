@@ -280,6 +280,7 @@ Each pass that changes the save shape bumps the version literal in saveJSON. Cur
 - v31 — SecHw (dev.secHw per-reader bundle; projectInfo.secHwMigrationDismissed). §2.4 manual-pricing Sell override rides existing bomAutoOverrides[key].sell — no schema change for that part.
 - IoT M1 — §4.2 manual pricing (Cost+Sell+Description editable). Adds `.desc` field to bomAutoOverrides[key] — rides existing whole-object autoOverrides serialization, no schema bump.
 - v32 — DoorBird M1 (smartApartment intercom devices: optional `surfaceMount` + `pedestal` booleans drive §2.3 accessory auto-rows for backbox + universal gooseneck pedestal). applyProjectState defaults both to false on older saves.
+- v33 — Credentials M2 (Farpointe FP-WRR22 + FP-WRT2B added to `BRIVO_CRED_CATALOG` as new `tier2_family: 'Overhead Doors'` with optional `section: '2.2'` field). brivoSkus BOM emitter routes per `cat.section` (defaults `'2.1'` for legacy families — no churn). Legacy `projectInfo.credentials.ohTransmitters` + `ohReceiver` migrated additively into `brivoSkus['FP-WRT2B']` + `brivoSkus['FP-WRR22']` on load and zeroed (idempotent). `CREDENTIAL_TYPE_DEFS` no longer carries the legacy OH placeholder entries.
 - v28 — DHW B-lite
 - v29 — Subscriptions (projectInfo.subscriptionTerm 'monthly'|'annual' + subscriptionOverrides {sku:sell}). applyProjectState defaults term='monthly', overrides={} on older saves.
 

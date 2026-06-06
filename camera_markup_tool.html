@@ -4113,7 +4113,13 @@ var BRIVO_CRED_CATALOG = {
   'B-SF-Custom':     { manufacturer: 'Brivo', description: 'Brivo Smart Keyfob — Customer Specified Encryption',             code: 'SF-Custom',    tier2_family: 'Fobs' },
   'B-SCP-Custom':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Dual-Tech — Customer Specified Encryption',     code: 'SCP-Custom',   tier2_family: 'Dual-Tech' },
   'B-SC-Punch-V':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Pre-Punch Service (vertical)',                  code: 'SC-Punch-V',   tier2_family: 'Pre-Punch Service' },
-  'B-SC-Punch-H':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Pre-Punch Service (horizontal)',                code: 'SC-Punch-H',   tier2_family: 'Pre-Punch Service' }
+  'B-SC-Punch-H':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Pre-Punch Service (horizontal)',                code: 'SC-Punch-H',   tier2_family: 'Pre-Punch Service' },
+  // Credentials M2: Overhead Door SKUs (Farpointe parts shipped via Brivo Excel).
+  // section: '2.2' opts these into the §2.2 Overhead Door Control bucket via the
+  // brivoSkus emitter's section fallback. All other catalog entries (no section
+  // field) fall through to '2.1' as before — no churn for existing families.
+  'FP-WRR22': { manufacturer: 'Farpointe', description: 'Farpointe WRR-22 Long-Range Receiver', code: 'WRR-22', tier2_family: 'Overhead Doors', section: '2.2' },
+  'FP-WRT2B': { manufacturer: 'Farpointe', description: 'Farpointe 2-Button Transmitter',       code: 'WRT2B',  tier2_family: 'Overhead Doors', section: '2.2' }
 };
 
 var BRIVO_READERS = {
@@ -10583,7 +10589,7 @@ function _renderCredentialsTier3(){
     if(!families[fam]) families[fam] = [];
     families[fam].push(sku);
   });
-  var FAMILY_ORDER = ['Cards', 'Fobs', 'Dual-Tech', 'Pre-Punch Service'];
+  var FAMILY_ORDER = ['Cards', 'Fobs', 'Dual-Tech', 'Pre-Punch Service', 'Overhead Doors'];
   var html = '';
   FAMILY_ORDER.forEach(function(fam){
     var list = families[fam];
@@ -16346,7 +16352,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 32,             // generation tag — v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
+      version: 33,             // generation tag — v33 Credentials-M2: Farpointe FP-WRR22 (receiver) + FP-WRT2B (transmitter) added to BRIVO_CRED_CATALOG as new tier2_family 'Overhead Doors' with section:'2.2'. brivoSkus emitter routes per cat.section (falls back to '2.1' for legacy families). Legacy ohTransmitters/ohReceiver fields migrated to brivoSkus on load + zeroed (idempotent). v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -16564,7 +16570,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 32,            // v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 33,            // v33 Credentials-M2: Farpointe FP-WRR22 (receiver) + FP-WRT2B (transmitter) added to BRIVO_CRED_CATALOG as new tier2_family 'Overhead Doors' with section:'2.2'. brivoSkus emitter routes per cat.section (falls back to '2.1' for legacy families). Legacy ohTransmitters/ohReceiver fields migrated to brivoSkus on load + zeroed (idempotent). v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -16888,6 +16894,29 @@ function applyProjectState(data){
       var v = projectInfo.credentials.brivoSkus[sku];
       if(typeof v !== 'number' || !isFinite(v) || v < 0) projectInfo.credentials.brivoSkus[sku] = 0;
     });
+  }
+  // Credentials M2 (v32 → v33): migrate legacy OH per-type fields to brivoSkus
+  // path. The old 5-tile credentials placeholder modal that wrote to
+  // ohTransmitters / ohReceiver was retired; this pass adds real Farpointe SKUs
+  // via BRIVO_CRED_CATALOG. Carry any saved OH qtys forward by copying them to
+  // the brivoSkus map (additive — preserves any FP-* qtys the user added in
+  // this version), then zero the legacy fields. Idempotent on subsequent loads
+  // because the legacy fields land at 0 post-migration.
+  var _ohTxQty = (typeof projectInfo.credentials.ohTransmitters === 'number' && projectInfo.credentials.ohTransmitters > 0)
+    ? projectInfo.credentials.ohTransmitters : 0;
+  var _ohRxQty = (typeof projectInfo.credentials.ohReceiver === 'number' && projectInfo.credentials.ohReceiver > 0)
+    ? projectInfo.credentials.ohReceiver : 0;
+  if(_ohTxQty > 0){
+    var _txExisting = (typeof projectInfo.credentials.brivoSkus['FP-WRT2B'] === 'number') ? projectInfo.credentials.brivoSkus['FP-WRT2B'] : 0;
+    projectInfo.credentials.brivoSkus['FP-WRT2B'] = _txExisting + _ohTxQty;
+    projectInfo.credentials.ohTransmitters = 0;
+    markDirty();
+  }
+  if(_ohRxQty > 0){
+    var _rxExisting = (typeof projectInfo.credentials.brivoSkus['FP-WRR22'] === 'number') ? projectInfo.credentials.brivoSkus['FP-WRR22'] : 0;
+    projectInfo.credentials.brivoSkus['FP-WRR22'] = _rxExisting + _ohRxQty;
+    projectInfo.credentials.ohReceiver = 0;
+    markDirty();
   }
   // SUB-M1b (v29): subscription state defaults. Pre-v29 saves get monthly term
   // and empty overrides map so computeSubscriptionRows + render paths work
@@ -20225,9 +20254,11 @@ var CREDENTIAL_MULTIPLIER = 1.0;
 var CREDENTIAL_TYPE_DEFS = [
   { type:'fobs',           section:'2.1', key:'auto-ac-cred-fob',          desc:'Access Credential — Fob' },
   { type:'cards',          section:'2.1', key:'auto-ac-cred-card',         desc:'Access Credential — Card' },
-  { type:'mobilePasses',   section:'2.1', key:'auto-ac-cred-mobilepass',   desc:'Access Credential — Mobile Pass' },
-  { type:'ohTransmitters', section:'2.2', key:'auto-ac-cred-oh-tx',        desc:'Overhead Door Transmitter (2-button)' },
-  { type:'ohReceiver',     section:'2.2', key:'auto-ac-cred-oh-rx',        desc:'Overhead Door Long-Range Receiver' }
+  { type:'mobilePasses',   section:'2.1', key:'auto-ac-cred-mobilepass',   desc:'Access Credential — Mobile Pass' }
+  // Credentials M2 (v33): legacy ohTransmitters + ohReceiver entries removed.
+  // Real Farpointe SKUs (FP-WRT2B + FP-WRR22) now route via BRIVO_CRED_CATALOG
+  // with section:'2.2'. applyProjectState migrates any saved legacy qtys into
+  // brivoSkus on load and zeroes the legacy fields.
 ];
 
 // Build manual credential BOM rows from projectInfo.credentials counts.
@@ -20537,12 +20568,17 @@ function computeAutoRows(){
       if(typeof unitCost !== 'number' || !isFinite(unitCost)) unitCost = 0;
       var listPrice = getListPrice(sku);
       if(typeof listPrice !== 'number' || !isFinite(listPrice)) listPrice = null;
+      // Credentials M2: catalog entries can opt into a non-default section via
+      // cat.section. Overhead Door credentials (Farpointe FP-WR*) carry
+      // section:'2.2' so they land in §2.2 Overhead Door Control instead of
+      // §2.1 Access Control. Defaults to '2.1' for all existing families.
+      var credSection = (typeof cat.section === 'string' && cat.section) ? cat.section : '2.1';
       acRows.push({
         auto: true, src: 'accessControl',
         key: 'auto-ac-cred-brivo-' + sku,
         sku: sku, desc: cat.description,
         qty: qty, cost: unitCost, list: listPrice, unit: 0,
-        sectionAuto: true, section: '2.1'
+        sectionAuto: true, section: credSection
       });
     });
   }
