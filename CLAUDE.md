@@ -279,6 +279,7 @@ Each pass that changes the save shape bumps the version literal in saveJSON. Cur
 - v28–v30 — Subscriptions arc (subscriptionTerm, subscriptionOverrides, cameraStorageRetention; project default rule changed to discount 0%)
 - v31 — SecHw (dev.secHw per-reader bundle; projectInfo.secHwMigrationDismissed). §2.4 manual-pricing Sell override rides existing bomAutoOverrides[key].sell — no schema change for that part.
 - IoT M1 — §4.2 manual pricing (Cost+Sell+Description editable). Adds `.desc` field to bomAutoOverrides[key] — rides existing whole-object autoOverrides serialization, no schema bump.
+- v32 — DoorBird M1 (smartApartment intercom devices: optional `surfaceMount` + `pedestal` booleans drive §2.3 accessory auto-rows for backbox + universal gooseneck pedestal). applyProjectState defaults both to false on older saves.
 - v28 — DHW B-lite
 - v29 — Subscriptions (projectInfo.subscriptionTerm 'monthly'|'annual' + subscriptionOverrides {sku:sell}). applyProjectState defaults term='monthly', overrides={} on older saves.
 
@@ -293,6 +294,12 @@ Cost stays the standard editable `data-field="unit"` input; Sell is a `data-fiel
 §4.2-ONLY: the Description cell is ALSO editable (`data-field="desc"`, wrapped in `.bom-desc-edit-cell` flex container holding the input + badge as siblings). §2.4 keeps fixed read-only descs (Estrike/REX/DPS are semantic identifiers, not free-form). Gate via `_isDescEditable = (sectionId === '4.2')` separate from `_isManualPricedSection` which covers sell+badge for both. The desc override writes to `bomAutoOverrides[key].desc` and is applied in the `computeAutoRows` post-wrapper (writes through to `r.desc` so downstream consumers see the user-typed value). `updateAutoRow` field-dispatches: text fields (desc, sku) skip the money-field round + restamp; money fields keep it.
 
 KNOWN HARMLESS: `_sqRecalcRowCells`'s `.bom-cell-sell` textContent write is a no-op on manual-priced rows (the cell is `.bom-cell-sell-edit`); the input already shows the value. Qty stays locked/auto on both sections like every other auto row.
+
+### Intercom placement convention — auto-open right pane (DoorBird M1)
+
+`placeIntercom` auto-selects the placed device (calls `selectIntercom(dev.id)` after `smartApartment.push`) so the right pane slides in immediately for configuration. This DIVERGES from the sticky-placement convention used by every other family (cameras, readers, parcel, mailbox, suite) — intercoms are low-volume per project and each needs configuration (surface-mount + pedestal flags, label, notes), so the auto-open is a usability win. If you add a new device family, follow the sticky-placement convention by default; only diverge if the family has the same "low volume + heavy configuration" profile.
+
+DoorBird-specific right-pane fields (`#rp-intercom-doorbird-accessories`) are gated visible on `INTERCOM_DB[dev.model].brand === 'Doorbird'` — Custom intercoms don't see them. Adding a new intercom brand: extend INTERCOM_DB with `brand: '<NewBrand>'` entries; if the brand also has accessory SKUs, follow the per-entry `bracketSku` + module-scope universal-accessory constants pattern (`DOORBIRD_PEDESTAL_SKU` / `DOORBIRD_PEDESTAL_DESC`). The `bomRowSku` precedence branch (`row.src === 'smartApartment' && row.sku`) routes accessory rows with prefixed keys (`auto-sa-intercom-mount-<SKU>` / `auto-sa-intercom-pedestal-<SKU>`) to the right pricing-book entry via `row.sku` directly — without this precedence the key slice returns `mount-<SKU>` and misses the book.
 
 ### Dev quiet flag (testing convenience)
 
