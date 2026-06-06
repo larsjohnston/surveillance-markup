@@ -417,7 +417,9 @@ input[type="number"]::-webkit-outer-spin-button {
 .bom-cell-cost-ro { text-align:right; color:var(--text-muted); }
 .bom-cell-sell-edit input { width:100%; text-align:right; }
 .sub-override-flag { font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.03em; color:#b45309; background:#fef3c7; border-radius:2px; padding:1px 5px; margin-left:6px; cursor:pointer; }
-.sechw-unpriced-flag { font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.03em; color:#b45309; background:#fef3c7; border-radius:2px; padding:1px 5px; margin-left:6px; }
+.bom-unpriced-flag { font:700 8px var(--font-ui); text-transform:uppercase; letter-spacing:.03em; color:#b45309; background:#fef3c7; border-radius:2px; padding:1px 5px; margin-left:6px; }
+.bom-row .bom-desc-edit-cell { display:flex; align-items:center; gap:6px; min-width:0; }
+.bom-row .bom-desc-edit-cell > input.bom-desc { flex:1 1 auto; min-width:0; }
 
 .bom-sku-input {
   width:100%; background:transparent; border:none; border-bottom:1px solid #d1d5db;
@@ -21744,8 +21746,14 @@ function _sqRowLabour(sectionId, lineKey, matQty){
 // totals, web proposal, PDF) routes through this single helper so the
 // four output surfaces never diverge. Non-2.4 rows fall through to the
 // existing deriveSell rule path unchanged.
+// IoT M1: §4.2 added to manually-priced sections (was §2.4-only). Both sections
+// share the same Sell-override semantics — typed sell wins, fallback 0, no
+// pricing rule applied. Adding a 3rd section is a single MANUAL_PRICED key add;
+// helper feeds all 5 sell sites (recalcBom totals, _sqRenderAutoRow, Summary
+// totals + xlsx renderer, _wpRenderQuote, drawProposalQuote).
 function _sqResolveAutoRowSell(row, sectionId, rule){
-  if(sectionId === '2.4' || (row && row.section === '2.4')){
+  var MANUAL_PRICED = { '2.4': 1, '4.2': 1 };
+  if(MANUAL_PRICED[sectionId] || (row && MANUAL_PRICED[row.section])){
     var key = _normalizeBomKey(row.key);
     if(bomAutoOverrides[key] && typeof bomAutoOverrides[key].sell === 'number' && isFinite(bomAutoOverrides[key].sell)){
       return bomAutoOverrides[key].sell;
@@ -22150,21 +22158,28 @@ function _sqRenderAutoRow(row, sectionId, rule){
   var qs   = qty * sell;
   var mar  = qs - qc;
   var gm   = qs > 0 ? (mar / qs) * 100 : null;
-  // SecHw M4: §2.4 rows are manually priced — Sell becomes an editable
-  // input; an amber "unpriced" badge flags a row whose Cost OR Sell is 0.
-  var _isSecHwManual = (sectionId === '2.4');
-  var _secHwBadge = (_isSecHwManual && (cost === 0 || sell === 0))
-    ? '<span class="sechw-unpriced-flag" title="Cost or Sell is $0 — enter pricing for this line">unpriced</span>'
+  // SecHw M4 / IoT M1: §2.4 + §4.2 rows are manually priced — Sell becomes
+  // an editable input; an amber "unpriced" badge flags rows with cost OR
+  // sell = $0. §4.2 ALSO gets an editable Description input (vendor varies
+  // per project — "Yale Assure SL", "Schlage Encode", etc.). §2.4 keeps its
+  // fixed descs (Estrike/REX/DPS are semantic identifiers, not free-form).
+  var _isManualPricedSection = (sectionId === '2.4' || sectionId === '4.2');
+  var _isDescEditable = (sectionId === '4.2');
+  var _unpricedBadge = (_isManualPricedSection && (cost === 0 || sell === 0))
+    ? '<span class="bom-unpriced-flag" title="Cost or Sell is $0 — enter pricing for this line">unpriced</span>'
     : '';
-  var _sellCellHtml = _isSecHwManual
+  var _sellCellHtml = _isManualPricedSection
     ? '<div class="bom-cell-sell-edit"><input type="number" data-field="sell" value="' + sell.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)"></div>'
     : '<div class="bom-cell bom-cell-sell">' + _sqFmtMoney(sell) + '</div>';
+  var _descCellHtml = _isDescEditable
+    ? '<div class="bom-desc-edit-cell"><input type="text" class="bom-desc" data-field="desc" value="' + escapeHtml(row.desc || '') + '" placeholder="Description" oninput="updateAutoRow(this)">' + _unpricedBadge + '</div>'
+    : '<div class="bom-desc" title="Auto-generated from your placements">' + escapeHtml(row.desc || '') + _unpricedBadge + '</div>';
   var listCell = (list == null)
     ? '<div class="bom-cell muted bom-cell-list">—</div>'
     : '<div class="bom-cell bom-cell-list">' + _sqFmtMoney(list) + '</div>';
   return '<div class="bom-row auto-row" data-section="' + sectionId + '" data-key="' + escapeHtml(row.key || '') + '" data-list="' + (list == null ? '' : list) + '">'
        +   skuCellHtml
-       +   '<div class="bom-desc" title="Auto-generated from your placements">' + escapeHtml(row.desc || '') + _secHwBadge + '</div>'
+       +   _descCellHtml
        +   listCell
        +   '<div class="bom-cell-cost"><input type="number" data-field="unit" value="' + cost.toFixed(2) + '" step="0.01" min="0" onchange="updateAutoRow(this)"></div>'
        +   _sellCellHtml
@@ -23286,10 +23301,18 @@ function updateAutoRow(input){
   // writes to ONE shared entry.
   var key = _normalizeBomKey(row.dataset.key);
   var field = input.dataset.field;
-  // SQ + DHW polish: money input — cap at 2 decimals + restamp the
-  // input so 10.020 reads back as "10.02" after commit.
-  var val = _sqRound2(input.value);
-  input.value = val.toFixed(2);
+  // IoT M1: §4.2 added an editable Description input. Text fields (desc, sku)
+  // must skip the money-field round + restamp — that would mangle text input
+  // and cursor-jump on every keystroke. Mirrors updateCustomRow field dispatch.
+  var val;
+  if(field === 'desc' || field === 'sku'){
+    val = input.value;
+  } else {
+    // SQ + DHW polish: money input — cap at 2 decimals + restamp the
+    // input so 10.020 reads back as "10.02" after commit.
+    val = _sqRound2(input.value);
+    input.value = val.toFixed(2);
+  }
   if(!bomAutoOverrides[key]) bomAutoOverrides[key] = {};
   bomAutoOverrides[key][field] = val;
   markDirty();
@@ -23360,6 +23383,15 @@ computeAutoRows = function(){
         if(bomAutoOverrides[ovKey].unit !== undefined){
           r.unit = bomAutoOverrides[ovKey].unit;
           r.cost = bomAutoOverrides[ovKey].unit;
+        }
+        // IoT M1: §4.2 auto-rows carry an editable Description. The override
+        // writes through to r.desc so all consumers (renderer, Summary,
+        // web proposal, PDF) see the user-typed value. Defensive — only
+        // §4.2 keys actually carry .desc overrides today (the renderer
+        // only emits the desc input on §4.2), but applying unconditionally
+        // is harmless since other auto-row classes don't write .desc.
+        if(typeof bomAutoOverrides[ovKey].desc === 'string'){
+          r.desc = bomAutoOverrides[ovKey].desc;
         }
         // .qty branch intentionally skipped — see SQ-wizard M2d comment above.
       }
@@ -23474,18 +23506,21 @@ function _sqRecalcRowCells(row){
   var gm = qs > 0 ? (margin / qs) * 100 : null;
   // SecHw M4: keep the §2.4 "unpriced" badge in sync with the current
   // cost/sell on every in-row edit (full recalcBom isn't triggered by an
-  // input onchange). Badge is a decorative span in .bom-desc — remove it
-  // always, re-add when this §2.4 row has cost===0 OR sell===0. Idempotent;
-  // no focus disturbance (span has no inputs/handlers). Non-2.4 rows have
-  // no badge so the gate skips them.
-  if(sectionId === '2.4'){
-    var _descEl = row.querySelector('.bom-desc');
+  // input onchange). Badge is a decorative span in the row's desc cell —
+  // remove it always, re-add when this manual-priced row (§2.4 or §4.2) has
+  // cost===0 OR sell===0. Idempotent; no focus disturbance. Non-manual
+  // sections have no badge so the gate skips them.
+  // §4.2 uses an editable desc input wrapped in .bom-desc-edit-cell; §2.4
+  // uses a plain .bom-desc div. Look for both wrapper types so the badge
+  // sync works regardless of which manual-priced section this row is in.
+  if(sectionId === '2.4' || sectionId === '4.2'){
+    var _descEl = row.querySelector('.bom-desc-edit-cell') || row.querySelector('.bom-desc');
     if(_descEl){
-      var _existingFlag = _descEl.querySelector('.sechw-unpriced-flag');
+      var _existingFlag = _descEl.querySelector('.bom-unpriced-flag');
       if(_existingFlag) _existingFlag.remove();
       if(cost === 0 || sell === 0){
         _descEl.insertAdjacentHTML('beforeend',
-          '<span class="sechw-unpriced-flag" title="Cost or Sell is $0 — enter pricing for this line">unpriced</span>');
+          '<span class="bom-unpriced-flag" title="Cost or Sell is $0 — enter pricing for this line">unpriced</span>');
       }
     }
   }

@@ -134,3 +134,7 @@ A pricing entry whose SKU doesn't match a catalog key won't error — it just wo
 Vendor pricing is contractual and shouldn't appear in git history regardless of repo visibility. Keeping the entire folder gitignored (except this README and the template) eliminates the risk of an accidental commit revealing real numbers.
 
 If you need to share a working `pricing.json` between machines, copy it manually (USB stick, secure share, password manager attachment) — don't push it through git.
+
+## IoT devices (in-unit smart locks, keypads, thermostats, water sensors, gateways, passage sets)
+
+Placeholder template at `iot-extract-template.csv` — forward-looking infrastructure. IoT pricing is per-project today (entered manually in the SQ §4.2 Materials wizard via editable Cost + Sell + Description inputs). The template seeds future vendor cataloging. When a vendor stabilizes (e.g., the team always quotes Yale Assure smart locks), copy the template to `iot-extract.csv`, fill in real SKUs + msrp, and add a `parse_iot()` adapter to `build_pricing_json.py`. Future pass.

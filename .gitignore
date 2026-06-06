@@ -46,6 +46,10 @@ docs/package-lock.json
 # gitignored — only the *-template.csv reference copies are tracked.
 !source-data/doorbird-extract-template.csv
 !source-data/luxer-extract-template.csv
+# IoT M1: forward-looking template for in-unit IoT devices (smart locks,
+# keypads, thermostats, water sensors, gateways, passage sets). Placeholder
+# rows only — vendors get filled in when a parse_iot() adapter is added.
+!source-data/iot-extract-template.csv
 
 .claude/
 
