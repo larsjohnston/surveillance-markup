@@ -991,6 +991,20 @@ input[type="number"]::-webkit-outer-spin-button {
 .proj-field label { font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.06em; color:#6b7280; }
 .proj-field input,.proj-field textarea { padding:6px 8px; border:1.5px solid var(--border); border-radius:3px; font:11px var(--font-ui); }
 .proj-field textarea { min-height:55px; resize:vertical; }
+/* AC Hardware Auto-Spec M1: Project Info modal section. Sits below the
+   main proj-grid. Pill-button style mirrors .sub-term-pill (project-wide
+   toggles convention). */
+.proj-acHw-section { margin-top:6px; padding:12px; border:1.5px solid var(--border); border-radius:4px; background:#f9fafb; }
+.proj-acHw-title { font:700 11px var(--font-ui); color:var(--text); margin-bottom:6px; }
+.proj-acHw-help { font:10px var(--font-ui); color:var(--text-muted); margin-bottom:10px; line-height:1.4; }
+.proj-acHw-row { display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+.proj-acHw-row:last-child { margin-bottom:0; }
+.proj-acHw-label { font:700 9px var(--font-ui); text-transform:uppercase; letter-spacing:.06em; color:#6b7280; min-width:120px; }
+.proj-acHw-sublabel { font:normal 9px var(--font-ui); text-transform:none; letter-spacing:0; color:#9ca3af; }
+.proj-acHw-pill { display:inline-flex; gap:0; border:1px solid var(--border); border-radius:3px; overflow:hidden; }
+.proj-acHw-btn { background:#fff; color:var(--text-muted); border:none; font:700 9px var(--font-ui); padding:5px 10px; cursor:pointer; text-transform:uppercase; letter-spacing:.04em; }
+.proj-acHw-btn.active { background:var(--primary); color:#fff; }
+#proj-acHw-powerRow.is-disabled { opacity:.45; pointer-events:none; }
 
 .export-opts label { display:block; padding:5px 0; font:700 11px var(--font-ui); color:#1a1a2e; cursor:pointer; user-select:none; }
 .export-opts input[type=checkbox] { margin-right:9px; transform:scale(1.15); accent-color:var(--primary); cursor:pointer; vertical-align:middle; }
@@ -3298,6 +3312,31 @@ input[type="number"]::-webkit-outer-spin-button {
       <div class="proj-field"><label>Salesperson</label><input type="text" id="proj-sales" placeholder="Your name"></div>
       <div class="proj-field"><label>Company</label><input type="text" id="proj-company" placeholder="Your company name"></div>
       <div class="proj-field full"><label>Scope / Notes</label><textarea id="proj-scope" placeholder="Brief project description, scope of work, special requirements..."></textarea></div>
+    </div>
+
+    <!-- AC Hardware Auto-Spec M1 (v34): project-level toggle + power-mode
+         picker. When mode=on, computeAutoRows emits Brivo panel + expansion
+         boards + (optionally) external PSU rows sized to placed-reader count.
+         Default mode=off so existing/new projects render identically until
+         the integrator opts in. -->
+    <div class="proj-acHw-section">
+      <div class="proj-acHw-title">&#128272; Access Control Hardware Auto-Spec</div>
+      <div class="proj-acHw-help">When ON, BOM §2.1 auto-emits Brivo panel + expansion boards sized to placed-reader count (1→ACS100, 2→ACS300, 3-14→ACS6100R/L, 15-28→chained). Manual controller placements still flow through — avoid placing controllers AND turning this on (double-count).</div>
+      <div class="proj-acHw-row">
+        <label class="proj-acHw-label">Mode</label>
+        <span class="proj-acHw-pill">
+          <button type="button" id="proj-acHw-mode-off" class="proj-acHw-btn active" onclick="_acHwSetMode('off')">Off</button>
+          <button type="button" id="proj-acHw-mode-on"  class="proj-acHw-btn"        onclick="_acHwSetMode('on')">On</button>
+        </span>
+      </div>
+      <div class="proj-acHw-row" id="proj-acHw-powerRow">
+        <label class="proj-acHw-label">Power Mode <span class="proj-acHw-sublabel">(ACS6100 only, D≥3)</span></label>
+        <span class="proj-acHw-pill">
+          <button type="button" id="proj-acHw-pm-internal" class="proj-acHw-btn active" onclick="_acHwSetPowerMode('internal')">Internal PSB</button>
+          <button type="button" id="proj-acHw-pm-lsp"      class="proj-acHw-btn"        onclick="_acHwSetPowerMode('lsp')">LSP</button>
+          <button type="button" id="proj-acHw-pm-altronix" class="proj-acHw-btn"        onclick="_acHwSetPowerMode('altronix')">Altronix</button>
+        </span>
+      </div>
     </div>
 
     <div class="modal-actions">
@@ -9539,7 +9578,13 @@ var projectInfo = {
   // visible). Persisted in the project JSON; on load, applyProjectState
   // backfills missing keys to true. Replaces the per-session suitesHidden
   // boolean and the standalone "Hide unit labels" control.
-  labelVisibility: { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true }
+  labelVisibility: { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true },
+  // AC Hardware Auto-Spec M1 (v34): project-level config for the Brivo
+  // panel/board/PSU auto-emitter. mode='off' = dormant (no auto rows).
+  // powerMode controls PSU emission when D≥3 (ACS6100 territory):
+  // 'internal' = free PSB in EXP chassis, 'lsp' = LifeSafety, 'altronix'
+  // = Trove. Defaults match applyProjectState's backfill block.
+  acHardwareConfig: { mode: 'off', powerMode: 'internal' }
 };
 
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -16365,7 +16410,7 @@ function autoSaveTick(){
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
-      version: 33,             // generation tag — v33 Credentials-M2: Farpointe FP-WRR22 (receiver) + FP-WRT2B (transmitter) added to BRIVO_CRED_CATALOG as new tier2_family 'Overhead Doors' with section:'2.2'. brivoSkus emitter routes per cat.section (falls back to '2.1' for legacy families). Legacy ohTransmitters/ohReceiver fields migrated to brivoSkus on load + zeroed (idempotent). v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
+      version: 34,             // generation tag — v34 AC-Hardware-Autospec-M1: projectInfo.acHardwareConfig {mode,powerMode} drives a new computeAutoRows AC emitter (Brivo panel + expansion boards + optional LSP/Altronix PSU sized to door count). Default mode='off' so older saves render identically. powerMode default='internal' (free PSB in EXP chassis). v33 Credentials-M2: Farpointe FP-WRR22 (receiver) + FP-WRT2B (transmitter) added to BRIVO_CRED_CATALOG as new tier2_family 'Overhead Doors' with section:'2.2'. brivoSkus emitter routes per cat.section (falls back to '2.1' for legacy families). Legacy ohTransmitters/ohReceiver fields migrated to brivoSkus on load + zeroed (idempotent). v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
       timestamp: Date.now(),
       pdfMeta: {
         name: sourceDocumentName || null,
@@ -16583,7 +16628,7 @@ async function saveJSON(){
   await new Promise(function(r){ setTimeout(r, 0); });
 
   var data = JSON.stringify({
-    version: 33,            // v33 Credentials-M2: Farpointe FP-WRR22 (receiver) + FP-WRT2B (transmitter) added to BRIVO_CRED_CATALOG as new tier2_family 'Overhead Doors' with section:'2.2'. brivoSkus emitter routes per cat.section (falls back to '2.1' for legacy families). Legacy ohTransmitters/ohReceiver fields migrated to brivoSkus on load + zeroed (idempotent). v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
+    version: 34,            // v34 AC-Hardware-Autospec-M1: projectInfo.acHardwareConfig {mode,powerMode} drives a new computeAutoRows AC emitter (Brivo panel + expansion boards + optional LSP/Altronix PSU sized to door count). Default mode='off' so older saves render identically. powerMode default='internal' (free PSB in EXP chassis). v33 Credentials-M2: Farpointe FP-WRR22 (receiver) + FP-WRT2B (transmitter) added to BRIVO_CRED_CATALOG as new tier2_family 'Overhead Doors' with section:'2.2'. brivoSkus emitter routes per cat.section (falls back to '2.1' for legacy families). Legacy ohTransmitters/ohReceiver fields migrated to brivoSkus on load + zeroed (idempotent). v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 Credentials-wiring: projectInfo.credentials.brivoSkus map (per-SKU manual credential qtys). applyProjectState migrates older saves to {} default. v25 CMVR Phase: headends is an array {id,page,x,y,sku,label} (was page-keyed map in v24). applyProjectState migrates legacy map shape — never drops.
     sourceDocument: sourceDocument,
     cameras: camsForSave,
     pages: pagesForSave,
@@ -16930,6 +16975,23 @@ function applyProjectState(data){
     projectInfo.credentials.brivoSkus['FP-WRR22'] = _rxExisting + _ohRxQty;
     projectInfo.credentials.ohReceiver = 0;
     markDirty();
+  }
+  // AC Hardware Auto-Spec M1 (v33 → v34): project-level config that drives
+  // the new computeAutoRows AC panel/board/PSU emitter. mode='off' default for
+  // both new AND migrating projects so existing saves render IDENTICALLY to
+  // pre-feature behavior (no surprise BOM rows on load). Integrator opts in
+  // via Project Info modal → "Access Control Hardware" section. powerMode
+  // controls PSU emission (only consulted when D≥3 ACS6100 path); 'internal'
+  // = free PSB shipped in EXP chassis (default), 'lsp' = LSP-DVxxx, 'altronix'
+  // = ALX-TroveX. See plan: ~\.claude\plans\unified-coalescing-kahn.md.
+  if(!projectInfo.acHardwareConfig || typeof projectInfo.acHardwareConfig !== 'object'){
+    projectInfo.acHardwareConfig = {};
+  }
+  if(projectInfo.acHardwareConfig.mode !== 'on' && projectInfo.acHardwareConfig.mode !== 'off'){
+    projectInfo.acHardwareConfig.mode = 'off';
+  }
+  if(['internal','lsp','altronix'].indexOf(projectInfo.acHardwareConfig.powerMode) === -1){
+    projectInfo.acHardwareConfig.powerMode = 'internal';
   }
   // SUB-M1b (v29): subscription state defaults. Pre-v29 saves get monthly term
   // and empty overrides map so computeSubscriptionRows + render paths work
@@ -20596,6 +20658,108 @@ function computeAutoRows(){
     });
   }
 
+  // ─── AC Hardware Auto-Spec (M1) ────────────────────────────────────────
+  // When projectInfo.acHardwareConfig.mode === 'on', emit Brivo panel +
+  // expansion board + power-supply rows sized to door count (= reader count,
+  // pageMultiplier-aware). Ruleset documented in the plan; see Brivo
+  // architecture summary in CLAUDE.md (v34 chain note). Default mode='off'
+  // means dormant — existing/new projects render identically until the
+  // integrator flips the toggle in the Project Info modal.
+  //
+  // D=1 special case: ACS100 is reader+controller in one. The emitter
+  // SUPPRESSES placed-Reader §2.1 rows (the panel IS the reader) — done by
+  // filtering acRows after the panel row is pushed.
+  //
+  // Hybrid risk: if the integrator manually places controllers AND turns on
+  // auto-spec, both row sets appear. M1 documents this as a "don't do that"
+  // in the plan/Risks; M2 may add a friendlier warning.
+  var _acHwCfg = (projectInfo.acHardwareConfig && typeof projectInfo.acHardwareConfig === 'object')
+    ? projectInfo.acHardwareConfig : { mode: 'off', powerMode: 'internal' };
+  if(_acHwCfg.mode === 'on'){
+    var _hwD = 0;  // door count = readers × pageMultiplier
+    var _hwI = 0;  // IO board count (manually-placed B-ACS6100-IO devices)
+    acDevices.forEach(function(d){
+      var mult = pageMultiplier(d.page);
+      if(acCategoryOf(d) === 'Readers') _hwD += mult;
+      if(d.sku === 'B-ACS6100-IO')      _hwI += mult;
+    });
+    var _hwPush = function(sku, desc, qty){
+      acRows.push({
+        auto: true, src: 'accessControl', sku: sku, desc: desc,
+        key: 'auto-ac-panel-' + sku, qty: qty, unit: 0, cost: 0, list: null,
+        sectionAuto: true, section: '2.1'
+      });
+    };
+    var _hwWarn = function(keySuffix, desc){
+      acRows.push({
+        auto: true, src: 'accessControl', sku: '',
+        desc: 'WARNING: ' + desc,
+        key: 'auto-ac-panel-warn-' + keySuffix, qty: 1, unit: 0, cost: 0, list: null,
+        sectionAuto: true, section: '2.1'
+      });
+    };
+    if(_hwD === 1){
+      // ACS100 Mullion Tri-tech (integrated reader). Suppress placed-Reader
+      // rows so the BOM bills the panel, not the reader twice.
+      _hwPush('B-ACS100-E-BSPM-B', 'Brivo ACS100 Mullion Mount Integrated Tri-Tech Reader/Controller', 1);
+      acRows = acRows.filter(function(r){
+        if(!r.key) return true;
+        if(r.key.indexOf('auto-ac-panel-')  === 0) return true; // mine stay
+        if(r.key.indexOf('auto-ac-sechw-')  === 0) return true; // §2.4 stays
+        if(r.key.indexOf('auto-ac-cred-')   === 0) return true; // credentials stay
+        if(r.section === '2.2') return true;                    // OH-flagged stays
+        if(r.key.indexOf('auto-ac-') !== 0)        return true; // anything non-AC stays
+        // Remaining: placed-device row. Suppress only Readers (catalog category lookup).
+        if(!r.sku) return true;
+        for(var ci = 0; ci < BRIVO_CATALOG.length; ci++){
+          if(BRIVO_CATALOG[ci].sku === r.sku && BRIVO_CATALOG[ci].category === 'Readers') return false;
+        }
+        return true;
+      });
+    } else if(_hwD === 2){
+      _hwPush('B-ACS300-E-B', 'Brivo ACS300 Controller (2-door, PoE+ or 12VDC)', 1);
+    } else if(_hwD >= 3){
+      // ACS6100 family. DB = ceil((D-2)/2) expansion boards needed beyond MBE's first 2 doors.
+      var _hwDB = Math.ceil((_hwD - 2) / 2);
+      var _hwBoardCount = 1 + _hwDB + _hwI;  // MBE + DB + IO total boards on MBE chain
+      if(_hwD <= 6){
+        _hwPush('B-ACS6100R-E', 'Brivo ACS6100 Regular Controller (up to 6 doors)', 1);
+        _hwPush('B-ACS6100-DB', 'Brivo ACS6100 Two-Door Expansion Board (OSDP)', _hwDB);
+      } else if(_hwD <= 14){
+        _hwPush('B-ACS6100L-E', 'Brivo ACS6100 Large Controller (up to 14 doors)', 1);
+        _hwPush('B-ACS6100-DB', 'Brivo ACS6100 Two-Door Expansion Board (OSDP)', _hwDB);
+      } else if(_hwD <= 22){
+        _hwPush('B-ACS6100L-E',   'Brivo ACS6100 Large Controller (up to 14 doors)', 1);
+        _hwPush('B-ACS6100R-EXP', 'Brivo ACS6100 Regular Expansion Chassis (chained, +8 doors)', 1);
+        _hwPush('B-ACS6100-DB',   'Brivo ACS6100 Two-Door Expansion Board (OSDP)', _hwDB);
+      } else if(_hwD <= 28){
+        _hwPush('B-ACS6100L-E',   'Brivo ACS6100 Large Controller (up to 14 doors)', 1);
+        _hwPush('B-ACS6100L-EXP', 'Brivo ACS6100 Large Expansion Chassis (chained, +14 doors)', 1);
+        _hwPush('B-ACS6100-DB',   'Brivo ACS6100 Two-Door Expansion Board (OSDP)', _hwDB);
+      } else {
+        _hwWarn('overlimit', _hwD + ' doors exceeds single-MBE site limit (28 doors max). Recommend a second ACS6100 controller; manual hardware spec required for this project.');
+      }
+      // Power supply tier (D≥3 only; small panels assume PoE).
+      if(_acHwCfg.powerMode === 'lsp'){
+        // Lock count = 0 in M1 (lock-power scope deferred to M2). Pick the cheapest
+        // boards-only LSP variant that fits boardCount.
+        if(_hwBoardCount <= 3) _hwPush('LSP-SV75',  'LifeSafety Power 75W Single Voltage (≤3 Brivo boards)', 1);
+        else                   _hwPush('LSP-SV150', 'LifeSafety Power 150W Single Voltage (≤10 Brivo boards)', 1);
+      } else if(_acHwCfg.powerMode === 'altronix'){
+        if(_hwBoardCount <= 2)      _hwPush('ALX-Trove1BV1', 'Altronix Trove1BV1 Power Integration Enclosure (≤2 boards)', 1);
+        else if(_hwBoardCount <= 4) _hwPush('ALX-Trove2BV2', 'Altronix Trove2BV2 Power Integration Enclosure (≤4 boards)', 1);
+        else                        _hwPush('ALX-Trove3BV3', 'Altronix Trove3BV3 Power Integration Enclosure (≤8 boards)', 1);
+      } else {
+        // powerMode === 'internal': PSB shipped in EXP chassis, no row emitted.
+        // Warn if boardCount exceeds internal capacity (R: 4 boards, L: 8 boards).
+        var _hwPsbCap = (_hwD <= 6) ? 4 : 8;
+        if(_hwBoardCount > _hwPsbCap){
+          _hwWarn('psb-overflow', _hwBoardCount + ' boards (1 MBE + ' + _hwDB + ' DB + ' + _hwI + ' IO) exceeds internal PSB capacity (' + _hwPsbCap + '). Switch powerMode to LSP or Altronix in Project Info, or upgrade chassis.');
+        }
+      }
+    }
+  }
+
   // Pass N+1 M8: SMART APARTMENT auto-rows. Four categories:
   //   1. Intercoms      — grouped by SKU (smartApartment[type='intercom'])
   //   2. Parcel lockers — grouped by SKU (smartApartment[type='parcel'])
@@ -23967,7 +24131,42 @@ function openProjectModal(){
   document.getElementById('proj-scope').value   = projectInfo.scope || '';
   // Pass A.6: proposalSections toggles moved to the Export modal. The field
   // itself still lives on projectInfo; we just don't render/edit it here.
+  // AC Hardware Auto-Spec M1 (v34): paint pill buttons + power-row enabled
+  // state from current config.
+  _acHwSyncModalUI();
   document.getElementById('project-modal').classList.add('show');
+}
+
+// AC Hardware Auto-Spec M1: pill-button click handlers. Update projectInfo
+// in-place (committed on Save like every other modal field). _acHwSyncModalUI
+// re-paints the pill .active states + greys out the power row when mode=off.
+function _acHwSetMode(mode){
+  if(mode !== 'on' && mode !== 'off') return;
+  projectInfo.acHardwareConfig = projectInfo.acHardwareConfig || {};
+  projectInfo.acHardwareConfig.mode = mode;
+  _acHwSyncModalUI();
+}
+function _acHwSetPowerMode(pm){
+  if(['internal','lsp','altronix'].indexOf(pm) === -1) return;
+  projectInfo.acHardwareConfig = projectInfo.acHardwareConfig || {};
+  projectInfo.acHardwareConfig.powerMode = pm;
+  _acHwSyncModalUI();
+}
+function _acHwSyncModalUI(){
+  var cfg = (projectInfo.acHardwareConfig && typeof projectInfo.acHardwareConfig === 'object')
+    ? projectInfo.acHardwareConfig : { mode:'off', powerMode:'internal' };
+  var mode = (cfg.mode === 'on') ? 'on' : 'off';
+  var pm   = (['internal','lsp','altronix'].indexOf(cfg.powerMode) !== -1) ? cfg.powerMode : 'internal';
+  var b1 = document.getElementById('proj-acHw-mode-off');
+  var b2 = document.getElementById('proj-acHw-mode-on');
+  if(b1) b1.classList.toggle('active', mode === 'off');
+  if(b2) b2.classList.toggle('active', mode === 'on');
+  ['internal','lsp','altronix'].forEach(function(k){
+    var el = document.getElementById('proj-acHw-pm-' + k);
+    if(el) el.classList.toggle('active', pm === k);
+  });
+  var row = document.getElementById('proj-acHw-powerRow');
+  if(row) row.classList.toggle('is-disabled', mode !== 'on');
 }
 function closeProjectModal(){
   document.getElementById('project-modal').classList.remove('show');
@@ -24013,7 +24212,14 @@ function saveProjectInfo(){
     // Cleanup M5: preserve labelVisibility across projectInfo modal saves —
     // the modal doesn't expose it, so without this carry-over a save would
     // silently reset all six flags to the factory default of all-true.
-    labelVisibility:  (projectInfo.labelVisibility && typeof projectInfo.labelVisibility === 'object') ? projectInfo.labelVisibility : { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true }
+    labelVisibility:  (projectInfo.labelVisibility && typeof projectInfo.labelVisibility === 'object') ? projectInfo.labelVisibility : { camera:true, accessControl:true, intercom:true, parcel:true, mailbox:true, suite:true },
+    // AC Hardware Auto-Spec M1 (v34): preserve the project-level config across
+    // projectInfo modal saves. _acHwSetMode / _acHwSetPowerMode mutate
+    // projectInfo.acHardwareConfig in-place as the user clicks pill buttons;
+    // this line carries that state through the wholesale-replace pattern. The
+    // applyProjectState defaults block guarantees the object always exists +
+    // has valid values on load, so the carry-over is safe.
+    acHardwareConfig: (projectInfo.acHardwareConfig && typeof projectInfo.acHardwareConfig === 'object') ? projectInfo.acHardwareConfig : { mode:'off', powerMode:'internal' }
   };
   markDirty();
   closeProjectModal();
