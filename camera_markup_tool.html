@@ -12427,6 +12427,12 @@ function pageMultiplier(pageIdx){
   return Math.max(1, to - from + 1);
 }
 
+// True building floor count for elevator sizing: sum of per-page floor
+// multipliers (a "typical floor ×10" page counts as 10 floors).
+function buildingFloorCount(){
+  return pages.reduce(function(sum, _p, i){ return sum + pageMultiplier(i); }, 0);
+}
+
 // "F3-17" when typical with multiplier > 1; empty string otherwise.
 // Used by tab badge, riser zone label, schedule "Floors" column, cable suffix.
 function pageFloorRange(pageIdx){
