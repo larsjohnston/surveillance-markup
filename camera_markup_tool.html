@@ -9582,7 +9582,7 @@ var projectInfo = {
   // ohReceiver). Defaults all 0; the type→section/key/desc mapping lives in
   // bomCredentialRows() (M3) so the catalogue pass swaps placeholder descs
   // for real SKUs in one place.
-  credentials: { fobs: 0, cards: 0, mobilePasses: 0, ohTransmitters: 0, ohReceiver: 0 },
+  credentials: { mobilePasses: 0, ohDoors: 0, ohTransmitters: 0, brivoSkus: {} },
   subscriptionTerm: 'monthly',   // 'monthly' | 'annual' — project-wide. SUB-M1b.
   subscriptionOverrides: {},     // { '<sku>': <number> } sell override; presence = overridden flag. SUB-M1b.
   cameraStorageRetention: '30',
@@ -17018,6 +17018,23 @@ function applyProjectState(data){
   if(['internal','lsp','altronix'].indexOf(projectInfo.acHardwareConfig.powerMode) === -1){
     projectInfo.acHardwareConfig.powerMode = 'internal';
   }
+  // AC respec: force auto-spec on (controllers are always auto-derived now).
+  projectInfo.acHardwareConfig.mode = 'on';
+  // Credentials shape + one-time migration off the deleted families.
+  if(!projectInfo.credentials || typeof projectInfo.credentials !== 'object') projectInfo.credentials = {};
+  var _cr = projectInfo.credentials;
+  if(typeof _cr.mobilePasses !== 'number' || _cr.mobilePasses < 0) _cr.mobilePasses = 0;
+  if(typeof _cr.ohDoors       !== 'number' || _cr.ohDoors < 0)       _cr.ohDoors = (typeof _cr.ohReceiver === 'number' ? _cr.ohReceiver : 0);
+  if(typeof _cr.ohTransmitters!== 'number' || _cr.ohTransmitters < 0)_cr.ohTransmitters = 0;
+  if(!_cr.brivoSkus || typeof _cr.brivoSkus !== 'object') _cr.brivoSkus = {};
+  // Strip deleted credential families (Dual-Tech *-SCP*, Pre-Punch B-SC-Punch-*).
+  var _DELETED_CRED = /(-SCP\d|SC-Punch-)/;
+  var _removed = 0;
+  Object.keys(_cr.brivoSkus).forEach(function(sku){ if(_DELETED_CRED.test(sku)){ delete _cr.brivoSkus[sku]; _removed++; } });
+  if(_removed > 0 && typeof showOneShotToast === 'function'){
+    showOneShotToast('Removed ' + _removed + ' discontinued credential line' + (_removed>1?'s':'') + ' (Dual-Tech / Pre-Punch). Re-add under Credentials if needed.');
+  }
+  delete _cr.cards; delete _cr.fobs; delete _cr.ohReceiver;
   // Elevator control defaults (access system installed in the elevator).
   if(!projectInfo.elevatorControl || typeof projectInfo.elevatorControl !== 'object'){
     projectInfo.elevatorControl = { cabs: 0, floors: 0 };
