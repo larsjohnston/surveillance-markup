@@ -10723,6 +10723,116 @@ function onElevatorToggle(on){
   recalcBom();
 }
 
+// ─── Controllers drill-down (Tasks 3.2-UI + 3.3) ───────────────────────────────
+function acDoorCount(){
+  var d = 0;
+  acDevices.forEach(function(x){ if(acCategoryOf(x) === 'Readers') d += pageMultiplier(x.page); });
+  var ev = projectInfo.elevatorControl || {};
+  if(typeof ev.cabs === 'number' && ev.cabs > 0) d += ev.cabs;  // each cab reader uses a port
+  return d;
+}
+function acElevBoards(){
+  var ev = projectInfo.elevatorControl || {};
+  var cabs   = (typeof ev.cabs   === 'number' && ev.cabs   > 0) ? Math.floor(ev.cabs)   : 0;
+  var floors = (typeof ev.floors === 'number' && ev.floors > 0) ? Math.floor(ev.floors) : 0;
+  return (cabs > 0 && floors > 0) ? cabs * Math.ceil(floors / 8) : 0;
+}
+function _acPowerMode(){
+  var cfg = projectInfo.acHardwareConfig || {};
+  return (['internal','lsp','altronix'].indexOf(cfg.powerMode) !== -1) ? cfg.powerMode : 'internal';
+}
+function _acControllerPlanNow(){ return acControllerPlan(acDoorCount(), acElevBoards(), _acPowerMode()); }
+function requiredControllerCount(){
+  return _acControllerPlanNow().controllers
+    .filter(function(c){ return c.sku.indexOf('-EXP') === -1; })
+    .reduce(function(s,c){ return s + c.qty; }, 0);
+}
+function placedControllerCount(){
+  return acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers'; })
+    .reduce(function(s,d){ return s + pageMultiplier(d.page); }, 0);
+}
+function _acShortName(n){ return (n || '').replace(/^Brivo\s+/, ''); }
+function _acCtrlIcon(sku){
+  if(sku.indexOf('ACS6100') === 0 || sku.indexOf('B-ACS6100') === 0) return acIconFor('ACS6100');
+  if(sku.indexOf('ACS300')  !== -1) return acIconFor('ACS300');
+  if(sku.indexOf('ACS100')  !== -1) return acIconFor('ACS100');
+  return acIconFor('Controllers');
+}
+// Arm a specific catalog controller SKU for canvas placement (to-place tile click).
+function armAcSku(sku){
+  var row = null;
+  for(var i = 0; i < BRIVO_CATALOG.length; i++){ if(BRIVO_CATALOG[i].sku === sku){ row = BRIVO_CATALOG[i]; break; } }
+  if(!row) return;  // not placeable (e.g. EXP chassis) — not offered as a to-place tile
+  _cancelAllPlacement();
+  currentACBrand = 'brivo'; currentACCategory = 'Controllers'; currentACSubcategory = row.subcategory;
+  currentReaderModel = sku;
+  renderLeftPaneDrillDown('ac');
+}
+function acSetPowerMode(pm){
+  if(['internal','lsp','altronix'].indexOf(pm) === -1) return;
+  if(!projectInfo.acHardwareConfig || typeof projectInfo.acHardwareConfig !== 'object') projectInfo.acHardwareConfig = { mode:'on', powerMode:'internal' };
+  projectInfo.acHardwareConfig.powerMode = pm;
+  markDirty(); recalcBom(); renderLeftPaneDrillDown('ac');
+}
+// Build the Controllers drill-down HTML (rendered into #lp-ac-tier3).
+function renderAcControllersTier3(){
+  var plan    = _acControllerPlanNow();
+  var mains   = plan.controllers.filter(function(c){ return c.sku.indexOf('-EXP') === -1; });
+  var chassis = plan.controllers.filter(function(c){ return c.sku.indexOf('-EXP') !== -1; });
+  if(plan.controllers.length === 0 && plan.warnings.length === 0){
+    return '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px;">Place readers to auto-spec controllers.</div>';
+  }
+  var required = mains.reduce(function(s,c){ return s + c.qty; }, 0);
+  var placed   = placedControllerCount();
+  var html = '';
+  // placement flag
+  if(required > 0 && placed < required){
+    html += '<div style="font:600 11px var(--font-ui); color:#92400e; background:#fef3c7; border-radius:6px; padding:7px 10px; margin-bottom:8px;">⚠ ' + placed + ' of ' + required + ' controllers placed — place the rest on the canvas</div>';
+  } else if(required > 0){
+    html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px; margin-bottom:8px;">✓ all ' + required + ' controllers placed</div>';
+  }
+  // to-place tiles
+  html += '<div style="font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:6px 0 4px;">To place</div><div class="lp-tier-row">';
+  mains.forEach(function(c){
+    var armed = (currentReaderModel === c.sku) ? ' active' : '';
+    html += '<div class="tier2-tile' + armed + '" onclick="armAcSku(\'' + c.sku + '\')" title="Place ' + escapeHtml(c.name) + '">'
+          +   '<div class="ts-icon">' + _acCtrlIcon(c.sku) + '</div>'
+          +   '<span class="t2-label">' + escapeHtml(_acShortName(c.name)) + (c.qty > 1 ? (' ×' + c.qty) : '') + '</span>'
+          + '</div>';
+  });
+  html += '</div>';
+  // read-only board list: EXP chassis + DB boards + elevator I/O + power
+  var io = acElevBoards();
+  var boards = chassis.concat(plan.dbBoards);
+  if(io > 0) boards.push({ sku:'B-ACS6100-IO', name:'Elevator I/O Board', qty: io });
+  boards = boards.concat(plan.power);
+  if(boards.length){
+    html += '<div style="font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 4px;">Boards in use</div>';
+    html += '<div style="border:1px solid var(--border); border-radius:6px; overflow:hidden;">';
+    boards.forEach(function(b, i){
+      html += '<div style="display:flex; justify-content:space-between; padding:5px 9px; font:500 11px var(--font-ui);' + (i ? ' border-top:1px solid var(--border);' : '') + '">'
+            +   '<span>' + escapeHtml(_acShortName(b.name)) + '</span><span style="color:var(--text-muted);">×' + b.qty + '</span></div>';
+    });
+    html += '</div>';
+  }
+  // warnings (if any)
+  plan.warnings.forEach(function(w){
+    html += '<div style="font:500 10px var(--font-ui); color:#92400e; margin-top:6px;">⚠ ' + escapeHtml(w) + '</div>';
+  });
+  // power-supply tiles
+  var pm = _acPowerMode();
+  html += '<div style="font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 4px;">Power supply</div><div class="lp-tier-row">';
+  [['internal','Internal PSB'],['lsp','LSP'],['altronix','Altronix']].forEach(function(p){
+    var act = (pm === p[0]) ? ' active' : '';
+    html += '<div class="tier2-tile' + act + '" onclick="acSetPowerMode(\'' + p[0] + '\')" title="' + p[1] + '">'
+          +   '<div class="ts-icon">' + acIconFor('Controllers') + '</div>'
+          +   '<span class="t2-label">' + p[1] + '</span>'
+          + '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
 function _renderAcDrillDown(){
   // Tier-1 brand tile is hidden (single-brand absorb): Readers/Controllers/
   // Credentials are now the visible top tier. Default the brand to Brivo so
@@ -10789,7 +10899,8 @@ function _renderAcDrillDown(){
 
   // Tier-3 header label — switches between "AC Models" (subcategory drill)
   // and "Credentials" (when the user is in the credentials drill-in).
-  if(bc2) bc2.innerHTML = acCredentialsView ? 'Credentials' : 'AC Models';
+  if(bc2) bc2.innerHTML = acCredentialsView ? 'Credentials' :
+                          (currentACCategory === 'Controllers') ? 'Controllers' : 'AC Models';
 
   // Tier 3 — branches on acCredentialsView. In credentials mode, render
   // 5 small placeholder type tiles. No back affordance — exit by clicking
@@ -10809,6 +10920,11 @@ function _renderAcDrillDown(){
     // lpEditCredential modal); orphaned modal kept dead this pass for
     // diff focus, slated for cleanup in a follow-up.
     t3Html = _renderCredentialsTier3();
+    t3.style.gridTemplateColumns = '';
+  } else if(currentACCategory === 'Controllers'){
+    // Controllers drill-down (Tasks 3.2-UI + 3.3): placement flag, auto-spec'd
+    // controller to-place tiles, read-only board list, and power-supply tiles.
+    t3Html = renderAcControllersTier3();
     t3.style.gridTemplateColumns = '';
   } else {
     // Default: BRIVO_CATALOG subcategory leaves for currentACCategory.
