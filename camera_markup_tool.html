@@ -20284,6 +20284,63 @@ function bomCredentialRows(){
   return { rows: rows, anyManual_2_1_Entered: anyManual_2_1_Entered };
 }
 
+// Controller-chain spec from door count + elevator I/O board count + power mode.
+// Pure: no globals, no row-pushing. Shared by the BOM emitter (below) and the
+// Controllers UI. controllers = placeable panels (incl. EXP chassis);
+// dbBoards = two-door expansion; power = external PSU rows; warnings = strings.
+// isAcs100 signals the D=1 integrated-reader case (caller suppresses placed readers).
+function acControllerPlan(doorCount, ioBoardCount, powerMode){
+  var plan = { controllers: [], dbBoards: [], power: [], warnings: [], isAcs100: false, doorCount: doorCount, boardCount: 0 };
+  if(doorCount === 1){
+    // ACS100 Mullion Tri-tech (integrated reader). Caller suppresses placed-Reader rows.
+    plan.controllers.push({ sku: 'B-ACS100-E-BSPM-B', name: 'Brivo ACS100 Mullion Mount Integrated Tri-Tech Reader/Controller', qty: 1 });
+    plan.isAcs100 = true;
+  } else if(doorCount === 2){
+    plan.controllers.push({ sku: 'B-ACS300-E-B', name: 'Brivo ACS300 Controller (2-door, PoE+ or 12VDC)', qty: 1 });
+  } else if(doorCount >= 3){
+    // ACS6100 family. DB = ceil((D-2)/2) expansion boards needed beyond MBE's first 2 doors.
+    var db = Math.ceil((doorCount - 2) / 2);
+    var boardCount = 1 + db + ioBoardCount;  // MBE + DB + IO total boards on MBE chain
+    plan.boardCount = boardCount;
+    if(doorCount <= 6){
+      plan.controllers.push({ sku: 'B-ACS6100R-E', name: 'Brivo ACS6100 Regular Controller (up to 6 doors)', qty: 1 });
+    } else if(doorCount <= 14){
+      plan.controllers.push({ sku: 'B-ACS6100L-E', name: 'Brivo ACS6100 Large Controller (up to 14 doors)', qty: 1 });
+    } else if(doorCount <= 22){
+      plan.controllers.push({ sku: 'B-ACS6100L-E',   name: 'Brivo ACS6100 Large Controller (up to 14 doors)', qty: 1 });
+      plan.controllers.push({ sku: 'B-ACS6100R-EXP', name: 'Brivo ACS6100 Regular Expansion Chassis (chained, +8 doors)', qty: 1 });
+    } else if(doorCount <= 28){
+      plan.controllers.push({ sku: 'B-ACS6100L-E',   name: 'Brivo ACS6100 Large Controller (up to 14 doors)', qty: 1 });
+      plan.controllers.push({ sku: 'B-ACS6100L-EXP', name: 'Brivo ACS6100 Large Expansion Chassis (chained, +14 doors)', qty: 1 });
+    } else {
+      plan.warnings.push(doorCount + ' doors exceeds single-MBE site limit (28 doors max). Recommend a second ACS6100 controller; manual hardware spec required for this project.');
+    }
+    // Two-door expansion boards (omit if qty 0).
+    if(db > 0 && doorCount <= 28){
+      plan.dbBoards.push({ sku: 'B-ACS6100-DB', name: 'Brivo ACS6100 Two-Door Expansion Board (OSDP)', qty: db });
+    }
+    // Power supply tier (D≥3 only; small panels assume PoE).
+    if(powerMode === 'lsp'){
+      // Lock count = 0 in M1 (lock-power scope deferred to M2). Pick the cheapest
+      // boards-only LSP variant that fits boardCount.
+      if(boardCount <= 3) plan.power.push({ sku: 'LSP-SV75',  name: 'LifeSafety Power 75W Single Voltage (≤3 Brivo boards)', qty: 1 });
+      else                plan.power.push({ sku: 'LSP-SV150', name: 'LifeSafety Power 150W Single Voltage (≤10 Brivo boards)', qty: 1 });
+    } else if(powerMode === 'altronix'){
+      if(boardCount <= 2)      plan.power.push({ sku: 'ALX-Trove1BV1', name: 'Altronix Trove1BV1 Power Integration Enclosure (≤2 boards)', qty: 1 });
+      else if(boardCount <= 4) plan.power.push({ sku: 'ALX-Trove2BV2', name: 'Altronix Trove2BV2 Power Integration Enclosure (≤4 boards)', qty: 1 });
+      else                     plan.power.push({ sku: 'ALX-Trove3BV3', name: 'Altronix Trove3BV3 Power Integration Enclosure (≤8 boards)', qty: 1 });
+    } else {
+      // powerMode === 'internal': PSB shipped in EXP chassis, no row emitted.
+      // Warn if boardCount exceeds internal capacity (R: 4 boards, L: 8 boards).
+      var psbCap = (doorCount <= 6) ? 4 : 8;
+      if(boardCount > psbCap){
+        plan.warnings.push(boardCount + ' boards (1 MBE + ' + db + ' DB + ' + ioBoardCount + ' IO) exceeds internal PSB capacity (' + psbCap + '). Switch powerMode to LSP or Altronix in Project Info, or upgrade chassis.');
+      }
+    }
+  }
+  return plan;
+}
+
 // Compute auto-derived rows from current cameras
 function computeAutoRows(){
   // BOM Restructure pass: laborRate / defaultHrs were read from the BOM
@@ -20657,10 +20714,21 @@ function computeAutoRows(){
         sectionAuto: true, section: '2.1'
       });
     };
-    if(_hwD === 1){
-      // ACS100 Mullion Tri-tech (integrated reader). Suppress placed-Reader
+    // Tiering logic lives in the pure acControllerPlan() helper (shared with the
+    // Controllers UI). Emit its controllers → dbBoards → power → warnings in the
+    // same order the inline tiering used to, so acRows is byte-for-byte identical.
+    var _plan = acControllerPlan(_hwD, _hwI, _acHwCfg.powerMode);
+    _plan.controllers.forEach(function(c){ _hwPush(c.sku, c.name, c.qty); });
+    _plan.dbBoards.forEach(function(b){ _hwPush(b.sku, b.name, b.qty); });
+    _plan.power.forEach(function(p){ _hwPush(p.sku, p.name, p.qty); });
+    _plan.warnings.forEach(function(w){
+      // Map warning text back to its stable warn key (preserves auto-ac-panel-warn-* keys).
+      var _wKey = (w.indexOf('exceeds single-MBE site limit') !== -1) ? 'overlimit' : 'psb-overflow';
+      _hwWarn(_wKey, w);
+    });
+    if(_plan.isAcs100){
+      // ACS100 (D=1) is reader+controller in one. Suppress placed-Reader §2.1
       // rows so the BOM bills the panel, not the reader twice.
-      _hwPush('B-ACS100-E-BSPM-B', 'Brivo ACS100 Mullion Mount Integrated Tri-Tech Reader/Controller', 1);
       acRows = acRows.filter(function(r){
         if(!r.key) return true;
         if(r.key.indexOf('auto-ac-panel-')  === 0) return true; // mine stay
@@ -20675,47 +20743,6 @@ function computeAutoRows(){
         }
         return true;
       });
-    } else if(_hwD === 2){
-      _hwPush('B-ACS300-E-B', 'Brivo ACS300 Controller (2-door, PoE+ or 12VDC)', 1);
-    } else if(_hwD >= 3){
-      // ACS6100 family. DB = ceil((D-2)/2) expansion boards needed beyond MBE's first 2 doors.
-      var _hwDB = Math.ceil((_hwD - 2) / 2);
-      var _hwBoardCount = 1 + _hwDB + _hwI;  // MBE + DB + IO total boards on MBE chain
-      if(_hwD <= 6){
-        _hwPush('B-ACS6100R-E', 'Brivo ACS6100 Regular Controller (up to 6 doors)', 1);
-        _hwPush('B-ACS6100-DB', 'Brivo ACS6100 Two-Door Expansion Board (OSDP)', _hwDB);
-      } else if(_hwD <= 14){
-        _hwPush('B-ACS6100L-E', 'Brivo ACS6100 Large Controller (up to 14 doors)', 1);
-        _hwPush('B-ACS6100-DB', 'Brivo ACS6100 Two-Door Expansion Board (OSDP)', _hwDB);
-      } else if(_hwD <= 22){
-        _hwPush('B-ACS6100L-E',   'Brivo ACS6100 Large Controller (up to 14 doors)', 1);
-        _hwPush('B-ACS6100R-EXP', 'Brivo ACS6100 Regular Expansion Chassis (chained, +8 doors)', 1);
-        _hwPush('B-ACS6100-DB',   'Brivo ACS6100 Two-Door Expansion Board (OSDP)', _hwDB);
-      } else if(_hwD <= 28){
-        _hwPush('B-ACS6100L-E',   'Brivo ACS6100 Large Controller (up to 14 doors)', 1);
-        _hwPush('B-ACS6100L-EXP', 'Brivo ACS6100 Large Expansion Chassis (chained, +14 doors)', 1);
-        _hwPush('B-ACS6100-DB',   'Brivo ACS6100 Two-Door Expansion Board (OSDP)', _hwDB);
-      } else {
-        _hwWarn('overlimit', _hwD + ' doors exceeds single-MBE site limit (28 doors max). Recommend a second ACS6100 controller; manual hardware spec required for this project.');
-      }
-      // Power supply tier (D≥3 only; small panels assume PoE).
-      if(_acHwCfg.powerMode === 'lsp'){
-        // Lock count = 0 in M1 (lock-power scope deferred to M2). Pick the cheapest
-        // boards-only LSP variant that fits boardCount.
-        if(_hwBoardCount <= 3) _hwPush('LSP-SV75',  'LifeSafety Power 75W Single Voltage (≤3 Brivo boards)', 1);
-        else                   _hwPush('LSP-SV150', 'LifeSafety Power 150W Single Voltage (≤10 Brivo boards)', 1);
-      } else if(_acHwCfg.powerMode === 'altronix'){
-        if(_hwBoardCount <= 2)      _hwPush('ALX-Trove1BV1', 'Altronix Trove1BV1 Power Integration Enclosure (≤2 boards)', 1);
-        else if(_hwBoardCount <= 4) _hwPush('ALX-Trove2BV2', 'Altronix Trove2BV2 Power Integration Enclosure (≤4 boards)', 1);
-        else                        _hwPush('ALX-Trove3BV3', 'Altronix Trove3BV3 Power Integration Enclosure (≤8 boards)', 1);
-      } else {
-        // powerMode === 'internal': PSB shipped in EXP chassis, no row emitted.
-        // Warn if boardCount exceeds internal capacity (R: 4 boards, L: 8 boards).
-        var _hwPsbCap = (_hwD <= 6) ? 4 : 8;
-        if(_hwBoardCount > _hwPsbCap){
-          _hwWarn('psb-overflow', _hwBoardCount + ' boards (1 MBE + ' + _hwDB + ' DB + ' + _hwI + ' IO) exceeds internal PSB capacity (' + _hwPsbCap + '). Switch powerMode to LSP or Altronix in Project Info, or upgrade chassis.');
-        }
-      }
     }
   }
 
