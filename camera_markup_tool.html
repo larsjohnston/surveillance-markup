@@ -20497,6 +20497,10 @@ function computeAutoRows(){
   // with the (existing) credentials helper keys impossible.
   acDevices.forEach(function(d){
     var cat = acCategoryOf(d);
+    // AC respec: controllers are billed via the auto-spec (acControllerPlan)
+    // now — placed controllers are visual/riser instances only, so skip them
+    // here to avoid double-counting. Readers still emit normally.
+    if(cat === 'Controllers') return;
     if(cat !== 'Readers' && cat !== 'Controllers') return;
     var sku = d.sku || d.model;
     if(!sku) return;
