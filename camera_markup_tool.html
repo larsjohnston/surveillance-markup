@@ -22280,6 +22280,35 @@ function computeSubscriptionRows(){
       rows.push({ sku:'SUB-DOORBIRD', desc:'DoorBird per-suite subscription', qty:_suiteQty, cost:0, list:_perSuiteList });
     }
   }
+  // Mobile passes — Task 6.1 emission.
+  // Packing algorithm: cover n passes with packs {1000,500,100}.
+  // Repeatedly take largest pack <= remaining; if rem 0<r<100 remains, add one 100-pack.
+  function _mpPacks(n){
+    var out = { 1000:0, 500:0, 100:0 };
+    var rem = n;
+    [1000,500,100].forEach(function(p){ while(rem >= p){ out[p]++; rem -= p; } });
+    if(rem > 0) out[100]++;   // round the final <100 remainder up to one 100-pack
+    return out;
+  }
+  var _mp = (projectInfo.credentials && typeof projectInfo.credentials.mobilePasses === 'number') ? projectInfo.credentials.mobilePasses : 0;
+  if(multifamily){
+    // Multifamily Edition includes 500 passes; emit included line always when multifamily is active.
+    rows.push({ sku: 'B-MP-500' + _subTermSuffix(), desc: 'Brivo Mobile Pass — 500 included (Multifamily Edition)', qty: 500, cost: 0, list: 0 });
+    // Overage packs for passes beyond the 500 included.
+    var _mpOverage = Math.max(_mp - 500, 0);
+    if(_mpOverage > 0){
+      var _mpOPacks = _mpPacks(_mpOverage);
+      if(_mpOPacks[1000] > 0) _push('B-MP-1000' + _subTermSuffix(), _mpOPacks[1000]);
+      if(_mpOPacks[500]  > 0) _push('B-MP-500'  + _subTermSuffix(), _mpOPacks[500]);
+      if(_mpOPacks[100]  > 0) _push('B-MP-100'  + _subTermSuffix(), _mpOPacks[100]);
+    }
+  } else if(_mp > 0){
+    // Non-multifamily: pack all requested passes.
+    var _mpAllPacks = _mpPacks(_mp);
+    if(_mpAllPacks[1000] > 0) _push('B-MP-1000' + _subTermSuffix(), _mpAllPacks[1000]);
+    if(_mpAllPacks[500]  > 0) _push('B-MP-500'  + _subTermSuffix(), _mpAllPacks[500]);
+    if(_mpAllPacks[100]  > 0) _push('B-MP-100'  + _subTermSuffix(), _mpAllPacks[100]);
+  }
   return rows;
 }
 
