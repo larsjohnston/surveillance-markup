@@ -1865,7 +1865,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .tier2-tile.active         { border-color:#1d4ed8; background:#1d4ed8; color:#fff; }
 
 /* AC Tier 1 brand grid — same column layout as camera brand grid. */
-#ac-brand-grid { display:grid; grid-template-columns:1fr; gap:6px; margin-bottom:6px; }
+#ac-brand-grid { display:none; grid-template-columns:1fr; gap:6px; margin-bottom:6px; }
 
 /* Inline variant default — single row under the active Tier 3 leaf. */
 /* Panel-cleanup P5: #lp-ac-variant element removed — its inline
@@ -2638,7 +2638,7 @@ input[type="number"]::-webkit-outer-spin-button {
     </div><!-- /panel-body hardware -->
 
     <div class="panel-body" data-mode-section="access">
-      <div class="phdr">AC Manufacturers</div>
+      <div class="phdr">Access Control</div>
       <div id="ac-controls">
         <!-- Pass Left-Pane M3: Tier 1 — Brivo / Other. .brand-tile class
              reused for visual consistency with the cameras drill-down.
@@ -2669,6 +2669,13 @@ input[type="number"]::-webkit-outer-spin-button {
              dropdown was removed. New AC devices default per
              DEFAULT_AC_DEFAULTS (Dual-tech for the Reader subcategories);
              per-device overrides live on the right panel. -->
+        <!-- Task 2.2: Elevator control toggle. Sits beneath the tier-1
+             Readers/Controllers/Credentials row. ON seeds a default cabs/floors
+             (full cars/floors modal is a later task); OFF clears the config. -->
+        <div id="ac-elev-toggle-row" style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+          <span style="font:600 12px var(--font-ui);">Elevator control</span>
+          <label class="switch" style="cursor:pointer;"><input type="checkbox" id="ac-elev-toggle" onchange="onElevatorToggle(this.checked)"></label>
+        </div>
       </div>
       <!-- Panel-cleanup P4: per-page placed-AC list removed; updateAcList()
            is null-safe so call sites stay valid no-ops. -->
@@ -10699,7 +10706,28 @@ function _renderCredentialsTier3(){
 // save shape (unused at placement time post-P5; DEFAULT_AC_DEFAULTS is
 // the new placement default source).
 
+// Elevator control toggle. The precise cars/floors modal is a later task; for
+// now ON seeds a sensible default (1 car, building floor count) and OFF clears.
+function onElevatorToggle(on){
+  if(!projectInfo.elevatorControl || typeof projectInfo.elevatorControl !== 'object') projectInfo.elevatorControl = { cabs:0, floors:0 };
+  if(on){
+    if(!(projectInfo.elevatorControl.cabs > 0)){
+      projectInfo.elevatorControl.cabs = 1;
+      projectInfo.elevatorControl.floors = buildingFloorCount();
+    }
+  } else {
+    projectInfo.elevatorControl.cabs = 0;
+    projectInfo.elevatorControl.floors = 0;
+  }
+  markDirty();
+  recalcBom();
+}
+
 function _renderAcDrillDown(){
+  // Tier-1 brand tile is hidden (single-brand absorb): Readers/Controllers/
+  // Credentials are now the visible top tier. Default the brand to Brivo so
+  // armAcDevice works on first category click without the hidden brand tile.
+  if(!currentACBrand) currentACBrand = 'brivo';
   // Tier 1: paint #ac-brand-grid .brand-tile active state.
   document.querySelectorAll('#ac-brand-grid .brand-tile').forEach(function(t){
     t.classList.toggle('active', t.dataset.brand === currentACBrand);
@@ -10801,6 +10829,10 @@ function _renderAcDrillDown(){
   // Panel-cleanup P5: inline variant <select> rendering removed. The
   // right-panel variant control (updateReaderVariant) is now the only
   // surface for changing a Brivo device's Technology / Form factor.
+
+  // Task 2.2: reflect elevator-control state on the toggle checkbox.
+  var _elevToggle = document.getElementById('ac-elev-toggle');
+  if(_elevToggle){ _elevToggle.checked = !!(projectInfo.elevatorControl && projectInfo.elevatorControl.cabs > 0); }
 }
 
 // ─── PDF Import ───────────────────────────────────────────────────────────────
