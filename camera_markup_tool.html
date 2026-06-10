@@ -4160,15 +4160,11 @@ var tabOrder = null;
 var BRIVO_CRED_CATALOG = {
   'B-BUC3-37-SC50':  { manufacturer: 'Brivo', description: 'Brivo Unified Smart Card EV3 37-Bit',                            code: 'UC3-37-SC50',  tier2_family: 'Cards' },
   'B-BUC3-37-SF25':  { manufacturer: 'Brivo', description: 'Brivo Unified Smart Keyfob EV3 37-Bit',                          code: 'UC3-37-SF25',  tier2_family: 'Fobs' },
-  'B-BUC3-37-SCP50': { manufacturer: 'Brivo', description: 'Brivo Unified Dual-Tech Smart Card + Prox EV3 37-Bit',           code: 'UC3-37-SCP50', tier2_family: 'Dual-Tech' },
   'B-BUC3-56-SC50':  { manufacturer: 'Brivo', description: 'Brivo Unified Smart Card EV3 56-Bit',                            code: 'UC3-56-SC50',  tier2_family: 'Cards' },
   'B-BUC3-56-SF25':  { manufacturer: 'Brivo', description: 'Brivo Unified Smart Keyfob EV3 56-Bit',                          code: 'UC3-56-SF25',  tier2_family: 'Fobs' },
-  'B-BUC3-56-SCP50': { manufacturer: 'Brivo', description: 'Brivo Unified Dual-Tech Smart Card + Prox EV3 56-Bit',           code: 'UC3-56-SCP50', tier2_family: 'Dual-Tech' },
   'B-SC-Custom':     { manufacturer: 'Brivo', description: 'Brivo Smart Card — Customer Specified Encryption / Lk Num',      code: 'SC-Custom',    tier2_family: 'Cards' },
   'B-SF-Custom':     { manufacturer: 'Brivo', description: 'Brivo Smart Keyfob — Customer Specified Encryption',             code: 'SF-Custom',    tier2_family: 'Fobs' },
-  'B-SCP-Custom':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Dual-Tech — Customer Specified Encryption',     code: 'SCP-Custom',   tier2_family: 'Dual-Tech' },
-  'B-SC-Punch-V':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Pre-Punch Service (vertical)',                  code: 'SC-Punch-V',   tier2_family: 'Pre-Punch Service' },
-  'B-SC-Punch-H':    { manufacturer: 'Brivo', description: 'Brivo Smart Card Pre-Punch Service (horizontal)',                code: 'SC-Punch-H',   tier2_family: 'Pre-Punch Service' },
+  // Remotes (overhead doors) = FP-WRR22 (receiver) + FP-WRT2B (transmitter).
   // Credentials M2: Overhead Door SKUs (Farpointe parts shipped via Brivo Excel).
   // section: '2.2' opts these into the §2.2 Overhead Door Control bucket via the
   // brivoSkus emitter's section fallback. All other catalog entries (no section
