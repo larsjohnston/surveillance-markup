@@ -3339,6 +3339,22 @@ input[type="number"]::-webkit-outer-spin-button {
       </div>
     </div>
 
+    <!-- Elevator Control: "access system installed in the elevator". cabs ≥ 1
+         auto-adds the in-cab reader (1/cab) + B-ACS6100-IO boards (8 floor
+         relays each): cabs × ceil(floors/8). Mirrors the AC-hardware section. -->
+    <div class="proj-acHw-section">
+      <div class="proj-acHw-title">&#128727; Elevator Control</div>
+      <div class="proj-acHw-help">When cabs &ge; 1, BOM &sect;2.1 auto-adds an in-cab reader (1 per cab) plus Brivo I/O boards (B-ACS6100-IO &mdash; 8 floor relays each): cabs &times; &lceil;floors &divide; 8&rceil;. Leave cabs at 0 if the elevator isn't access-controlled.</div>
+      <div class="proj-acHw-row">
+        <label class="proj-acHw-label">Elevator cabs</label>
+        <input type="number" id="proj-elev-cabs" min="0" step="1" value="0" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono);">
+      </div>
+      <div class="proj-acHw-row">
+        <label class="proj-acHw-label">Controlled floors <span class="proj-acHw-sublabel">(per cab)</span></label>
+        <input type="number" id="proj-elev-floors" min="0" step="1" value="0" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono);">
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-dark"  onclick="closeProjectModal()">Close</button>
       <button class="btn btn-green" onclick="saveProjectInfo()">Save</button>
@@ -4199,14 +4215,11 @@ var BRIVO_CATALOG = [
   // zones only this pass; PDF riser stays AC-empty until queue item 4).
   { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Mullion',      sku:'B-ACS100-E-BSPM-B', name:'Brivo ACS100 Controller + Mullion Reader' },
   { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Single',       sku:'B-ACS100-E-BSPS-B', name:'Brivo ACS100 Controller + Single Gang Reader' },
-  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Keypad',       sku:'B-ACS100-E-BSPK-B', name:'Brivo ACS100 Controller + Keypad Reader' },
-  // Elevator M1: ACS6100 I/O Expansion Board. Standalone controller tile
-  // (no variants). Placed like any other controller; emits one row per
-  // placement into §2.1 Access Control via the existing computeAutoRows
-  // AC emitter. Pricing resolved from pricingBook.json (cost $564.90,
-  // msrp $1,129.80). Layer A only — cab-reader flagging and floor-select
-  // relay derivation are queued for a later pass.
-  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS6100-IO', variant_axis:null, variant_value:null, sku:'B-ACS6100-IO', name:'Brivo ACS6100 I/O Expansion Board (Elevator Control)' }
+  { manufacturer:'Brivo', category:'Controllers', subcategory:'ACS100',  variant_axis:'Form factor', variant_value:'Keypad',       sku:'B-ACS100-E-BSPK-B', name:'Brivo ACS100 Controller + Keypad Reader' }
+  // NOTE: the ACS6100-IO elevator board is intentionally NOT in this catalog —
+  // it is no longer canvas-placeable. Elevator I/O boards are auto-spec'd from
+  // Project Info → Elevator Control (cabs/floors) in computeAutoRows. Pricing
+  // is resolved from pricingBook.json by SKU, not from this catalog.
 ];
 
 // Overhead-door-flag M2: the OVERHEAD_DOOR_SKUS allowlist was removed
@@ -9584,7 +9597,11 @@ var projectInfo = {
   // powerMode controls PSU emission when D≥3 (ACS6100 territory):
   // 'internal' = free PSB in EXP chassis, 'lsp' = LifeSafety, 'altronix'
   // = Trove. Defaults match applyProjectState's backfill block.
-  acHardwareConfig: { mode: 'off', powerMode: 'internal' }
+  acHardwareConfig: { mode: 'off', powerMode: 'internal' },
+  // Elevator control: cabs = number of access-controlled elevator cabs;
+  // floors = controlled floors per cab. cabs > 0 → computeAutoRows auto-specs
+  // the in-cab reader(s) + B-ACS6100-IO boards (8 floor relays each).
+  elevatorControl: { cabs: 0, floors: 0 }
 };
 
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d');
@@ -10362,12 +10379,8 @@ var AC_ICONS = {
   ACS300:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="6" y="9" width="12" height="1.2" fill="currentColor"/><rect x="6" y="13" width="12" height="1.2" fill="currentColor"/><circle cx="17" cy="7.5" r="0.5" fill="currentColor"/></svg>',
   SDC:         '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg>',
   ACS100:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="9" width="10" height="1.2" fill="currentColor"/><rect x="5" y="13" width="10" height="1.2" fill="currentColor"/><rect x="14" y="3" width="6" height="9" rx="0.8" fill="white" stroke="currentColor" stroke-width="1.2"/><circle cx="17" cy="6" r="0.6" fill="currentColor"/><rect x="15.5" y="8" width="3" height="0.6" fill="currentColor"/></svg>',
-  // Elevator M1: ACS6100-IO icon — small board outline in centre with 3
-  // big input arrows feeding DOWN into the top of the box and 3 big
-  // output arrows exiting DOWN from the bottom. Reads as a signal-flow
-  // I/O board, visually distinct from the plain horizontal-bar
-  // controller icons (ACS6100 / ACS300 / SDC / ACS100).
-  'ACS6100-IO':'<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="8" width="18" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><polygon points="5,2 9,2 7,7" fill="currentColor"/><polygon points="10,2 14,2 12,7" fill="currentColor"/><polygon points="15,2 19,2 17,7" fill="currentColor"/><polygon points="5,17 9,17 7,22" fill="currentColor"/><polygon points="10,17 14,17 12,22" fill="currentColor"/><polygon points="15,17 19,17 17,22" fill="currentColor"/></svg>',
+  // (ACS6100-IO elevator-board icon removed — the board is no longer
+  //  canvas-placeable; elevator boards auto-spec from Project Info.)
   // Credentials-entry M1: key-shaped icon. Circular bow (stroke) +
   // solid pin centre + horizontal shaft + two tooth notches. Matches the
   // AC_ICONS style (24×24 viewBox, currentColor, stroke 1.5 outlines +
@@ -16854,6 +16867,18 @@ function applyProjectState(data){
     });
   }
   acDevices    = data.acDevices  || [];
+  // Migration: the ACS6100-IO elevator board is no longer canvas-placeable —
+  // elevator I/O boards now auto-spec from Project Info → Elevator Control
+  // (cabs/floors). Strip any boards placed by an older version so they don't
+  // double-count against the config-driven rows. A placed board can't be
+  // reverse-mapped to cabs/floors, so the user re-enters those in the modal.
+  var _strippedElevBoards = acDevices.filter(function(d){ return d && d.sku === 'B-ACS6100-IO'; }).length;
+  if(_strippedElevBoards > 0){
+    acDevices = acDevices.filter(function(d){ return !(d && d.sku === 'B-ACS6100-IO'); });
+    if(typeof showOneShotToast === 'function'){
+      showOneShotToast('Removed ' + _strippedElevBoards + ' placed elevator I/O board' + (_strippedElevBoards > 1 ? 's' : '') + ' — set elevator boards in Project Info → Elevator Control (cabs / floors).');
+    }
+  }
   acCounters   = data.acCounters || {};
   acSelectedId = null;
   // Pass N+1 M1 (v16): four new arrays + selection states + projectInfo
@@ -16992,6 +17017,16 @@ function applyProjectState(data){
   }
   if(['internal','lsp','altronix'].indexOf(projectInfo.acHardwareConfig.powerMode) === -1){
     projectInfo.acHardwareConfig.powerMode = 'internal';
+  }
+  // Elevator control defaults (access system installed in the elevator).
+  if(!projectInfo.elevatorControl || typeof projectInfo.elevatorControl !== 'object'){
+    projectInfo.elevatorControl = { cabs: 0, floors: 0 };
+  }
+  if(typeof projectInfo.elevatorControl.cabs !== 'number' || !isFinite(projectInfo.elevatorControl.cabs) || projectInfo.elevatorControl.cabs < 0){
+    projectInfo.elevatorControl.cabs = 0;
+  }
+  if(typeof projectInfo.elevatorControl.floors !== 'number' || !isFinite(projectInfo.elevatorControl.floors) || projectInfo.elevatorControl.floors < 0){
+    projectInfo.elevatorControl.floors = 0;
   }
   // SUB-M1b (v29): subscription state defaults. Pre-v29 saves get monthly term
   // and empty overrides map so computeSubscriptionRows + render paths work
@@ -17825,7 +17860,7 @@ function drawHeadEndToCanvas(tc, vs, he){
 var PROP = {
   ink:     [31, 41, 55],     // charcoal — primary headings + values
   inkSoft: [55, 65, 81],     // softer charcoal
-  accent:  [200, 32, 44],    // #c8202c brand red — single accent color
+  accent:  [74, 110, 180],   // brand blue — single accent color (red removed per request)
   navy:    [40, 54, 92],     // BOM tier-1 band fill
   blue:    [74, 110, 180],   // BOM tier-2 band fill
   paper:   [245, 244, 240],  // beige neutral card / row tint
@@ -18000,7 +18035,7 @@ function bomRowSku(row){
 
 function drawProposalBOM(doc, W, H){
   drawPageHeader(doc, W, 'Bill of Materials');
-  var y = 52;
+  var y = PDF_CONTENT_TOP;
 
   // Customer BOM PDF M2: two-line rows (SKU+Qty / desc) with NO pricing.
   // This is a customer-facing spec sheet — Qty + SKU + Description only.
@@ -18013,7 +18048,7 @@ function drawProposalBOM(doc, W, H){
   function _newContPage(){
     doc.addPage('letter','portrait');
     drawPageHeader(doc, W, 'Bill of Materials (cont.)');
-    y = 52;
+    y = PDF_CONTENT_TOP;
   }
 
   // Single-line row emitter. Description LEFT-anchored at x=45, regular
@@ -18141,49 +18176,55 @@ function drawProposalBOM(doc, W, H){
   drawPageFooter(doc, W, H);
 }
 
+// Shared page-header geometry. PDF_HEADER_H drives PDF_CONTENT_TOP (where every
+// page's body starts), so the two never drift out of sync — change the band
+// height and all pages (BOM, Quote, Take-Off, Riser, Hardware) reflow below it.
+var PDF_HEADER_H    = 58;                  // header band height (was 86; −33% per request)
+var PDF_HEADER_RULE = 2;                   // navy bottom-rule thickness
+var PDF_CONTENT_TOP = PDF_HEADER_H + 16;   // first content row: clears band + rule + breathing room
+
 function drawPageHeader(doc, W, title){
-  // White header band with logo (left) + project/quote/date (right).
-  // Taller than the old 60pt navy strip for breathing room. A thin navy
-  // rule under the band separates header from body. Used on every PDF page.
-  var BAND_H   = 86;          // total header height
+  // Compact white header band with logo (left) + project/quote/date (right).
+  // A thin navy rule under the band separates header from body. Used on every
+  // PDF page. Height = PDF_HEADER_H; body content begins at PDF_CONTENT_TOP.
+  var BAND_H   = PDF_HEADER_H;
   var PAD_X    = 40;
-  var LOGO_MAXH = 46;         // logo box height; width scales by aspect
+  var LOGO_MAXH = 50;         // logo box height; width scales by aspect (enlarged per request)
   var logoNativeW = (typeof _SMARTMF_LOGO_W === 'number' && _SMARTMF_LOGO_W > 0) ? _SMARTMF_LOGO_W : 120;
   var logoNativeH = (typeof _SMARTMF_LOGO_H === 'number' && _SMARTMF_LOGO_H > 0) ? _SMARTMF_LOGO_H : 40;
-  var logoH = LOGO_MAXH;
+  var logoH = Math.min(LOGO_MAXH, BAND_H - 6);   // keep ≥3pt top/bottom margin inside the band
   var logoW = logoH * (logoNativeW / logoNativeH);
   var logoTop = (BAND_H - logoH) / 2;
 
   // Background: clean white band, thin navy bottom rule.
   doc.setFillColor(255,255,255); doc.rect(0, 0, W, BAND_H, 'F');
-  doc.setFillColor(40, 54, 92);  doc.rect(0, BAND_H, W, 2, 'F');
+  doc.setFillColor(40, 54, 92);  doc.rect(0, BAND_H, W, PDF_HEADER_RULE, 'F');
 
   // Logo (left). Guarded — if the constant is missing, fall back to text.
   if(typeof SMARTMF_LOGO_DATAURI === 'string' && SMARTMF_LOGO_DATAURI.indexOf('data:image') === 0){
     try { doc.addImage(SMARTMF_LOGO_DATAURI, 'PNG', PAD_X, logoTop, logoW, logoH); }
     catch(e){
-      doc.setFont('courier','bold'); doc.setFontSize(16); doc.setTextColor(40,54,92);
+      doc.setFont('courier','bold'); doc.setFontSize(15); doc.setTextColor(40,54,92);
       doc.text('SMART MF', PAD_X, BAND_H/2 + 4);
     }
   } else {
-    doc.setFont('courier','bold'); doc.setFontSize(16); doc.setTextColor(40,54,92);
+    doc.setFont('courier','bold'); doc.setFontSize(15); doc.setTextColor(40,54,92);
     doc.text('SMART MF', PAD_X, BAND_H/2 + 4);
   }
 
-  // Right block: 3 right-justified lines, vertically centered to the logo
-  // box height. Line 1 project name (bold navy), line 2 quote ref, line 3 date.
+  // Right block: 3 right-justified lines, vertically centered in the band.
+  // Line 1 project name (bold navy), line 2 quote ref, line 3 date.
   var rightX = W - PAD_X;
   var projName = projectInfo.name || 'Security Proposal';
   var quoteNo  = projectInfo.ref ? ('Quote ' + projectInfo.ref) : '';
   var dateStr  = projectInfo.date || new Date().toISOString().slice(0,10);
-  // 3 lines @ ~15pt leading, centered in the logo band.
-  var lineH = 15;
+  var lineH = 11;                          // tightened leading to fit the shorter band
   var blockH = lineH * 3;
-  var ry = logoTop + ((logoH - blockH) / 2) + 11;  // +11 to baseline of first line
-  doc.setFont('courier','bold'); doc.setFontSize(11); doc.setTextColor(40,54,92);
+  var ry = ((BAND_H - blockH) / 2) + 8;    // +8 to baseline of first line
+  doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(40,54,92);
   doc.text(projName, rightX, ry, {align:'right'});
   ry += lineH;
-  doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(90,90,110);
+  doc.setFont('courier','normal'); doc.setFontSize(8); doc.setTextColor(90,90,110);
   if(quoteNo){ doc.text(quoteNo, rightX, ry, {align:'right'}); }
   ry += lineH;
   doc.text(dateStr, rightX, ry, {align:'right'});
@@ -18195,7 +18236,7 @@ function drawPageHeader(doc, W, title){
 // Sub-totals per tier-2 section, tier-1 group totals, grand total + tax.
 function drawProposalQuote(doc, W, H){
   drawPageHeader(doc, W, 'Security Quote');
-  var y = 108;
+  var y = PDF_CONTENT_TOP;
   var L = 40;
   var R = W - 40;
   var BAND_NAVY = [40, 54, 92];    // tier-1 fill
@@ -18204,7 +18245,7 @@ function drawProposalQuote(doc, W, H){
 
   // Column positions
   var COL_DESC_X  = L + 4;
-  var COL_QTY_X   = R - 130;
+  var COL_QTY_X   = R - 145;
   var COL_TOTAL_X = R - 4;
   var COL_DESC_MAXW = COL_QTY_X - COL_DESC_X - 12;
 
@@ -18221,20 +18262,20 @@ function drawProposalQuote(doc, W, H){
       drawPageFooter(doc, W, H);
       doc.addPage('letter','portrait');
       drawPageHeader(doc, W, 'Security Quote (cont.)');
-      y = 80;
+      y = PDF_CONTENT_TOP;
       drawColHeader();
     }
   }
 
   function drawColHeader(){
-    ensureSpace(18);
+    ensureSpace(22);
     doc.setFillColor(31,41,55);
-    doc.rect(L, y - 10, R - L, 15, 'F');
-    doc.setFont('courier','bold'); doc.setFontSize(7); doc.setTextColor(255,255,255);
-    doc.text('DESCRIPTION',             COL_DESC_X,  y);
-    doc.text('QTY',                     COL_QTY_X,   y, {align:'right'});
+    doc.rect(L, y - 12, R - L, 18, 'F');                 // taller band — less crammed
+    doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    doc.text('DESCRIPTION',              COL_DESC_X,  y);
+    doc.text('QTY',                      COL_QTY_X,   y, {align:'right'});
     doc.text('EQUIPMENT & INSTALLATION', COL_TOTAL_X, y, {align:'right'});
-    y += 10;
+    y += 13;
   }
 
   // Subtitle
@@ -18277,7 +18318,7 @@ function drawProposalQuote(doc, W, H){
       doc.setFillColor(BAND_BLUE[0], BAND_BLUE[1], BAND_BLUE[2]);
       doc.rect(L, y - 9, R - L, 14, 'F');
       doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
-      doc.text(sub.id + ' — ' + sub.title, COL_DESC_X + 4, y);
+      doc.text(sub.title, COL_DESC_X + 4, y);
       y += 14;
 
       function _emitRow(desc, qty, tot){
@@ -18329,7 +18370,7 @@ function drawProposalQuote(doc, W, H){
       doc.setFillColor(SUBTOT_GREY[0], SUBTOT_GREY[1], SUBTOT_GREY[2]);
       doc.rect(L, y - 9, R - L, 14, 'F');
       doc.setFont('courier','bold'); doc.setFontSize(8); doc.setTextColor(60,60,70);
-      doc.text('Subtotal — ' + sub.id + ' ' + sub.title, COL_DESC_X, y);
+      doc.text('Subtotal — ' + sub.title, COL_DESC_X, y);
       doc.text(_money(secTotal), COL_TOTAL_X, y, {align:'right'});
       y += 16;
 
@@ -18351,7 +18392,7 @@ function drawProposalQuote(doc, W, H){
   // Grand total — red accent
   ensureSpace(18);
   y += 2;
-  doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(200,32,44);
+  doc.setFont('courier','bold'); doc.setFontSize(10); propText(doc, PROP.accent);
   doc.text('GRAND TOTAL', COL_DESC_X, y);
   doc.text(_money(grandTotal), COL_TOTAL_X, y, {align:'right'});
 
@@ -18375,7 +18416,7 @@ function drawProposalQuote(doc, W, H){
 function drawTakeOffPage(doc, W, H){
   drawPageHeader(doc, W, 'Take-Off');
   var td = buildTakeOffData();
-  var y = 52;
+  var y = PDF_CONTENT_TOP;
   var leftX = 40;
   var rightX = W - 40;
 
@@ -18388,7 +18429,7 @@ function drawTakeOffPage(doc, W, H){
       drawPageFooter(doc, W, H);
       doc.addPage('letter','portrait');
       drawPageHeader(doc, W, 'Take-Off (cont.)');
-      y = 52;
+      y = PDF_CONTENT_TOP;
     }
   }
   function drawSubsectionHeader(text){
@@ -18614,9 +18655,9 @@ function drawTakeOffPage(doc, W, H){
     });
     ensureSpace(20);
     y += 4;
-    doc.setDrawColor(200, 32, 44); doc.setLineWidth(0.8);
+    propDraw(doc, PROP.accent); doc.setLineWidth(0.8);
     doc.line(leftX + 6, y - 3, leftX + 280, y - 3);
-    doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(200, 32, 44);
+    doc.setFont('courier','bold'); doc.setFontSize(10); propText(doc, PROP.accent);
     doc.text('Total labor hours:          ' + td.labor.totalHours.toFixed(2), leftX + 6, y + 8);
     y += 22;
   }
@@ -18656,7 +18697,7 @@ function drawProposalRiser(doc, W, H, startSection){
   drawPageFooter(doc, W, H);
 
   var marginX = 40;
-  var headerEndY = 52;       // Canva pass: slim header (~38pt) — was 80 under the old 60pt band
+  var headerEndY = PDF_CONTENT_TOP;
   var bottomMargin = 40;
   var contentH = H - headerEndY - bottomMargin;
   var totalW = W - 2 * marginX;
@@ -18960,6 +19001,15 @@ var RISER_HEAD_W        = 130;  // horizontal span the head-end cluster occupies
 var RISER_AC_RAIL_MIN_PT     = 50;    // AC-only band minimum (single rail)
 var RISER_MIXED_MAX_BAND_PT  = 150;   // cap for bands with BOTH cams + AC
 var AC_RAIL_GROW_FACTOR      = 1.25;  // mixed-band height multiplier per D2
+// ── Two-column riser layout (cameras LEFT / non-cameras RIGHT of a central
+//    trunk). Replaces the old cams-over-AC vertical split. Each half wraps
+//    devices into rows; a slot is ≥ RISER_SLOT_W so labels never collide. ──
+var RISER_TRUNK_FRAC  = 0.55;  // share of the device area given to the camera (left) column
+var RISER_HEADEND_W   = 86;    // strip reserved just left of the trunk for the head-end cluster
+var RISER_SLOT_W      = 42;    // min horizontal slot per device (≥ widest 11-char label)
+var RISER_BAND_ROW_H  = 30;    // vertical pitch between wrapped rows
+var RISER_BAND_TOPPAD = 16;    // space above the first row in a band
+var RISER_BAND_BOTPAD = 10;    // space below the last row in a band
 function drawRiserDiagram(doc, x0, y0, w, h, model){
   var n = model.zones.length;
   // True empty state: no pages AND no cameras AND no AC devices AND no
@@ -18982,76 +19032,27 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
   var bandsY0 = y0 + headendStripH;
   var bandsH  = h  - headendStripH;
 
-  // Band heights — four-tier rule (Pass N M2 extends the original three-tier):
-  //   - Empty (no cams + no AC)                → RISER_EMPTY_BAND_PT (30 pt)
-  //   - AC-only (no cams + AC)                 → RISER_AC_RAIL_MIN_PT (50 pt)
-  //   - Cams-only: MIN + stagger + propor share → clamped to RISER_MAX_BAND_PT
-  //     (Pass A.7.5: bands with 4+ cams add STAGGER_BASE_PT to MIN so the
-  //     staggered camera-label row fits without clipping.)
-  //   - Mixed (cams + AC): cams-base × AC_RAIL_GROW_FACTOR (1.25), grows
-  //     with cam count, capped at RISER_MIXED_MAX_BAND_PT (150 pt) to fit
-  //     the second rail + labels per D2.
-  //   - If bandsH < sum of bases               → shrink equally (overflow
-  //                                              still preferable to clipping)
-  // Total may be < bandsH, in which case the diagram anchors at the top
-  // with whitespace below — small projects shouldn't sprawl.
-  var STAGGER_BASE_PT = 9;
-  var totalCams  = model.zones.reduce(function(s, z){ return s + z.cams.length; }, 0);
-  // Riser Layout M1: per-zone extra height for multi-row wrap. Added to
-  // both the base height and the cap so a dense zone gets real vertical
-  // room instead of being clamped by the small-project caps.
-  var rowExtras = model.zones.map(function(z){
-    var acTotalForZone = z.acDevices.length
-                       + ((z.intercoms || []).length)
-                       + ((z.parcels   || []).length)
-                       + ((z.mailboxes || []).length);
-    var camRows = Math.max(1, Math.ceil(z.cams.length / RISER_MAX_DEVICES_PER_ROW));
-    var acRows  = Math.max(1, Math.ceil(acTotalForZone / RISER_MAX_DEVICES_PER_ROW));
-    return (camRows - 1) * RISER_ROW_HEIGHT_EXTRA + (acRows - 1) * RISER_ROW_HEIGHT_EXTRA;
-  });
-  var baseHeights = model.zones.map(function(z, zi){
-    var hasCams = z.cams.length > 0;
-    var hasAc   = z.acDevices.length > 0
-               || ((z.intercoms || []).length > 0)
-               || ((z.parcels   || []).length > 0)
-               || ((z.mailboxes || []).length > 0);
-    if(!hasCams && !hasAc) return RISER_EMPTY_BAND_PT;
-    var ex = rowExtras[zi];
-    if(!hasCams &&  hasAc) return RISER_AC_RAIL_MIN_PT + ex;
-    var camsBase = RISER_MIN_BAND_PT + (z.cams.length >= 4 ? STAGGER_BASE_PT : 0);
-    return (hasAc ? Math.round(camsBase * AC_RAIL_GROW_FACTOR) : camsBase) + ex;
-  });
-  var baseTotal = baseHeights.reduce(function(a, b){ return a + b; }, 0);
-  var bandHeights;
-  if(totalCams === 0 || bandsH <= baseTotal){
-    bandHeights = baseHeights;
-    if(baseTotal > bandsH){
-      // Overflow — bands clip. Brief says flag rather than auto-compensate.
-      try { console.warn('[riser] band base heights exceed available content height; layout may clip.'); } catch(_){}
-    }
-  } else {
-    var extra = bandsH - baseTotal;
-    bandHeights = model.zones.map(function(z, zi){
-      if(z.cams.length === 0) return baseHeights[zi];
-      // Riser Layout M1: hasAc considers smart-apartment families too, so
-      // a cameras+intercoms band (no Brivo readers) uses the mixed cap.
-      var hasAc = z.acDevices.length > 0
-               || ((z.intercoms || []).length > 0)
-               || ((z.parcels   || []).length > 0)
-               || ((z.mailboxes || []).length > 0);
-      var grew  = baseHeights[zi] + extra * z.cams.length / totalCams;
-      // Bump cap by rowExtras so dense bands don't get clamped below
-      // their own base height.
-      var cap   = (hasAc ? RISER_MIXED_MAX_BAND_PT : RISER_MAX_BAND_PT) + rowExtras[zi];
-      return Math.min(cap, grew);
-    });
-  }
-  var totalBandH = bandHeights.reduce(function(a, b){ return a + b; }, 0);
+  // Two-column layout: cameras LEFT of a central trunk, non-camera devices
+  // RIGHT. The camera column takes RISER_TRUNK_FRAC of the device area; the
+  // rest goes to non-camera devices. Each half wraps its devices into rows
+  // (every slot ≥ RISER_SLOT_W so labels never overlap); the taller half sets
+  // the band height. _riserPlanZone returns the per-zone row plan, reused by
+  // drawRiserBandInterior below so the height and the render agree.
+  var deviceAreaW = w - RISER_LABEL_W;
+  var leftColW    = Math.round(deviceAreaW * RISER_TRUNK_FRAC);
+  var trunkX      = x0 + RISER_LABEL_W + leftColW;
+  var rightColW   = (x0 + w) - trunkX;
 
-  // Trunk x lives between the head-end zone and the camera rail. Placed at
-  // the right edge of the head-end footprint so each head-end's cluster
-  // butts up against it with a short horizontal connector.
-  var trunkX = x0 + RISER_LABEL_W + RISER_HEAD_W;
+  var plans = model.zones.map(function(z){ return _riserPlanZone(z, leftColW, rightColW); });
+  var bandHeights = plans.map(function(p){
+    if(p.rows === 0) return RISER_EMPTY_BAND_PT;
+    return Math.max(RISER_MIN_BAND_PT, RISER_BAND_TOPPAD + p.rows * RISER_BAND_ROW_H + RISER_BAND_BOTPAD);
+  });
+  var totalBandH = bandHeights.reduce(function(a, b){ return a + b; }, 0);
+  if(totalBandH > bandsH){
+    // Overflow — bands run past the content area. Flag rather than clip silently.
+    try { console.warn('[riser] band heights exceed available content height; layout may overflow.'); } catch(_){}
+  }
 
   // Pass A.7.5: head-end placeholder. Single centered bold notice when no
   // zone has a head-end placed. Removed per-zone "(no head-end)" hints that
@@ -19099,7 +19100,7 @@ function drawRiserDiagram(doc, x0, y0, w, h, model){
   // Second pass — band interiors (head-end clusters, camera rails, cables).
   by = bandsY0;
   model.zones.forEach(function(zone, zi){
-    drawRiserBandInterior(doc, x0, by, w, bandHeights[zi], zone, zi, model, trunkX);
+    drawRiserBandInterior(doc, x0, by, w, bandHeights[zi], zone, zi, model, trunkX, plans[zi], leftColW, rightColW);
     by += bandHeights[zi];
   });
 }
@@ -19129,37 +19130,99 @@ function _riserZoneGear(pageIdx){
   return { cmvr: cmvr, sw: sw };
 }
 
-function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
-  var midY = y0 + h / 2;
+// Non-camera devices for a zone in family order (readers → controllers →
+// other AC → intercom → parcel → mailbox), each sorted by floor-plan x.
+// Matches the equipment-schedule ordering. Each entry: { dev, kind }.
+function _riserOtherDevs(zone){
+  function byX(a, b){ return (a.x || 0) - (b.x || 0); }
+  var out = [];
+  var readers     = zone.acDevices.filter(function(d){ return acCategoryOf(d) === 'Readers';     }).slice().sort(byX);
+  var controllers = zone.acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers'; }).slice().sort(byX);
+  var otherAc     = zone.acDevices.filter(function(d){ var c = acCategoryOf(d); return c !== 'Readers' && c !== 'Controllers'; }).slice().sort(byX);
+  readers.forEach    (function(d){ out.push({ dev: d, kind: 'ac' }); });
+  controllers.forEach(function(d){ out.push({ dev: d, kind: 'ac' }); });
+  otherAc.forEach    (function(d){ out.push({ dev: d, kind: 'ac' }); });
+  (zone.intercoms || []).slice().sort(byX).forEach(function(d){ out.push({ dev: d, kind: 'intercom' }); });
+  (zone.parcels   || []).slice().sort(byX).forEach(function(d){ out.push({ dev: d, kind: 'parcel' }); });
+  (zone.mailboxes || []).slice().sort(byX).forEach(function(d){ out.push({ dev: d, kind: 'mailbox' }); });
+  return out;
+}
 
-  // Pass N M2: sub-region geometry. mixedSplit places the separator at 55%
-  // of the band height — cameras get the upper 55%, AC the lower 45%. Tuned
-  // so a 4-cam band (with its stagger) doesn't crowd the AC rail. The split
-  // is irrelevant for cams-only / AC-only bands; we fall through to the
-  // single-rail center.
-  var hasCams = zone.cams.length > 0;
-  // Pass N+1 M9: AC rail hosts AC devices AND smart-apartment devices
-  // (intercom/parcel/mailbox). `hasAc` keeps its name (used widely below)
-  // but now means "any non-camera device riding the AC rail".
-  var smartAptN = (zone.intercoms ? zone.intercoms.length : 0)
-                + (zone.parcels   ? zone.parcels.length   : 0)
-                + (zone.mailboxes ? zone.mailboxes.length : 0);
-  var hasAc   = zone.acDevices.length > 0 || smartAptN > 0;
-  var isMixed = hasCams && hasAc;
-  var mixedSplit = 0.55;
-  var separatorY     = isMixed ? (y0 + h * mixedSplit) : null;
-  var camRegionH     = isMixed ? (h * mixedSplit)        : h;
-  var camRegionBot   = isMixed ? separatorY              : (y0 + h);
-  var camRailY       = isMixed ? (y0 + camRegionH / 2)   : midY;
-  var acRegionTop    = isMixed ? separatorY              : y0;
-  var acRailY        = isMixed ? (acRegionTop + (h - camRegionH) / 2) : midY;
+// Devices that fit one row of a column `availW` wide (each slot ≥ SLOT_W).
+function _riserCapacity(availW){ return Math.max(1, Math.floor(availW / RISER_SLOT_W)); }
 
-  // Head-end cluster — reflects the ACTUAL CMVR(s) + network switch(es) placed
-  // on this floor's canvas, grouped by SKU with a "×N" suffix, not camera-count
-  // derived generics. UPS shown whenever a CMVR head-end is on the floor.
-  // Anchored to the camera rail's vertical center (camRailY); box widths shrink
-  // to fit the head-end footprint as the gear count grows.
+// Per-zone row plan: how many wrapped rows each half needs given the column
+// widths. The taller half drives the band height. `others` is cached so the
+// renderer doesn't recompute it.
+function _riserPlanZone(zone, leftColW, rightColW){
+  var camAvail  = leftColW - (zone.hasHeadend ? RISER_HEADEND_W : 0) - 8;
+  var others    = _riserOtherDevs(zone);
+  var nCam      = zone.cams.length;
+  var nOther    = others.length;
+  var camRows   = nCam   ? Math.ceil(nCam   / _riserCapacity(camAvail))      : 0;
+  var otherRows = nOther ? Math.ceil(nOther / _riserCapacity(rightColW - 8)) : 0;
+  var rows      = Math.max(camRows, otherRows, (nCam || nOther) ? 1 : 0);
+  return { rows: rows, others: others, nCam: nCam, nOther: nOther };
+}
+
+// Draw one column's devices as `rows` evenly-spaced rows hanging off per-row
+// rails. `side` is 'left' (cameras) or 'right' (everything else). The rail
+// runs between the device region and `railInnerX` (the trunk, or the head-end
+// cluster edge for cameras on head-end floors). Items: { dev, kind, isCam,
+// cableId, label }. Slots are ≥ RISER_SLOT_W, so labels can't overlap.
+function _riserDrawHalf(doc, list, leftEdge, rightEdge, railInnerX, firstRailY, rows, side){
+  if(!list.length) return;
+  var availW = Math.max(8, rightEdge - leftEdge);
+  var perRow = Math.ceil(list.length / Math.max(rows, 1));
+  var railRGB = (side === 'left') ? [60, 60, 80] : [29, 78, 216];   // camera grey / Brivo blue
+  for(var r = 0; r < rows; r++){
+    var rowItems = list.slice(r * perRow, (r + 1) * perRow);
+    if(!rowItems.length) break;
+    var railY = firstRailY + r * RISER_BAND_ROW_H;
+    doc.setDrawColor(railRGB[0], railRGB[1], railRGB[2]); doc.setLineWidth(0.5);
+    if(side === 'left') doc.line(leftEdge, railY, railInnerX, railY);
+    else                doc.line(railInnerX, railY, rightEdge, railY);
+    var spacing = availW / (rowItems.length + 1);
+    rowItems.forEach(function(it, i){
+      var cx = leftEdge + spacing * (i + 1);
+      var s  = it.isCam ? 12 : 10;
+      var iconY = railY + 13;
+      // Vertical stub rail→icon. Parcel/mailbox are physical-only (no stub).
+      if(it.kind !== 'parcel' && it.kind !== 'mailbox'){
+        doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
+        doc.line(cx, railY, cx, iconY - s / 2 - 1);
+      }
+      if(it.isCam){
+        doc.setFont('courier','normal'); doc.setFontSize(5.5); doc.setTextColor(60, 60, 80);
+        if(it.cableId) doc.text(it.cableId, cx + 1.5, railY - 1);   // cable ID above the rail
+        drawRiserCamIcon(doc, it.dev, cx, iconY, s);
+      }
+      else if(it.kind === 'ac')       drawRiserAcIcon(doc, it.dev, cx, iconY, s);
+      else if(it.kind === 'intercom') drawRiserIntercomIcon(doc, it.dev, cx, iconY, s);
+      else if(it.kind === 'parcel')   drawRiserParcelIcon(doc, it.dev, cx, iconY, s);
+      else if(it.kind === 'mailbox')  drawRiserMailboxIcon(doc, it.dev, cx, iconY, s);
+      doc.setFont('courier','bold'); doc.setFontSize(5.5); doc.setTextColor(40, 40, 60);
+      var lab = it.label || '';
+      if(lab.length > 11) lab = lab.slice(0, 10) + '…';
+      doc.text(lab, cx, iconY + s / 2 + 6, {align:'center'});
+    });
+  }
+}
+
+// Render one floor band: optional head-end cluster (left of the trunk, on
+// head-end floors), cameras LEFT of the trunk, all non-camera devices RIGHT.
+// Both halves share the same row y-positions so the band reads as one floor.
+// `plan` is from _riserPlanZone (already computed for the band height).
+function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX, plan, leftColW, rightColW){
+  var firstRailY = y0 + RISER_BAND_TOPPAD;
+  var rows = Math.max(plan.rows, 1);
+
+  // Head-end cluster — reserved strip just left of the trunk on head-end
+  // floors. Reflects the ACTUAL CMVR(s) + switch(es) on this floor, grouped
+  // by SKU with a "×N" suffix. Sits on the top rail and connects to the
+  // trunk; cameras hang to its left.
   var gear = _riserZoneGear(zone.pageIdx);
+  var headClusterX = trunkX;
   if(zone.hasHeadend || gear.cmvr.length || gear.sw.length){
     var boxes = [];
     gear.cmvr.forEach(function(g){
@@ -19173,15 +19236,13 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
     });
     if(zone.hasHeadend || gear.cmvr.length) boxes.push({ kind:'ups', ports:0, top:'UPS', bot:'' });
 
-    var hH = 18, gap = 5;
-    var nB = boxes.length;
-    var availW = RISER_HEAD_W - 8;
-    var boxW = Math.max(22, Math.min(46, (availW - gap * (nB - 1)) / nB));
+    var hH = 18, gap = 4, nB = boxes.length;
+    var availHW = RISER_HEADEND_W - 6;
+    var boxW = Math.max(20, Math.min(40, (availHW - gap * (nB - 1)) / nB));
     var clusterW = boxW * nB + gap * (nB - 1);
-    var clusterX = trunkX - clusterW - 4;
+    var clusterX = trunkX - clusterW - 6;
     if(clusterX < x0 + RISER_LABEL_W + 2) clusterX = x0 + RISER_LABEL_W + 2;
-    var clusterY = camRailY - hH / 2;
-
+    var clusterY = firstRailY - hH / 2;
     var hx = clusterX;
     boxes.forEach(function(b){
       if(b.kind === 'cmvr')    drawRiserNvrBox(doc, hx, clusterY, boxW, hH, b.top, b.bot);
@@ -19189,190 +19250,29 @@ function drawRiserBandInterior(doc, x0, y0, w, h, zone, zi, model, trunkX){
       else                     drawRiserUpsBox(doc, hx, clusterY, boxW, hH);
       hx += boxW + gap;
     });
-
-    // Connector from cluster's right edge to the trunk
+    // Connector from the cluster's right edge to the trunk.
     doc.setDrawColor(31, 41, 55); doc.setLineWidth(0.6);
-    doc.line(clusterX + clusterW, camRailY, trunkX, camRailY);
+    doc.line(clusterX + clusterW, firstRailY, trunkX, firstRailY);
+    headClusterX = clusterX;
   }
 
-  // Pass N M2: hairline separator between camera region and AC region in
-  // mixed bands. Subtle (0.3 pt, #e5e7eb) — visual cue that the band has
-  // two subsystems without dividing the band into two bands.
-  if(isMixed){
-    doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3);
-    doc.line(x0 + RISER_LABEL_W, separatorY, x0 + w - 6, separatorY);
+  // Cameras — LEFT of the trunk. Icons stop short of the head-end cluster so
+  // they never sit under it; the rail terminates at the cluster (or the trunk
+  // on non-head-end floors).
+  if(zone.cams.length){
+    var camList = zone.cams.slice().sort(function(a, b){ return (a.x || 0) - (b.x || 0); })
+                    .map(function(c){ return { dev: c, kind: 'cam', isCam: true, cableId: c.__cableId, label: c.label }; });
+    var camLeft  = x0 + RISER_LABEL_W + 4;
+    var camRight = (zone.hasHeadend ? headClusterX - 6 : trunkX - 4);
+    var camRailInner = (zone.hasHeadend ? headClusterX : trunkX);
+    _riserDrawHalf(doc, camList, camLeft, camRight, camRailInner, firstRailY, rows, 'left');
   }
 
-  // Camera rail — from the trunk to the right edge. Skip the rail line when
-  // the band has no cameras (cleaner empty/AC-only band). The trunk still
-  // passes through the band vertically (drawn by parent). For mixed bands,
-  // the rail and icons are constrained to the upper sub-region via camRailY
-  // / camRegionBot.
-  //
-  // Riser Layout M1: sort cameras by floor-plan x and wrap to multiple
-  // rows when > RISER_MAX_DEVICES_PER_ROW. Each row gets its own rail
-  // line at a stacked y; stubs connect each icon up to its row's rail.
-  // Cable IDs render above each row's rail at the icon's x.
-  var cams = zone.cams;
-  var n = cams.length;
-  if(n === 0){
-    // No cameras → skip the camera rail block. Continue to AC rail below.
-    if(!hasAc) return;
-  } else {
-
-  var railLeft  = trunkX + 4;
-  var railRight = x0 + w - 6;
-
-  var STAGGER_PT = 9;
-  var camsSorted = cams.slice().sort(function(a, b){ return (a.x || 0) - (b.x || 0); });
-  var camRailRows = Math.max(1, Math.ceil(n / RISER_MAX_DEVICES_PER_ROW));
-  var camPerRow   = Math.ceil(n / camRailRows);
-
-  for(var rI = 0; rI < camRailRows; rI++){
-    var rowStart = rI * camPerRow;
-    var rowEnd   = Math.min(rowStart + camPerRow, n);
-    var rowCams  = camsSorted.slice(rowStart, rowEnd);
-    var rowN     = rowCams.length;
-    if(rowN === 0) break;
-    var rowRailY = camRailY + rI * RISER_ROW_HEIGHT_EXTRA;
-    doc.setDrawColor(60, 60, 80); doc.setLineWidth(0.5);
-    doc.line(railLeft, rowRailY, railRight, rowRailY);
-    var rowAvail   = railRight - railLeft - RISER_RAIL_PADDING * 2;
-    var rowSpacing = rowAvail / (rowN + 1);
-    var rowIconSize = Math.min(13, Math.max(8, rowSpacing * 0.55));
-    // Pass A.7.5 stagger: only on row 0 with 4+ cams. Multi-row already
-    // stacks rows vertically; staggering within a row would compound the
-    // vertical pressure.
-    var rowStagger = (rI === 0) && rowN >= 4 && camRailRows === 1;
-    var rowBottomMargin = rowStagger ? 18 : 8;
-    var rowIconY = Math.min(rowRailY + 18, camRegionBot - rowIconSize/2 - rowBottomMargin);
-    // Multi-row case: rowIconY may need to extend past the original
-    // single-row constraint. The band-height computation already reserved
-    // extra space (rowExtras), so the icon y can simply follow the row's
-    // rail offset.
-    if(camRailRows > 1){
-      rowIconY = rowRailY + 18;
-    }
-
-    rowCams.forEach(function(cam, i){
-      var cx = railLeft + RISER_RAIL_PADDING + rowSpacing * (i + 1);
-      // Stub: row's rail down to icon.
-      doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
-      doc.line(cx, rowRailY, cx, rowIconY - rowIconSize/2 - 1);
-      // Cable ID above the row's rail.
-      doc.setFont('courier','normal'); doc.setFontSize(5.5);
-      doc.setTextColor(60, 60, 80);
-      doc.text(cam.__cableId, cx + 1.5, rowRailY - 1);
-      drawRiserCamIcon(doc, cam, cx, rowIconY, rowIconSize);
-      var labelBaseline = rowIconY + rowIconSize/2 + 6;
-      if(rowStagger && (i % 2 === 1)){
-        labelBaseline += STAGGER_PT;
-        doc.setDrawColor(159, 165, 175); doc.setLineWidth(0.3);
-        doc.line(cx, rowIconY + rowIconSize/2 + 1, cx, labelBaseline - 4);
-      }
-      doc.setFont('courier','bold'); doc.setFontSize(5.5);
-      doc.setTextColor(40, 40, 60);
-      var lab = cam.label || '';
-      if(lab.length > 11) lab = lab.slice(0, 10) + '…';
-      doc.text(lab, cx, labelBaseline, {align:'center'});
-    });
+  // Non-camera devices — RIGHT of the trunk.
+  if(plan.others.length){
+    var others = plan.others.map(function(e){ return { dev: e.dev, kind: e.kind, isCam: false, label: e.dev.label }; });
+    _riserDrawHalf(doc, others, trunkX + 4, x0 + w - 6, trunkX, firstRailY, rows, 'right');
   }
-
-  }  // end cams-rail else block (Pass N M2)
-
-  // Pass N M2 / Pass N+1 M9: AC rail. Hosts readers, controllers,
-  // intercoms, parcel lockers, and mailbox banks in that order. Rail
-  // is rendered below the camera rail in mixed bands (acRailY shifted),
-  // or centered for AC-only zones.
-  // Cable line behavior per Pass N+1 M9 brief:
-  //   - readers / controllers / intercoms — vertical stub icon-to-rail
-  //     (intercoms ride the rail like cameras since their wiring runs
-  //     PoE/IP back to the head-end).
-  //   - parcel lockers / mailbox banks   — physical-only, NO stub.
-  //
-  // No reader→controller cable lines (Pass N D3 / CLAUDE.md "Reader-to-
-  // controller cable lines are deferred").
-  if(hasAc){
-    // Riser Layout M1: sort each category by floor-plan x, then concat
-    // in Pass N+1 M9 order (readers → controllers → intercoms → parcels
-    // → mailboxes). Category boundaries are preserved across multi-row
-    // wraps (rows are just fixed-size slices of the ordered list — a
-    // row may end mid-category and the next row picks up from there,
-    // which is acceptable per brief).
-    function _byX(a, b){ return (a.x || 0) - (b.x || 0); }
-    var readers     = zone.acDevices.filter(function(d){ return acCategoryOf(d) === 'Readers';     }).slice().sort(_byX);
-    var controllers = zone.acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers'; }).slice().sort(_byX);
-    var otherAc     = zone.acDevices.filter(function(d){ var c = acCategoryOf(d); return c !== 'Readers' && c !== 'Controllers'; }).slice().sort(_byX);
-    var intercoms   = (zone.intercoms || []).slice().sort(_byX);
-    var parcels     = (zone.parcels   || []).slice().sort(_byX);
-    var mailboxes   = (zone.mailboxes || []).slice().sort(_byX);
-    var railDevs = [];
-    readers.forEach    (function(d){ railDevs.push({ dev: d, kind: 'ac' }); });
-    controllers.forEach(function(d){ railDevs.push({ dev: d, kind: 'ac' }); });
-    otherAc.forEach    (function(d){ railDevs.push({ dev: d, kind: 'ac' }); });
-    intercoms.forEach  (function(d){ railDevs.push({ dev: d, kind: 'intercom' }); });
-    parcels.forEach    (function(d){ railDevs.push({ dev: d, kind: 'parcel' }); });
-    mailboxes.forEach  (function(d){ railDevs.push({ dev: d, kind: 'mailbox' }); });
-
-    var acN      = railDevs.length;
-    var acRailL  = trunkX + 4;
-    var acRailR  = x0 + w - 6;
-    var acRailRows = Math.max(1, Math.ceil(acN / RISER_MAX_DEVICES_PER_ROW));
-    var acPerRow   = Math.ceil(acN / acRailRows);
-
-    for(var arI = 0; arI < acRailRows; arI++){
-      var arStart = arI * acPerRow;
-      var arEnd   = Math.min(arStart + acPerRow, acN);
-      var rowEntries = railDevs.slice(arStart, arEnd);
-      var rowN_ac = rowEntries.length;
-      if(rowN_ac === 0) break;
-      var rowAcRailY = acRailY + arI * RISER_ROW_HEIGHT_EXTRA;
-      doc.setDrawColor(29, 78, 216); doc.setLineWidth(0.5);   // Brivo blue
-      doc.line(acRailL, rowAcRailY, acRailR, rowAcRailY);
-      var rowAcAvail   = acRailR - acRailL - RISER_RAIL_PADDING * 2;
-      var rowAcSpacing = rowAcAvail / (rowN_ac + 1);
-      var rowAcIconSize = Math.min(11, Math.max(7, rowAcSpacing * 0.55));
-      var acBandBot = isMixed ? (y0 + h) : (y0 + h);
-      // Stagger labels (alternate baseline) on dense rows, mirroring the camera
-      // rail — keeps AC / smart-apt labels from colliding horizontally.
-      var acStagger = rowN_ac >= 4;
-      var acBottomMargin = acStagger ? 16 : 8;
-      var rowAcIconY = (acRailRows > 1)
-        ? (rowAcRailY + 14)
-        : Math.min(rowAcRailY + 14, acBandBot - rowAcIconSize/2 - acBottomMargin);
-
-      rowEntries.forEach(function(entry, i){
-        var dev  = entry.dev;
-        var kind = entry.kind;
-        var cx   = acRailL + RISER_RAIL_PADDING + rowAcSpacing * (i + 1);
-        // Cable stub: only for AC (readers + controllers) and intercom.
-        // Parcel and mailbox are physical-only — no vertical connector.
-        if(kind === 'ac' || kind === 'intercom'){
-          doc.setDrawColor(120, 120, 140); doc.setLineWidth(0.4);
-          doc.line(cx, rowAcRailY, cx, rowAcIconY - rowAcIconSize/2 - 1);
-        }
-        if(kind === 'ac')            drawRiserAcIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
-        else if(kind === 'intercom') drawRiserIntercomIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
-        else if(kind === 'parcel')   drawRiserParcelIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
-        else if(kind === 'mailbox')  drawRiserMailboxIcon(doc, dev, cx, rowAcIconY, rowAcIconSize);
-        var labelBaseline = rowAcIconY + rowAcIconSize/2 + 6;
-        if(acStagger && (i % 2 === 1)){
-          labelBaseline += 8;
-          doc.setDrawColor(159, 165, 175); doc.setLineWidth(0.3);
-          doc.line(cx, rowAcIconY + rowAcIconSize/2 + 1, cx, labelBaseline - 4);
-        }
-        doc.setFont('courier','bold'); doc.setFontSize(5.5);
-        doc.setTextColor(40, 40, 60);
-        var lab = dev.label || '';
-        if(lab.length > 11) lab = lab.slice(0, 10) + '…';
-        doc.text(lab, cx, labelBaseline, {align:'center'});
-      });
-    }
-  }
-
-  // (Pass A.7.5: the per-zone "(no head-end)" red italic hint that used to
-  // render here is gone. Single page-level placeholder is rendered by
-  // drawRiserDiagram when no zone has a head-end placed.)
 }
 
 // Pass N M2: AC device icon at riser scale. Readers render as Brivo-blue
@@ -19779,7 +19679,7 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
     startSection('letter','portrait');
     drawPageHeader(doc, pageW, 'System Riser — Schedule (cont.)');
     drawPageFooter(doc, pageW, pageH);
-    y = 52;
+    y = PDF_CONTENT_TOP;
     doc.setFont('courier','bold'); doc.setFontSize(10); doc.setTextColor(31, 41, 55);
     doc.text('EQUIPMENT SCHEDULE (continued)', 40, y); y += 10;
     drawHeaderRow();
@@ -19798,7 +19698,7 @@ function drawRiserSchedule(doc, x0, y0, w, h, pageW, pageH, rows, startSection){
       doc.setFont('courier','bold'); doc.setFontSize(10);
       doc.setFillColor(245, 244, 240);
       doc.rect(x0, y, w, headerRowH, 'F');
-      doc.setTextColor(row.accent === 'red' ? 200 : 100, row.accent === 'red' ? 32 : 100, row.accent === 'red' ? 44 : 120);
+      doc.setTextColor(row.accent === 'red' ? PROP.accent[0] : 100, row.accent === 'red' ? PROP.accent[1] : 100, row.accent === 'red' ? PROP.accent[2] : 120);
       doc.text(row.text, x0 + pad + 1, y + headerRowH - 4);
       y += headerRowH;
     } else if(row.type === 'equip'){
@@ -19892,7 +19792,7 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
 
   var leftX  = 40;
   var rightX = W - 40;
-  var y      = 52;
+  var y      = PDF_CONTENT_TOP;
 
   // Empty-state guard. If there's no takeoff at all, render a one-line
   // notice so the page isn't a blank slab. (The page only renders when
@@ -20019,10 +19919,10 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
       doc.text('Installation:', blockX, y + 10);
       doc.text(fmtMoney(sumLabour), blockX + blockW, y + 10, { align: 'right' });
       y += 12;
-      doc.setDrawColor(200, 32, 44); doc.setLineWidth(0.8);
+      propDraw(doc, PROP.accent); doc.setLineWidth(0.8);
       doc.line(blockX, y, blockX + blockW, y);
       y += 14;
-      doc.setFont('courier','bold'); doc.setTextColor(200, 32, 44);
+      doc.setFont('courier','bold'); propText(doc, PROP.accent);
       doc.text('Total:', blockX, y + 10);
       doc.text(fmtMoney(sumTotal), blockX + blockW, y + 10, { align: 'right' });
       y += 24;
@@ -20089,7 +19989,7 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
       drawPageFooter(doc, W, H);
       doc.addPage('letter','portrait');
       drawPageHeader(doc, W, 'Hardware Schedule (cont.)');
-      y = 52;
+      y = PDF_CONTENT_TOP;
       // Redraw column headers on continuation so the customer always sees
       // what each column means without flipping back to page 1.
       drawColHeaders();
@@ -20129,11 +20029,11 @@ function drawProposalHardwareSchedule(doc, W, H, startSection){
   function drawTotalRow(label, value, grand){
     ensureSpace(14);
     if(grand){
-      doc.setDrawColor(200, 32, 44); doc.setLineWidth(0.8);
+      propDraw(doc, PROP.accent); doc.setLineWidth(0.8);
       doc.line(rightX - 175, y - 8, rightX - 5, y - 8);
     }
     doc.setFont('courier','bold'); doc.setFontSize(9);
-    doc.setTextColor(grand ? 200 : 40, grand ? 32 : 40, grand ? 44 : 60);
+    doc.setTextColor(grand ? PROP.accent[0] : 40, grand ? PROP.accent[1] : 40, grand ? PROP.accent[2] : 60);
     doc.text(label, rightX - 175, y, { align: 'left' });
     doc.text(value, rightX -   5, y, { align: 'right' });
     y += 14;
@@ -20658,6 +20558,42 @@ function computeAutoRows(){
     });
   }
 
+  // ─── Elevator Control auto-spec ────────────────────────────────────────
+  // "Elevator control" = the access system is installed in the elevator: a
+  // reader in each cab authorizes which floors a credential may select, via
+  // one relay per controlled floor. The B-ACS6100-IO board provides 8 output
+  // relays (+8 inputs) → 8 floors per board, per cab. So, per the rule:
+  //   in-cab readers = cabs ;  I/O boards = cabs × ceil(floors / 8).
+  // Emitted into §2.1 independent of the door auto-spec toggle (elevator
+  // boards are needed whenever the elevator is access-controlled). The board /
+  // reader counts also feed the panel power/chassis sizing in the block below.
+  var _elev = (projectInfo.elevatorControl && typeof projectInfo.elevatorControl === 'object') ? projectInfo.elevatorControl : { cabs:0, floors:0 };
+  var _elevCabs   = (typeof _elev.cabs   === 'number' && _elev.cabs   > 0) ? Math.floor(_elev.cabs)   : 0;
+  var _elevFloors = (typeof _elev.floors === 'number' && _elev.floors > 0) ? Math.floor(_elev.floors) : 0;
+  var _elevBoards = (_elevCabs > 0 && _elevFloors > 0) ? _elevCabs * Math.ceil(_elevFloors / 8) : 0;
+  if(_elevCabs > 0){
+    var _elevRdrSku  = 'B-BSMF-B';
+    var _elevRdrCost = getUnitPrice(_elevRdrSku); if(typeof _elevRdrCost !== 'number' || !isFinite(_elevRdrCost)) _elevRdrCost = 0;
+    var _elevRdrList = getListPrice(_elevRdrSku); if(typeof _elevRdrList !== 'number' || !isFinite(_elevRdrList)) _elevRdrList = null;
+    acRows.push({
+      auto: true, src: 'accessControl', key: 'auto-ac-elev-reader', sku: _elevRdrSku,
+      desc: 'Elevator Cab Reader — Brivo Mullion Dual-Tech (1 per cab)',
+      qty: _elevCabs, cost: _elevRdrCost, list: _elevRdrList, unit: 0,
+      sectionAuto: true, section: '2.1'
+    });
+    if(_elevBoards > 0){
+      var _elevIoSku  = 'B-ACS6100-IO';
+      var _elevIoCost = getUnitPrice(_elevIoSku); if(typeof _elevIoCost !== 'number' || !isFinite(_elevIoCost)) _elevIoCost = 0;
+      var _elevIoList = getListPrice(_elevIoSku); if(typeof _elevIoList !== 'number' || !isFinite(_elevIoList)) _elevIoList = null;
+      acRows.push({
+        auto: true, src: 'accessControl', key: 'auto-ac-elev-io', sku: _elevIoSku,
+        desc: 'Elevator I/O Board — Brivo ACS6100-IO (8 floors/board · ' + _elevFloors + ' floors × ' + _elevCabs + ' cab' + (_elevCabs > 1 ? 's' : '') + ')',
+        qty: _elevBoards, cost: _elevIoCost, list: _elevIoList, unit: 0,
+        sectionAuto: true, section: '2.1'
+      });
+    }
+  }
+
   // ─── AC Hardware Auto-Spec (M1) ────────────────────────────────────────
   // When projectInfo.acHardwareConfig.mode === 'on', emit Brivo panel +
   // expansion board + power-supply rows sized to door count (= reader count,
@@ -20677,12 +20613,16 @@ function computeAutoRows(){
     ? projectInfo.acHardwareConfig : { mode: 'off', powerMode: 'internal' };
   if(_acHwCfg.mode === 'on'){
     var _hwD = 0;  // door count = readers × pageMultiplier
-    var _hwI = 0;  // IO board count (manually-placed B-ACS6100-IO devices)
+    var _hwI = 0;  // I/O board count (elevator boards — config-driven, added below)
     acDevices.forEach(function(d){
       var mult = pageMultiplier(d.page);
       if(acCategoryOf(d) === 'Readers') _hwD += mult;
-      if(d.sku === 'B-ACS6100-IO')      _hwI += mult;
     });
+    // Config-driven elevator control loads the same controller chain: each
+    // in-cab reader needs a reader port (door count), each I/O board loads the
+    // chassis/PSU. Fold them in so the panel + power tiers are sized to fit.
+    _hwD += _elevCabs;
+    _hwI += _elevBoards;
     var _hwPush = function(sku, desc, qty){
       acRows.push({
         auto: true, src: 'accessControl', sku: sku, desc: desc,
@@ -20937,6 +20877,22 @@ function computeAutoRows(){
       });
     }
   });
+
+  // Multifamily training (rule): when the project is multifamily — defined by
+  // the presence of the Brivo Multifamily subscription, i.e. gateway IoT units
+  // > 0 (same predicate as computeSubscriptionRows) — append the property-
+  // management training service. The 'auto-sa-iot-' key routes it to §4.2 IoT,
+  // and pushing it last puts it at the bottom of that section.
+  if(typeof _subGatewayUnitCount === 'function' && _subGatewayUnitCount() > 0){
+    var _mfTrnSku  = 'B-MF-SVC-TRN-REM';
+    var _mfTrnCost = getUnitPrice(_mfTrnSku); if(typeof _mfTrnCost !== 'number' || !isFinite(_mfTrnCost)) _mfTrnCost = 0;
+    var _mfTrnList = getListPrice(_mfTrnSku); if(typeof _mfTrnList !== 'number' || !isFinite(_mfTrnList)) _mfTrnList = null;
+    smartAptRows.push({
+      auto: true, src: 'smartApartment', key: 'auto-sa-iot-mf-training', sku: _mfTrnSku,
+      desc: 'Brivo Multifamily Property Management Training — 1 Hour (remote)',
+      qty: 1, cost: _mfTrnCost, list: _mfTrnList, unit: 0, sectionAuto: true
+    });
+  }
 
   // BOM Restructure pass: 6 sections (was 8). Cabling and labor moved
   // out to computeNonBomRows() for Take-Off consumption.
@@ -21597,6 +21553,20 @@ function computeBomTree(){
   _routeCustom('smartApartment', '4.1');
   _routeCustom('iot',            '4.2');
   _routeCustom('other',          'other');
+
+  // Rule: credentials sort to the BOTTOM of their section (below readers /
+  // controllers / panels / elevator boards). Stable — relative order of every
+  // other row is preserved. Affects §2.1 (and §2.2 for overhead-door
+  // credentials); a no-op for sections with no credential rows.
+  function _credsLast(arr){
+    return arr.map(function(r, i){ return { r: r, i: i }; }).sort(function(a, b){
+      var ca = (a.r.key && a.r.key.indexOf('auto-ac-cred') === 0) ? 1 : 0;
+      var cb = (b.r.key && b.r.key.indexOf('auto-ac-cred') === 0) ? 1 : 0;
+      if(ca !== cb) return ca - cb;
+      return a.i - b.i;
+    }).map(function(x){ return x.r; });
+  }
+  Object.keys(buckets).forEach(function(bid){ buckets[bid].auto = _credsLast(buckets[bid].auto); });
 
   return buckets;
 }
@@ -24129,6 +24099,9 @@ function openProjectModal(){
   document.getElementById('proj-sales').value   = projectInfo.sales || '';
   document.getElementById('proj-company').value = projectInfo.company || '';
   document.getElementById('proj-scope').value   = projectInfo.scope || '';
+  var _elevCfg = (projectInfo.elevatorControl && typeof projectInfo.elevatorControl === 'object') ? projectInfo.elevatorControl : { cabs:0, floors:0 };
+  document.getElementById('proj-elev-cabs').value   = _elevCfg.cabs   || 0;
+  document.getElementById('proj-elev-floors').value = _elevCfg.floors || 0;
   // Pass A.6: proposalSections toggles moved to the Export modal. The field
   // itself still lives on projectInfo; we just don't render/edit it here.
   // AC Hardware Auto-Spec M1 (v34): paint pill buttons + power-row enabled
@@ -24219,7 +24192,12 @@ function saveProjectInfo(){
     // this line carries that state through the wholesale-replace pattern. The
     // applyProjectState defaults block guarantees the object always exists +
     // has valid values on load, so the carry-over is safe.
-    acHardwareConfig: (projectInfo.acHardwareConfig && typeof projectInfo.acHardwareConfig === 'object') ? projectInfo.acHardwareConfig : { mode:'off', powerMode:'internal' }
+    acHardwareConfig: (projectInfo.acHardwareConfig && typeof projectInfo.acHardwareConfig === 'object') ? projectInfo.acHardwareConfig : { mode:'off', powerMode:'internal' },
+    // Elevator control: read from the Project Info modal number inputs.
+    elevatorControl: {
+      cabs:   Math.max(0, parseInt(document.getElementById('proj-elev-cabs').value, 10)   || 0),
+      floors: Math.max(0, parseInt(document.getElementById('proj-elev-floors').value, 10) || 0)
+    }
   };
   markDirty();
   closeProjectModal();
