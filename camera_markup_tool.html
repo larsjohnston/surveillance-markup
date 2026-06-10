@@ -17036,6 +17036,10 @@ function applyProjectState(data){
   if(_removed > 0 && typeof showOneShotToast === 'function'){
     showOneShotToast('Removed ' + _removed + ' discontinued credential line' + (_removed>1?'s':'') + ' (Dual-Tech / Pre-Punch). Re-add under Credentials if needed.');
   }
+  // Migrate legacy overhead storage (brivoSkus FP-*) into the new fields.
+  if(_cr.brivoSkus['FP-WRT2B'] && _cr.ohTransmitters === 0){ _cr.ohTransmitters = _cr.brivoSkus['FP-WRT2B']; }
+  if(_cr.brivoSkus['FP-WRR22'] && _cr.ohDoors === 0){ _cr.ohDoors = _cr.brivoSkus['FP-WRR22']; }
+  delete _cr.brivoSkus['FP-WRT2B']; delete _cr.brivoSkus['FP-WRR22'];
   delete _cr.cards; delete _cr.fobs; delete _cr.ohReceiver;
   // Elevator control defaults (access system installed in the elevator).
   if(!projectInfo.elevatorControl || typeof projectInfo.elevatorControl !== 'object'){
@@ -20610,6 +20614,7 @@ function computeAutoRows(){
   // for the Materials SKU column; r.desc carries the catalog description.
   if(projectInfo.credentials && projectInfo.credentials.brivoSkus && typeof projectInfo.credentials.brivoSkus === 'object'){
     Object.keys(projectInfo.credentials.brivoSkus).forEach(function(sku){
+      if(sku.indexOf('FP-') === 0) return; // overhead handled by the Remotes rule below
       var qty = projectInfo.credentials.brivoSkus[sku];
       if(typeof qty !== 'number' || !isFinite(qty) || qty <= 0) return;
       var cat = BRIVO_CRED_CATALOG[sku];
@@ -20637,6 +20642,24 @@ function computeAutoRows(){
       });
     });
   }
+
+  // Remotes (overhead doors): receivers derived from door count, transmitters
+  // entered separately; transmitters>0 forces >=1 receiver. (Replaces the old
+  // brivoSkus FP-* path — see the FP- skip above and the load migration.)
+  var _ohDoors = (projectInfo.credentials && typeof projectInfo.credentials.ohDoors === 'number') ? projectInfo.credentials.ohDoors : 0;
+  var _ohTx    = (projectInfo.credentials && typeof projectInfo.credentials.ohTransmitters === 'number') ? projectInfo.credentials.ohTransmitters : 0;
+  var _ohRx    = (_ohTx > 0) ? Math.max(_ohDoors, 1) : _ohDoors;
+  function _ohPush(sku, qty){
+    if(qty <= 0) return;
+    var c = getUnitPrice(sku); if(typeof c !== 'number' || !isFinite(c)) c = 0;
+    var l = getListPrice(sku); if(typeof l !== 'number' || !isFinite(l)) l = null;
+    var cat = BRIVO_CRED_CATALOG[sku] || {};
+    acRows.push({ auto:true, src:'accessControl', key:'auto-ac-cred-brivo-'+sku,
+      sku:sku, desc: cat.description || sku, qty: qty, cost: c, list: l, unit: 0,
+      sectionAuto: true, section: '2.2' });
+  }
+  _ohPush('FP-WRR22', _ohRx);
+  _ohPush('FP-WRT2B', _ohTx);
 
   // ─── Elevator Control auto-spec ────────────────────────────────────────
   // "Elevator control" = the access system is installed in the elevator: a
