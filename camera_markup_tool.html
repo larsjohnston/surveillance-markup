@@ -9508,6 +9508,12 @@ var currentACSubcategory = null;       // matches BRIVO_CATALOG.subcategory
 // the BRIVO_CATALOG subcategory tiles. Preserves currentACCategory so
 // returning via "Back" restores Readers/Controllers selection state.
 var acCredentialsView    = false;
+// Accessories checkpoint 1: tier-1 "Accessories" area. acInAccessories is
+// true while the Accessories sub-tile menu / a sub is open; acAccessorySub
+// selects which sub is showing. acCredentialsView is kept in sync (true only
+// when the credentials sub is open) so the credential add-flow still works.
+var acInAccessories = false;        // true when the Accessories area is open
+var acAccessorySub  = null;         // null (show sub-tile menu) | 'credentials' | 'elevator' | 'overhead'
 // (Pass Left-Pane M6: lastArmedReader removed — variable was write-only,
 // never read. The "restore last-armed form-factor" intent was superseded
 // by the per-subcategory acDefaults map in projectInfo.)
@@ -10402,7 +10408,11 @@ var AC_ICONS = {
   // Power-supply icons (Internal PSB / LSP / Altronix) for the Controllers view.
   PowerPSB: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="7" width="16" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="19.5" y="10" width="2.2" height="4" rx="0.6" fill="currentColor"/><path d="M12 8.5l-2.5 4H12l-1.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
   PowerLSP: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 5 13h5l-1 9 9-13h-6z" fill="currentColor"/></svg>',
-  PowerAltronix: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="8" x2="20" y2="8" stroke="currentColor" stroke-width="1.2"/><rect x="10" y="12" width="4" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>'
+  PowerAltronix: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="8" x2="20" y2="8" stroke="currentColor" stroke-width="1.2"/><rect x="10" y="12" width="4" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>',
+  // Accessories checkpoint 1: tier-1 + sub-tile icons.
+  Accessories: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+  Elevator: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="12" y1="3" x2="12" y2="21" stroke="currentColor" stroke-width="1.2"/><path d="M8.5 9l-1.3 2h2.6z" fill="currentColor"/><path d="M15.5 15l1.3-2h-2.6z" fill="currentColor"/></svg>',
+  OverheadDoor: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="8" x2="21" y2="8" stroke="currentColor" stroke-width="1.1"/><line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="1.1"/><line x1="3" y1="16" x2="21" y2="16" stroke="currentColor" stroke-width="1.1"/></svg>'
 };
 function acIconFor(key){ return AC_ICONS[key] || ''; }
 
@@ -10469,6 +10479,7 @@ function lpPickAcCategory(category){
     return;
   }
   acCredentialsView = false;
+  acInAccessories = false; acAccessorySub = null;
   armAcDevice(category, subs[0]);
 }
 
@@ -10501,6 +10512,23 @@ function lpOpenCredentials(){
   // path that would otherwise place the stale reader SKU.
   _cancelAllPlacement();
   acCredentialsView = true;
+  _renderAcDrillDown();
+}
+
+// Accessories checkpoint 1: tier-1 "Accessories" area handlers. Opening the
+// area shows the sub-tile menu first (acAccessorySub=null). Picking a sub
+// keeps acCredentialsView in sync so the credential add-flow still works.
+function lpOpenAccessories(){
+  _cancelAllPlacement();
+  acInAccessories = true;
+  acAccessorySub  = null;       // show the sub-tile menu first
+  acCredentialsView = false;
+  _renderAcDrillDown();
+}
+function lpPickAccessorySub(sub){
+  acAccessorySub = sub;
+  acCredentialsView = (sub === 'credentials');   // keep the credential handlers' flag in sync
+  if(sub === 'credentials') _cancelAllPlacement();
   _renderAcDrillDown();
 }
 
@@ -10801,6 +10829,35 @@ function acRespecControllers(){
   markDirty(); recalcBom(); redraw(); updateAcList(); renderLeftPaneDrillDown('ac');
 }
 // Build the Controllers drill-down HTML (rendered into #lp-ac-tier3).
+// Accessories checkpoint 1: tier-3 for the Accessories area. Renders a
+// sub-tile switcher row (Credentials / Elevator / Overhead) followed by the
+// selected sub's content. Credentials reuses the existing grid; Elevator and
+// Overhead are stubbed (built in a later checkpoint).
+function renderAccessoriesTier3(){
+  var sub = acAccessorySub;
+  var html = '';
+  // sub-tile switcher row (always shown)
+  html += '<div class="lp-tier-row">';
+  [['credentials','Credentials','Accessories'],['elevator','Elevator','Elevator'],['overhead','Overhead','OverheadDoor']].forEach(function(s){
+    var act = (sub === s[0]) ? ' active' : '';
+    html += '<div class="tier2-tile' + act + '" onclick="lpPickAccessorySub(\'' + s[0] + '\')" title="' + s[1] + '">'
+          +   '<div class="ts-icon">' + acIconFor(s[2]) + '</div>'
+          +   '<span class="t2-label" style="white-space:normal; overflow:visible; text-overflow:clip; line-height:1.1; font-size:8px;">' + s[1] + '</span>'
+          + '</div>';
+  });
+  html += '</div>';
+  if(sub === 'credentials'){
+    html += _renderCredentialsTier3();   // existing credential grid
+  } else if(sub === 'elevator'){
+    html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Elevator control inputs — coming in the next build.</div>';
+  } else if(sub === 'overhead'){
+    html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Overhead-door controllers — coming in the next build.</div>';
+  } else {
+    html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Choose a category above.</div>';
+  }
+  return html;
+}
+
 function renderAcControllersTier3(){
   var plan = _acControllerPlanNow();
   if(plan.controllers.length === 0 && plan.warnings.length === 0){
@@ -10944,24 +11001,25 @@ function _renderAcDrillDown(){
   var categories = ['Readers', 'Controllers'];
   var t2Html = '';
   categories.forEach(function(cat){
-    var activeCls = (cat === currentACCategory && !acCredentialsView) ? ' active' : '';
+    var activeCls = (cat === currentACCategory && !acInAccessories) ? ' active' : '';
     t2Html += '<div class="tier2-tile' + activeCls + '" data-ac-category="' + escapeHtml(cat) + '" onclick="lpPickAcCategory(\'' + cat + '\')" title="' + escapeHtml(cat) + '">' +
               '<div class="ts-icon">' + acIconFor(cat) + '</div>' +
               '<span class="t2-label">' + escapeHtml(cat) + '</span>' +
               '</div>';
   });
-  // Credentials tier-2 tile — own handler (lpOpenCredentials), not
-  // lpPickAcCategory; never arms floor-plan placement.
-  var credActiveCls = acCredentialsView ? ' active' : '';
-  t2Html += '<div class="tier2-tile' + credActiveCls + '" data-ac-credentials="1" onclick="lpOpenCredentials()" title="Credentials">' +
-            '<div class="ts-icon">' + acIconFor('Credentials') + '</div>' +
-            '<span class="t2-label">Credentials</span>' +
+  // Accessories tier-2 tile — own handler (lpOpenAccessories), not
+  // lpPickAcCategory; never arms floor-plan placement. Opens a sub-tile
+  // menu (Credentials / Elevator / Overhead Door) in tier 3.
+  var accActiveCls = acInAccessories ? ' active' : '';
+  t2Html += '<div class="tier2-tile' + accActiveCls + '" data-ac-accessories="1" onclick="lpOpenAccessories()" title="Accessories">' +
+            '<div class="ts-icon">' + acIconFor('Accessories') + '</div>' +
+            '<span class="t2-label">Accessories</span>' +
             '</div>';
   t2.innerHTML = t2Html;
 
   // Tier-3 header label — switches between "AC Models" (subcategory drill)
   // and "Credentials" (when the user is in the credentials drill-in).
-  if(bc2) bc2.innerHTML = acCredentialsView ? 'Credentials' :
+  if(bc2) bc2.innerHTML = acInAccessories ? 'Accessories' :
                           (currentACCategory === 'Controllers') ? 'Controllers' : 'AC Models';
 
   // Tier 3 — branches on acCredentialsView. In credentials mode, render
@@ -10971,19 +11029,16 @@ function _renderAcDrillDown(){
   // deeper-only navigation. Container grid columns override 3 → 5 in
   // credentials mode so the 5 small tiles sit cleanly in one row.
   var t3Html = '';
-  if(acCredentialsView){
-    // Credentials-wiring v26: render the 11 BRIVO_CRED_CATALOG SKUs grouped
-    // by tier2_family (Cards / Fobs / Dual-Tech / Pre-Punch Service). Group
-    // header rows span the full grid; SKU tiles are standard .tier3-tile
-    // text-only (code label, no icon). Reuses the shared 5-col grid — no
-    // per-mode gridTemplateColumns override (the family-label uses
-    // grid-column:1/-1 to span the full row). Replaces the v19 5-tile
-    // placeholder (fobs/cards/mobilePasses/ohTransmitters/ohReceiver →
-    // lpEditCredential modal); orphaned modal kept dead this pass for
-    // diff focus, slated for cleanup in a follow-up.
-    t3Html = _renderCredentialsTier3();
+  if(acInAccessories){
+    // Accessories checkpoint 1: sub-tile switcher (Credentials / Elevator /
+    // Overhead Door) plus the selected sub's content. Credentials reuses the
+    // existing credential grid (display:'' so the 5-col grid applies);
+    // Elevator/Overhead are stubbed for a later checkpoint and use block
+    // layout. The nested .lp-tier-row switcher row lays out as its own grid
+    // regardless of the container's display mode.
+    t3Html = renderAccessoriesTier3();
     t3.style.gridTemplateColumns = '';
-    t3.style.display = '';
+    t3.style.display = (acAccessorySub === 'credentials') ? '' : 'block';
   } else if(currentACCategory === 'Controllers'){
     // Controllers drill-down (Tasks 3.2-UI + 3.3): placement flag, auto-spec'd
     // controller to-place tiles, read-only board list, and power-supply tiles.
