@@ -10791,6 +10791,15 @@ function acSetPowerMode(pm){
   projectInfo.acHardwareConfig.powerMode = pm;
   markDirty(); recalcBom(); renderLeftPaneDrillDown('ac');
 }
+// Clear placed controllers and rebuild the to-place list from the current
+// auto-spec; the integrator then re-places the chassis on the canvas.
+function acRespecControllers(){
+  var n = acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers'; }).length;
+  if(n === 0) return;
+  if(typeof confirm === 'function' && !confirm('Remove ' + n + ' placed controller' + (n > 1 ? 's' : '') + ' and re-spec from readers? You will re-place the chassis on the canvas.')) return;
+  acDevices = acDevices.filter(function(d){ return acCategoryOf(d) !== 'Controllers'; });
+  markDirty(); recalcBom(); redraw(); updateAcList(); renderLeftPaneDrillDown('ac');
+}
 // Build the Controllers drill-down HTML (rendered into #lp-ac-tier3).
 function renderAcControllersTier3(){
   var plan = _acControllerPlanNow();
@@ -10815,21 +10824,42 @@ function renderAcControllersTier3(){
     var rem = c.qty - _placedChassis(c.sku);
     if(rem > 0) toPlace.push({ sku:c.sku, name:c.name, qty:rem });
   });
-  // banner — green only when every required chassis is placed
+  var TILE = 'min-height:48px; padding:5px 3px; gap:2px;';   // compact (tier-3) chassis tile
+  var ICN  = 'width:16px; height:16px;';
+  var LBLF = WRAP + ' font-size:8px;';
+  // banner — green when every required chassis is placed
   if(totalRequired > 0 && toPlace.length === 0){
     html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px; margin-bottom:4px;">&#10003; All chassis placed</div>';
   }
-  // to-place tiles (unplaced chassis only)
+  // to-place tiles (unplaced chassis) — compact tier-3 tiles
   if(toPlace.length){
     html += '<div style="' + LBL + ' margin-top:2px;">To place &mdash; locate each chassis on the canvas</div><div class="lp-tier-row">';
     toPlace.forEach(function(c){
       var armed = (currentReaderModel === c.sku) ? ' active' : '';
-      html += '<div class="tier2-tile' + armed + '" onclick="armAcSku(\'' + c.sku + '\')" title="Place ' + escapeHtml(c.name) + '">'
-            +   '<div class="ts-icon">' + _acCtrlIcon(c.sku) + '</div>'
-            +   '<span class="t2-label" style="' + WRAP + '">' + escapeHtml(_acCtrlTileLabel(c.sku)) + (c.qty > 1 ? (' &times;' + c.qty) : '') + '</span>'
+      html += '<div class="tier2-tile' + armed + '" style="' + TILE + '" onclick="armAcSku(\'' + c.sku + '\')" title="Place ' + escapeHtml(c.name) + '">'
+            +   '<div class="ts-icon" style="' + ICN + '">' + _acCtrlIcon(c.sku) + '</div>'
+            +   '<span class="t2-label" style="' + LBLF + '">' + escapeHtml(_acCtrlTileLabel(c.sku)) + (c.qty > 1 ? (' &times;' + c.qty) : '') + '</span>'
             + '</div>';
     });
     html += '</div>';
+  }
+  // placed chassis (visual confirmation) — every controller physically on the
+  // canvas, grouped by SKU, shown even if it doesn't match the current
+  // auto-spec, so loaded/placed controllers never silently disappear.
+  var placedGroups = {};
+  acDevices.forEach(function(d){ if(acCategoryOf(d) === 'Controllers'){ var s = d.sku || '(unknown)'; placedGroups[s] = (placedGroups[s] || 0) + 1; } });
+  var placedSkus = Object.keys(placedGroups);
+  if(placedSkus.length){
+    html += '<div style="' + LBL + '">Placed &#10003;</div><div class="lp-tier-row">';
+    placedSkus.forEach(function(sku){
+      html += '<div class="tier2-tile" style="' + TILE + ' border-color:#10b981; background:#ecfdf5; color:#065f46; cursor:default;" title="' + escapeHtml(sku) + ' placed on canvas">'
+            +   '<div class="ts-icon" style="' + ICN + '">' + _acCtrlIcon(sku) + '</div>'
+            +   '<span class="t2-label" style="' + LBLF + '">' + escapeHtml(_acCtrlTileLabel(sku)) + (placedGroups[sku] > 1 ? (' &times;' + placedGroups[sku]) : '') + '</span>'
+            + '</div>';
+    });
+    html += '</div>';
+    // remove existing + re-spec from readers (user re-places the chassis)
+    html += '<button type="button" onclick="acRespecControllers()" style="margin:4px 0 2px; width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:#fff; font:600 9px var(--font-ui); text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); cursor:pointer;">Clear placed &amp; re-spec from readers</button>';
   }
   // read-only board list: DB boards + elevator I/O + power (chassis are placed, not listed)
   var io = acElevBoards();
