@@ -10700,7 +10700,7 @@ function _renderCredentialsTier3(){
     if(!families[fam]) families[fam] = [];
     families[fam].push(sku);
   });
-  var FAMILY_ORDER = ['Cards', 'Fobs', 'Dual-Tech', 'Pre-Punch Service', 'Overhead Doors'];
+  var FAMILY_ORDER = ['Cards', 'Fobs'];   // Remotes (Overhead Doors) live under Accessories › Overhead now; Dual-Tech/Pre-Punch removed
   var html = '';
   FAMILY_ORDER.forEach(function(fam){
     var list = families[fam];
@@ -10724,6 +10724,13 @@ function _renderCredentialsTier3(){
               '</div>';
     });
   });
+  // Mobile passes — a subscription quantity (not a placed/catalog SKU); routes
+  // to §6 Subscriptions. One tile shows the current count; clicking edits it.
+  var mp = (projectInfo.credentials && typeof projectInfo.credentials.mobilePasses === 'number') ? projectInfo.credentials.mobilePasses : 0;
+  html += '<div class="cred-family-label" style="grid-column:1/-1; margin:8px 0 2px; font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);">Mobile</div>';
+  html += '<div class="tier3-tile' + (mp > 0 ? ' active' : '') + '" onclick="editMobilePasses()" title="Mobile passes — subscription (§6)">' +
+          '<div class="t3-name">' + (mp > 0 ? ('Passes ×' + mp) : 'Add passes') + '</div>' +
+          '</div>';
   return html;
 }
 
@@ -10734,6 +10741,17 @@ function _renderCredentialsTier3(){
 // save shape (unused at placement time post-P5; DEFAULT_AC_DEFAULTS is
 // the new placement default source).
 
+// Accessories › Credentials › Mobile: edit the mobile-pass count (a §6
+// subscription quantity, not a placed/catalog SKU).
+function editMobilePasses(){
+  if(!projectInfo.credentials || typeof projectInfo.credentials !== 'object') projectInfo.credentials = {};
+  var cur = (typeof projectInfo.credentials.mobilePasses === 'number' && projectInfo.credentials.mobilePasses > 0) ? projectInfo.credentials.mobilePasses : 0;
+  var ans = (typeof prompt === 'function') ? prompt('Number of mobile passes:', String(cur)) : null;
+  if(ans === null) return;
+  var n = parseInt(ans, 10); if(!isFinite(n) || n < 0) n = 0;
+  projectInfo.credentials.mobilePasses = n;
+  markDirty(); recalcBom(); renderLeftPaneDrillDown('ac');
+}
 // Accessories › Elevator Control: set cars/floors inline. Setting cars auto-
 // pulls the floor count from the floorplan (the integrator can adjust); the
 // counts drive the elevator I/O boards (acElevBoards → Controllers).
