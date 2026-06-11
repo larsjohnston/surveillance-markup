@@ -9510,6 +9510,7 @@ var acCredentialsView    = false;
 // when the credentials sub is open) so the credential add-flow still works.
 var acInAccessories = false;        // true when the Accessories area is open
 var acAccessorySub  = null;         // null (show sub-tile menu) | 'credentials' | 'elevator' | 'overhead'
+var acCredentialFamily = null;      // within Credentials: null (family tiles) | 'Cards' | 'Fobs' | 'Mobile'
 // (Pass Left-Pane M6: lastArmedReader removed — variable was write-only,
 // never read. The "restore last-armed form-factor" intent was superseded
 // by the per-subcategory acDefaults map in projectInfo.)
@@ -10475,7 +10476,7 @@ function lpPickAcCategory(category){
     return;
   }
   acCredentialsView = false;
-  acInAccessories = false; acAccessorySub = null;
+  acInAccessories = false; acAccessorySub = null; acCredentialFamily = null;
   armAcDevice(category, subs[0]);
 }
 
@@ -10519,12 +10520,20 @@ function lpOpenAccessories(){
   acInAccessories = true;
   acAccessorySub  = null;       // show the sub-tile menu first
   acCredentialsView = false;
+  acCredentialFamily = null;
   _renderAcDrillDown();
 }
 function lpPickAccessorySub(sub){
   acAccessorySub = sub;
   acCredentialsView = (sub === 'credentials');   // keep the credential handlers' flag in sync
+  acCredentialFamily = null;                      // entering a sub resets the Credentials family drill
   if(sub === 'credentials') _cancelAllPlacement();
+  _renderAcDrillDown();
+}
+// Accessories › Credentials: pick a family (Cards/Fobs/Mobile) → reveal that
+// family's SKU tiles (or, for Mobile, the pass-count editor).
+function lpPickCredentialFamily(fam){
+  acCredentialFamily = fam;
   _renderAcDrillDown();
 }
 
@@ -10693,44 +10702,55 @@ function addCredentialToBom(){
 // (text-only, code label, no icon — per universal tier-3 rules).
 // Returns a string for assignment to the t3 container's innerHTML.
 function _renderCredentialsTier3(){
-  var families = {};
-  Object.keys(BRIVO_CRED_CATALOG).forEach(function(sku){
-    var cat = BRIVO_CRED_CATALOG[sku];
-    var fam = cat.tier2_family;
-    if(!families[fam]) families[fam] = [];
-    families[fam].push(sku);
-  });
-  var FAMILY_ORDER = ['Cards', 'Fobs'];   // Remotes (Overhead Doors) live under Accessories › Overhead now; Dual-Tech/Pre-Punch removed
+  // Credential families as icon tiles (Cards / Fobs / Mobile); picking one
+  // drills to that family's SKU tiles (also icons). Mobile is a subscription
+  // count, so its drill is the pass-count editor tile. Emitted as block
+  // sections — the caller no longer wraps this in a single grid.
+  var fam  = acCredentialFamily;
+  var LBL  = 'font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 4px;';
+  var WRAP = 'white-space:normal; overflow:visible; text-overflow:clip; line-height:1.15; font-size:8px;';
   var html = '';
-  FAMILY_ORDER.forEach(function(fam){
-    var list = families[fam];
-    if(!list || list.length === 0) return;
-    html += '<div class="cred-family-label" style="grid-column:1/-1; margin:8px 0 2px; font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);">' + escapeHtml(fam) + '</div>';
-    list.forEach(function(sku){
+  // family switcher (icon tiles)
+  html += '<div class="lp-tier-row">';
+  [['Cards','Cards','CredCard'],['Fobs','Fobs','ProxFob'],['Mobile','Mobile','MobilePass']].forEach(function(f){
+    var act = (fam === f[0]) ? ' active' : '';
+    html += '<div class="tier2-tile' + act + '" onclick="lpPickCredentialFamily(\'' + f[0] + '\')" title="' + f[1] + '">'
+          +   '<div class="ts-icon">' + acIconFor(f[2]) + '</div>'
+          +   '<span class="t2-label">' + f[1] + '</span>'
+          + '</div>';
+  });
+  html += '</div>';
+  // tier-4: the picked family's options (icon tiles)
+  if(fam === 'Cards' || fam === 'Fobs'){
+    var famIcon = (fam === 'Cards') ? 'CredCard' : 'ProxFob';
+    html += '<div style="' + LBL + '">' + fam + '</div><div class="lp-tier-row">';
+    Object.keys(BRIVO_CRED_CATALOG).forEach(function(sku){
       var cat = BRIVO_CRED_CATALOG[sku];
-      // Credentials qty display pass: a tile gets .active when EITHER it's
-      // the currently-armed SKU (light fill + accent outline) OR it has a
-      // non-zero qty on the quote — so the user can scan the grid and see
-      // at a glance which credentials are on the BOM. addCredentialToBom
-      // calls _repaintCredentialsTier3 (via the existing close path) so
-      // tiles update right after Add/Update.
+      if(cat.tier2_family !== fam) return;
+      // Tile is .active when it's the armed SKU or already has a non-zero qty
+      // on the quote, so the grid shows at a glance what's on the BOM.
       var isArmed = (sku === _currentCredentialSku);
       var qty     = (projectInfo.credentials && projectInfo.credentials.brivoSkus &&
                      typeof projectInfo.credentials.brivoSkus[sku] === 'number')
                       ? projectInfo.credentials.brivoSkus[sku] : 0;
       var activeCls = (isArmed || qty > 0) ? ' active' : '';
-      html += '<div class="tier3-tile' + activeCls + '" data-cred-sku="' + escapeHtml(sku) + '" onclick="lpSelectCredential(\'' + sku + '\')" title="' + escapeHtml(cat.description) + '">' +
-              '<div class="t3-name">' + escapeHtml(cat.code) + '</div>' +
-              '</div>';
+      html += '<div class="tier2-tile' + activeCls + '" data-cred-sku="' + escapeHtml(sku) + '" onclick="lpSelectCredential(\'' + sku + '\')" title="' + escapeHtml(cat.description) + '">'
+            +   '<div class="ts-icon">' + acIconFor(famIcon) + '</div>'
+            +   '<span class="t2-label" style="' + WRAP + '">' + escapeHtml(cat.code) + (qty > 0 ? (' ×' + qty) : '') + '</span>'
+            + '</div>';
     });
-  });
-  // Mobile passes — a subscription quantity (not a placed/catalog SKU); routes
-  // to §6 Subscriptions. One tile shows the current count; clicking edits it.
-  var mp = (projectInfo.credentials && typeof projectInfo.credentials.mobilePasses === 'number') ? projectInfo.credentials.mobilePasses : 0;
-  html += '<div class="cred-family-label" style="grid-column:1/-1; margin:8px 0 2px; font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);">Mobile</div>';
-  html += '<div class="tier3-tile' + (mp > 0 ? ' active' : '') + '" onclick="editMobilePasses()" title="Mobile passes — subscription (§6)">' +
-          '<div class="t3-name">' + (mp > 0 ? ('Passes ×' + mp) : 'Add passes') + '</div>' +
-          '</div>';
+    html += '</div>';
+  } else if(fam === 'Mobile'){
+    var mp = (projectInfo.credentials && typeof projectInfo.credentials.mobilePasses === 'number') ? projectInfo.credentials.mobilePasses : 0;
+    html += '<div style="' + LBL + '">Mobile passes</div><div class="lp-tier-row">'
+          +   '<div class="tier2-tile' + (mp > 0 ? ' active' : '') + '" onclick="editMobilePasses()" title="Mobile passes — subscription (§6)">'
+          +     '<div class="ts-icon">' + acIconFor('MobilePass') + '</div>'
+          +     '<span class="t2-label" style="' + WRAP + '">' + (mp > 0 ? ('Passes ×' + mp) : 'Add passes') + '</span>'
+          +   '</div>'
+          + '</div>';
+  } else {
+    html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:6px 2px;">Pick a credential type above.</div>';
+  }
   return html;
 }
 
@@ -10876,7 +10896,7 @@ function renderAccessoriesTier3(){
   });
   html += '</div>';
   if(sub === 'credentials'){
-    html += '<div class="lp-tier-row">' + _renderCredentialsTier3() + '</div>';   // wrap in its own grid so family labels span correctly inside the block container
+    html += _renderCredentialsTier3();   // emits its own family switcher + SKU-tile rows (block layout)
   } else if(sub === 'elevator'){
     var ev = (projectInfo.elevatorControl && typeof projectInfo.elevatorControl === 'object') ? projectInfo.elevatorControl : { cabs:0, floors:0 };
     var cabsVal   = (typeof ev.cabs   === 'number' && ev.cabs   > 0) ? ev.cabs   : 0;
