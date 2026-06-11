@@ -9489,6 +9489,8 @@ var currentParcelModel   = null;
 var currentMailboxBrand  = null;
 var currentMailboxModel  = null;
 var currentReaderModel = null;
+// set when arming an overhead-door controller so placeReader flags the placed device
+var currentACOverhead = false;
 // Pass Left-Pane M3: AC drill-down state. currentReaderModel (above)
 // remains the armed SKU; these three name the drill-down path that
 // resolved to it. Persisted per-placement on each acDevice as
@@ -10749,6 +10751,18 @@ function acSetElevator(field, value){
   renderLeftPaneDrillDown('ac');
 }
 
+// Accessories › Overhead Door: set door/transmitter counts; drives the §2.2
+// ACS300 controllers + receivers + transmitters and the Controllers to-place.
+function acSetOverhead(field, value){
+  if(!projectInfo.credentials || typeof projectInfo.credentials !== 'object') projectInfo.credentials = {};
+  var n = parseInt(value, 10); if(!isFinite(n) || n < 0) n = 0;
+  if(field === 'doors') projectInfo.credentials.ohDoors = n;
+  else if(field === 'transmitters') projectInfo.credentials.ohTransmitters = n;
+  markDirty();
+  recalcBom();
+  renderLeftPaneDrillDown('ac');
+}
+
 // ─── Controllers drill-down (Tasks 3.2-UI + 3.3) ───────────────────────────────
 function acDoorCount(){
   var d = 0;
@@ -10797,13 +10811,17 @@ function _acCtrlTileLabel(sku){
 // Concise board-list name: drop the "Brivo " prefix and any "(...)" qualifier.
 function _acShortBoardName(n){ return (n || '').replace(/^Brivo\s+/, '').replace(/\s*\([^)]*\)/g, '').trim(); }
 // Arm a specific catalog controller SKU for canvas placement (to-place tile click).
-function armAcSku(sku){
+function armAcSku(sku, overhead){
   var row = null;
   for(var i = 0; i < BRIVO_CATALOG.length; i++){ if(BRIVO_CATALOG[i].sku === sku){ row = BRIVO_CATALOG[i]; break; } }
   // EXP chassis aren't catalog rows but are still placeable physical boxes.
   _cancelAllPlacement();
   currentACBrand = 'brivo'; currentACCategory = 'Controllers'; currentACSubcategory = row ? row.subcategory : null;
   currentReaderModel = sku;
+  // Overhead-door arm: set AFTER _cancelAllPlacement (which resets the flag) so
+  // placeReader stamps overheadDoor:true on the placed chassis. Regular arms
+  // pass nothing → false.
+  currentACOverhead = !!overhead;
   renderLeftPaneDrillDown('ac');
 }
 function acSetPowerMode(pm){
@@ -10861,7 +10879,24 @@ function renderAccessoriesTier3(){
           +   '</div>'
           + '</div>';
   } else if(sub === 'overhead'){
-    html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Overhead-door controllers — coming in the next build.</div>';
+    var cr = (projectInfo.credentials && typeof projectInfo.credentials === 'object') ? projectInfo.credentials : {};
+    var ohD = (typeof cr.ohDoors === 'number' && cr.ohDoors > 0) ? cr.ohDoors : 0;
+    var ohT = (typeof cr.ohTransmitters === 'number' && cr.ohTransmitters > 0) ? cr.ohTransmitters : 0;
+    var ohRx = (ohT > 0) ? Math.max(ohD, 1) : ohD;
+    var ohIn  = 'width:72px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono); text-align:right;';
+    var ohRow = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;';
+    html += '<div style="padding:6px 2px 2px;">'
+          +   '<div style="font:500 11px var(--font-ui); color:var(--text-muted); margin-bottom:10px;">Each overhead door gets one ACS300 controller (place it under Controllers) plus a receiver; transmitters are handed to users.</div>'
+          +   '<div style="' + ohRow + '"><label style="font:600 11px var(--font-ui);">Overhead doors</label>'
+          +     '<input type="number" min="0" step="1" id="ac-oh-doors" value="' + ohD + '" onchange="acSetOverhead(\'doors\', this.value)" style="' + ohIn + '"></div>'
+          +   '<div style="' + ohRow + ' margin-bottom:0;"><label style="font:600 11px var(--font-ui);">Transmitters (remotes)</label>'
+          +     '<input type="number" min="0" step="1" id="ac-oh-tx" value="' + ohT + '" onchange="acSetOverhead(\'transmitters\', this.value)" style="' + ohIn + '"></div>'
+          +   '<div style="font:500 10px var(--font-ui); color:var(--text-muted); margin-top:10px;">'
+          +     (ohD > 0
+                   ? ('Adds ' + ohD + ' ACS300 &middot; ' + ohRx + ' receiver' + (ohRx === 1 ? '' : 's') + ' &middot; ' + ohT + ' transmitter' + (ohT === 1 ? '' : 's') + ' to &sect;2.2; place the ACS300 under Controllers.')
+                   : (ohT > 0 ? 'Transmitters require at least one overhead door (1 receiver will be added).' : 'Enter the number of overhead doors.'))
+          +   '</div>'
+          + '</div>';
   } else {
     html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Choose a category above.</div>';
   }
@@ -10909,6 +10944,28 @@ function renderAcControllersTier3(){
             + '</div>';
     });
     html += '</div>';
+  }
+  // Overhead-door controllers: one ACS300 per overhead door (count from
+  // Accessories › Overhead). Placed overhead controllers (overheadDoor:true)
+  // check these off; arming passes overhead=true so the placed box is flagged.
+  var ohDoorsN = (projectInfo.credentials && typeof projectInfo.credentials.ohDoors === 'number') ? projectInfo.credentials.ohDoors : 0;
+  if(ohDoorsN > 0){
+    var ohPlaced = acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers' && d.overheadDoor && (d.sku === 'B-ACS300-E-B'); }).length;
+    var ohRemain = ohDoorsN - ohPlaced;
+    html += '<div style="' + LBL + '">Overhead door controllers</div>';
+    if(ohRemain > 0){
+      html += '<div class="lp-tier-row">';
+      for(var _o = 0; _o < ohRemain; _o++){
+        var ohArmed = (currentReaderModel === 'B-ACS300-E-B' && currentACOverhead) ? ' active' : '';
+        html += '<div class="tier2-tile' + ohArmed + '" style="' + TILE + '" onclick="armAcSku(\'B-ACS300-E-B\', true)" title="Place overhead-door ACS300">'
+              +   '<div class="ts-icon" style="' + ICN + '">' + _acCtrlIcon('B-ACS300-E-B') + '</div>'
+              +   '<span class="t2-label" style="' + LBLF + '">ACS300 &middot; OH</span>'
+              + '</div>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px;">&#10003; All ' + ohDoorsN + ' overhead controller' + (ohDoorsN === 1 ? '' : 's') + ' placed</div>';
+    }
   }
   // placed chassis (visual confirmation) — every controller physically on the
   // canvas, grouped by SKU, shown even if it doesn't match the current
@@ -13980,7 +14037,8 @@ function placeReader(cssX, cssY){
     category:     currentACCategory    || null,
     subcategory:  currentACSubcategory || null,
     variantValue: variantValue,
-    sku:          currentReaderModel   || null
+    sku:          currentReaderModel   || null,
+    overheadDoor: !!currentACOverhead   // flags an overhead-door chassis; regular devices get false
   };
   acDevices.push(dev);
   markDirty();
@@ -15668,6 +15726,7 @@ function _cancelAllPlacement(){
   // navigation, NOT arm — leave them so the user's left-pane state
   // persists across cancellations).
   currentReaderModel   = null;
+  currentACOverhead    = false;  // overhead-door arm flag is part of the arm, clear it
   // Head-end + Switch (catalog families)
   currentCmvrSku       = null;
   currentSwitchSku     = null;
@@ -17370,6 +17429,13 @@ function applyProjectState(data){
   // all devices stay routed to §2.1 until the user opts a device in via
   // the right-panel checkbox.
   acDevices.forEach(function(dev){ if(typeof dev.overheadDoor !== 'boolean') dev.overheadDoor = false; });
+  // Seed the overhead-door count from any overhead-flagged controllers already
+  // placed on the canvas (older projects predate the explicit door count), so
+  // the §2.2 ACS300 auto-spec reflects them without manual re-entry.
+  if(projectInfo.credentials && !(projectInfo.credentials.ohDoors > 0)){
+    var _ohPlacedN = acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers' && d.overheadDoor; }).length;
+    if(_ohPlacedN > 0){ projectInfo.credentials.ohDoors = _ohPlacedN; if(typeof showOneShotToast === 'function') showOneShotToast('Set overhead doors to ' + _ohPlacedN + ' from placed overhead controllers — see Accessories › Overhead.'); }
+  }
   // DoorBird M1 (v31 → v32): smartApartment intercom devices gain optional
   // surfaceMount + pedestal booleans. Default false on older saves so the
   // BOM emitter's truthiness check is reliable. No-op for fresh saves where
@@ -20789,12 +20855,12 @@ function computeAutoRows(){
   // with the (existing) credentials helper keys impossible.
   acDevices.forEach(function(d){
     var cat = acCategoryOf(d);
-    // AC respec: regular-door controllers are billed via the auto-spec
-    // (acControllerPlan), so a placed regular controller is a visual/riser
-    // instance only — skip it here to avoid double-counting. OVERHEAD-door
-    // controllers are NOT covered by the auto-spec (they're separate, §2.2),
-    // so a placed overhead controller still bills via the §2.2 routing below.
-    if(cat === 'Controllers' && !d.overheadDoor) return;
+    // AC respec: ALL placed controllers are auto-spec'd, so a placed controller
+    // is a visual/riser instance only — skip it here to avoid double-counting.
+    // Regular-door controllers come from the reader-driven auto-spec
+    // (acControllerPlan, §2.1); overhead-door controllers come from the
+    // overhead-door count (ohDoors → one ACS300 each, §2.2, emitted above).
+    if(cat === 'Controllers') return;
     if(cat !== 'Readers' && cat !== 'Controllers') return;
     var sku = d.sku || d.model;
     if(!sku) return;
@@ -20950,6 +21016,21 @@ function computeAutoRows(){
   }
   _ohPush('FP-WRR22', _ohRx);
   _ohPush('FP-WRT2B', _ohTx);
+  // Overhead-door controllers: one ACS300 per overhead door (§2.2), auto-spec'd
+  // like the main chassis. Placed overhead controllers are suppressed (visual
+  // only) so they never double-count against this. Mirrors the _ohPush row
+  // shape exactly (auto/src/key/sku/desc/qty/cost/list/unit:0/sectionAuto/
+  // section:'2.2'); the ACS300 isn't a credential, so its name comes from
+  // BRIVO_CATALOG (BRIVO_CRED_CATALOG has no ACS300) and the key uses the
+  // 'auto-ac-oh-<SKU>' shape (matches the §2.2 OH controller row key).
+  if(_ohDoors > 0){
+    var _ohCtrlSku  = 'B-ACS300-E-B';
+    var _ohCtrlCost = getUnitPrice(_ohCtrlSku); if(typeof _ohCtrlCost !== 'number' || !isFinite(_ohCtrlCost)) _ohCtrlCost = 0;
+    var _ohCtrlList = getListPrice(_ohCtrlSku); if(typeof _ohCtrlList !== 'number' || !isFinite(_ohCtrlList)) _ohCtrlList = null;
+    var _ohCtrlName = 'Brivo ACS300 Controller';
+    for(var _bci = 0; _bci < BRIVO_CATALOG.length; _bci++){ if(BRIVO_CATALOG[_bci].sku === _ohCtrlSku){ _ohCtrlName = BRIVO_CATALOG[_bci].name; break; } }
+    acRows.push({ auto:true, src:'accessControl', key:'auto-ac-oh-' + _ohCtrlSku, sku:_ohCtrlSku, desc:_ohCtrlName, qty:_ohDoors, cost:_ohCtrlCost, list:_ohCtrlList, unit:0, sectionAuto:true, section:'2.2' });
+  }
 
   // ─── Elevator Control auto-spec ────────────────────────────────────────
   // "Elevator control" = the access system is installed in the elevator: a
