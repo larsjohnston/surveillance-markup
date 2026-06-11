@@ -10172,6 +10172,19 @@ function brandLabelFor(brand){
          brand === 'other' ? 'Other' : '—';
 }
 
+// Perf: innerHTML writes are the expensive part of the left-pane/BOM
+// repaints (full DOM re-parse). Renders are triggered defensively from many
+// paths, often producing byte-identical HTML — skip the parse when nothing
+// changed. The last-rendered string is memoized on the element; EVERY
+// writer of a memoized container must go through this helper (a direct
+// .innerHTML write elsewhere must null el._lastHtml first).
+function _setHtmlIfChanged(el, html){
+  if(!el) return;
+  if(el._lastHtml === html) return;
+  el._lastHtml = html;
+  el.innerHTML = html;
+}
+
 function renderLeftPaneDrillDown(mode){
   if(mode === 'ac'){ _renderAcDrillDown(); return; }
   // Pass N+1 M3: smart-apartment drill-down dispatch. Each renderer paints
@@ -10226,7 +10239,7 @@ function renderLeftPaneDrillDown(mode){
               '<span class="t2-label">' + escapeHtml(sm.label) + '</span>' +
               '</div>';
   });
-  t2.innerHTML = t2Html;
+  _setHtmlIfChanged(t2, t2Html);
 
   var styleLabel = STYLE_META[currentType] ? STYLE_META[currentType].label : currentType;
   // Static tier-3 header (Cleanup M1). Reached only when Tier 3 area is
@@ -10239,7 +10252,7 @@ function renderLeftPaneDrillDown(mode){
     // Panel-cleanup P1: empty-state spans the full grid width so the
     // message centers cleanly across all 5 columns instead of collapsing
     // into a single-column cell.
-    t3.innerHTML = '<div style="grid-column:1/-1;padding:20px 12px;text-align:center;color:#9ca3af;font-size:10px;font-style:italic;">No ' + escapeHtml(styleLabel) + ' models for ' + escapeHtml(brandLabelFor(currentBrand)) + '.</div>';
+    _setHtmlIfChanged(t3, '<div style="grid-column:1/-1;padding:20px 12px;text-align:center;color:#9ca3af;font-size:10px;font-style:italic;">No ' + escapeHtml(styleLabel) + ' models for ' + escapeHtml(brandLabelFor(currentBrand)) + '.</div>');
     return;
   }
   // Panel-cleanup P1/P6: 5-column tile grid (.tier3-tile inside the
@@ -10255,7 +10268,7 @@ function renderLeftPaneDrillDown(mode){
               '<div class="t3-name">' + escapeHtml(m.spec.model) + '</div>' +
               '</div>';
   });
-  t3.innerHTML = t3Html;
+  _setHtmlIfChanged(t3, t3Html);
 }
 
 // Tier 1 click handler. "Other" short-circuits to generic placement.
@@ -10626,7 +10639,7 @@ function _repaintCredentialsTier3(){
   if(typeof acCredentialsView !== 'undefined' && !acCredentialsView) return;
   var t3 = document.getElementById('lp-ac-tier3');
   if(!t3) return;
-  t3.innerHTML = _renderCredentialsTier3();
+  _setHtmlIfChanged(t3, _renderCredentialsTier3());
 }
 
 function updateRightPanelDisplayForCredential(sku){
@@ -11129,7 +11142,7 @@ function _renderAcDrillDown(){
             '<div class="ts-icon">' + acIconFor('Accessories') + '</div>' +
             '<span class="t2-label">Accessories</span>' +
             '</div>';
-  t2.innerHTML = t2Html;
+  _setHtmlIfChanged(t2, t2Html);
 
   // Tier-3 header label — switches between "AC Models" (subcategory drill)
   // and "Credentials" (when the user is in the credentials drill-in).
@@ -11177,7 +11190,7 @@ function _renderAcDrillDown(){
     t3.style.gridTemplateColumns = '';
     t3.style.display = '';
   }
-  t3.innerHTML = t3Html;
+  _setHtmlIfChanged(t3, t3Html);
   // Panel-cleanup P5: inline variant <select> rendering removed. The
   // right-panel variant control (updateReaderVariant) is now the only
   // surface for changing a Brivo device's Technology / Form factor.
@@ -22305,7 +22318,11 @@ function recalcBom(){
     html += '</div>';
   }
 
-  document.getElementById('bom-body').innerHTML = html;
+  // Perf: skip the full-table DOM re-parse when the rendered HTML is
+  // byte-identical (recalcBom fires from ~30 sites, often with no table
+  // change). Direct DOM mutators inside bom-body (the pill editor) null
+  // _lastHtml to force the next repaint.
+  _setHtmlIfChanged(document.getElementById('bom-body'), html);
 
   // SQ-wizard M3: materials rendering done — repaint labour so a
   // materials Qty/rule edit propagates through to the labour seed +
@@ -22957,6 +22974,10 @@ function _sqStartEditPill(sectionId){
                 +    '<button class="cancel" type="button" onclick="_sqCancelPill(\'' + sectionId + '\')" title="Cancel">&times;</button>'
                 +  '</span>';
   headerPill.outerHTML = editorHtml;
+  // The pill→editor swap mutates bom-body's DOM directly — invalidate the
+  // innerHTML memo so the next recalcBom (commit/cancel) always repaints.
+  var _bb = document.getElementById('bom-body');
+  if(_bb) _bb._lastHtml = null;
   var inp = document.getElementById('sq-edit-val-' + sectionId);
   if(inp){ inp.focus(); inp.select(); }
 }
