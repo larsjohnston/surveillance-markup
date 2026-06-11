@@ -10838,7 +10838,7 @@ function renderAccessoriesTier3(){
   var html = '';
   // sub-tile switcher row (always shown)
   html += '<div class="lp-tier-row">';
-  [['credentials','Credentials','Accessories'],['elevator','Elevator','Elevator'],['overhead','Overhead','OverheadDoor']].forEach(function(s){
+  [['credentials','Credentials','ProxFob'],['elevator','Elevator','Elevator'],['overhead','Overhead','OverheadDoor']].forEach(function(s){
     var act = (sub === s[0]) ? ' active' : '';
     html += '<div class="tier2-tile' + act + '" onclick="lpPickAccessorySub(\'' + s[0] + '\')" title="' + s[1] + '">'
           +   '<div class="ts-icon">' + acIconFor(s[2]) + '</div>'
@@ -10847,7 +10847,7 @@ function renderAccessoriesTier3(){
   });
   html += '</div>';
   if(sub === 'credentials'){
-    html += _renderCredentialsTier3();   // existing credential grid
+    html += '<div class="lp-tier-row">' + _renderCredentialsTier3() + '</div>';   // wrap in its own grid so family labels span correctly inside the block container
   } else if(sub === 'elevator'){
     html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Elevator control inputs — coming in the next build.</div>';
   } else if(sub === 'overhead'){
@@ -11038,7 +11038,7 @@ function _renderAcDrillDown(){
     // regardless of the container's display mode.
     t3Html = renderAccessoriesTier3();
     t3.style.gridTemplateColumns = '';
-    t3.style.display = (acAccessorySub === 'credentials') ? '' : 'block';
+    t3.style.display = 'block';   // block so the full-width sub-switcher row isn't crammed into one grid cell
   } else if(currentACCategory === 'Controllers'){
     // Controllers drill-down (Tasks 3.2-UI + 3.3): placement flag, auto-spec'd
     // controller to-place tiles, read-only board list, and power-supply tiles.
