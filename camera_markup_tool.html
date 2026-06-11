@@ -10398,7 +10398,11 @@ var AC_ICONS = {
   // Smart card — for the Cards tile.
   CredCard: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="9" width="18" height="2.2" fill="currentColor"/><rect x="6" y="14" width="6" height="1.4" fill="currentColor"/></svg>',
   // Phone — for the Mobile tile.
-  MobilePass: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="10.5" y="18.5" width="3" height="1.4" rx="0.7" fill="currentColor"/></svg>'
+  MobilePass: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="10.5" y="18.5" width="3" height="1.4" rx="0.7" fill="currentColor"/></svg>',
+  // Power-supply icons (Internal PSB / LSP / Altronix) for the Controllers view.
+  PowerPSB: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="7" width="16" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="19.5" y="10" width="2.2" height="4" rx="0.6" fill="currentColor"/><path d="M12 8.5l-2.5 4H12l-1.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+  PowerLSP: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 5 13h5l-1 9 9-13h-6z" fill="currentColor"/></svg>',
+  PowerAltronix: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="8" x2="20" y2="8" stroke="currentColor" stroke-width="1.2"/><rect x="10" y="12" width="4" height="6" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>'
 };
 function acIconFor(key){ return AC_ICONS[key] || ''; }
 
@@ -10758,6 +10762,16 @@ function _acCtrlIcon(sku){
   if(sku.indexOf('ACS100')  !== -1) return acIconFor('ACS100');
   return acIconFor('Controllers');
 }
+// Short label for a controller to-place tile (fits the small square tile).
+function _acCtrlTileLabel(sku){
+  if(sku === 'B-ACS6100R-E') return 'ACS6100 R';
+  if(sku === 'B-ACS6100L-E') return 'ACS6100 L';
+  if(sku.indexOf('ACS300') !== -1) return 'ACS300';
+  if(sku.indexOf('ACS100') !== -1) return 'ACS100';
+  return _acShortName(sku);
+}
+// Concise board-list name: drop the "Brivo " prefix and any "(...)" qualifier.
+function _acShortBoardName(n){ return (n || '').replace(/^Brivo\s+/, '').replace(/\s*\([^)]*\)/g, '').trim(); }
 // Arm a specific catalog controller SKU for canvas placement (to-place tile click).
 function armAcSku(sku){
   var row = null;
@@ -10782,22 +10796,24 @@ function renderAcControllersTier3(){
   if(plan.controllers.length === 0 && plan.warnings.length === 0){
     return '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px;">Place readers to auto-spec controllers.</div>';
   }
+  var LBL  = 'font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 4px;';
+  var WRAP = 'white-space:normal; overflow:visible; text-overflow:clip; line-height:1.15;';  // override .t2-label ellipsis so short labels wrap instead of truncating
   var required = mains.reduce(function(s,c){ return s + c.qty; }, 0);
   var placed   = placedControllerCount();
   var html = '';
-  // placement flag
+  // placement flag (full-width banner)
   if(required > 0 && placed < required){
-    html += '<div style="font:600 11px var(--font-ui); color:#92400e; background:#fef3c7; border-radius:6px; padding:7px 10px; margin-bottom:8px;">⚠ ' + placed + ' of ' + required + ' controllers placed — place the rest on the canvas</div>';
+    html += '<div style="font:600 11px var(--font-ui); color:#92400e; background:#fef3c7; border-radius:6px; padding:7px 10px; margin-bottom:4px;">&#9888; ' + placed + ' of ' + required + ' placed — place the rest on the canvas</div>';
   } else if(required > 0){
-    html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px; margin-bottom:8px;">✓ all ' + required + ' controllers placed</div>';
+    html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px; margin-bottom:4px;">&#10003; all ' + required + ' controller' + (required > 1 ? 's' : '') + ' placed</div>';
   }
   // to-place tiles
-  html += '<div style="font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:6px 0 4px;">To place</div><div class="lp-tier-row">';
+  html += '<div style="' + LBL + ' margin-top:2px;">To place</div><div class="lp-tier-row">';
   mains.forEach(function(c){
     var armed = (currentReaderModel === c.sku) ? ' active' : '';
     html += '<div class="tier2-tile' + armed + '" onclick="armAcSku(\'' + c.sku + '\')" title="Place ' + escapeHtml(c.name) + '">'
           +   '<div class="ts-icon">' + _acCtrlIcon(c.sku) + '</div>'
-          +   '<span class="t2-label">' + escapeHtml(_acShortName(c.name)) + (c.qty > 1 ? (' ×' + c.qty) : '') + '</span>'
+          +   '<span class="t2-label" style="' + WRAP + '">' + escapeHtml(_acCtrlTileLabel(c.sku)) + (c.qty > 1 ? (' &times;' + c.qty) : '') + '</span>'
           + '</div>';
   });
   html += '</div>';
@@ -10807,26 +10823,28 @@ function renderAcControllersTier3(){
   if(io > 0) boards.push({ sku:'B-ACS6100-IO', name:'Elevator I/O Board', qty: io });
   boards = boards.concat(plan.power);
   if(boards.length){
-    html += '<div style="font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 4px;">Boards in use</div>';
+    html += '<div style="' + LBL + '">Boards in use</div>';
     html += '<div style="border:1px solid var(--border); border-radius:6px; overflow:hidden;">';
     boards.forEach(function(b, i){
-      html += '<div style="display:flex; justify-content:space-between; padding:5px 9px; font:500 11px var(--font-ui);' + (i ? ' border-top:1px solid var(--border);' : '') + '">'
-            +   '<span>' + escapeHtml(_acShortName(b.name)) + '</span><span style="color:var(--text-muted);">×' + b.qty + '</span></div>';
+      html += '<div style="display:flex; justify-content:space-between; gap:8px; padding:5px 9px; font:500 11px var(--font-ui); color:var(--text);' + (i ? ' border-top:1px solid var(--border);' : '') + '">'
+            +   '<span style="' + WRAP + '">' + escapeHtml(_acShortBoardName(b.name)) + '</span>'
+            +   '<span style="color:var(--text-muted); flex-shrink:0;">&times;' + b.qty + '</span>'
+            + '</div>';
     });
     html += '</div>';
   }
   // warnings (if any)
   plan.warnings.forEach(function(w){
-    html += '<div style="font:500 10px var(--font-ui); color:#92400e; margin-top:6px;">⚠ ' + escapeHtml(w) + '</div>';
+    html += '<div style="font:500 10px var(--font-ui); color:#92400e; margin-top:6px;">&#9888; ' + escapeHtml(w) + '</div>';
   });
   // power-supply tiles
   var pm = _acPowerMode();
-  html += '<div style="font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 4px;">Power supply</div><div class="lp-tier-row">';
-  [['internal','Internal PSB'],['lsp','LSP'],['altronix','Altronix']].forEach(function(p){
+  html += '<div style="' + LBL + '">Power supply</div><div class="lp-tier-row">';
+  [['internal','Internal','PowerPSB'],['lsp','LSP','PowerLSP'],['altronix','Altronix','PowerAltronix']].forEach(function(p){
     var act = (pm === p[0]) ? ' active' : '';
-    html += '<div class="tier2-tile' + act + '" onclick="acSetPowerMode(\'' + p[0] + '\')" title="' + p[1] + '">'
-          +   '<div class="ts-icon">' + acIconFor('Controllers') + '</div>'
-          +   '<span class="t2-label">' + p[1] + '</span>'
+    html += '<div class="tier2-tile' + act + '" onclick="acSetPowerMode(\'' + p[0] + '\')" title="' + p[1] + ' power">'
+          +   '<div class="ts-icon">' + acIconFor(p[2]) + '</div>'
+          +   '<span class="t2-label" style="' + WRAP + '">' + p[1] + '</span>'
           + '</div>';
   });
   html += '</div>';
@@ -10921,11 +10939,15 @@ function _renderAcDrillDown(){
     // diff focus, slated for cleanup in a follow-up.
     t3Html = _renderCredentialsTier3();
     t3.style.gridTemplateColumns = '';
+    t3.style.display = '';
   } else if(currentACCategory === 'Controllers'){
     // Controllers drill-down (Tasks 3.2-UI + 3.3): placement flag, auto-spec'd
     // controller to-place tiles, read-only board list, and power-supply tiles.
+    // Rendered as a vertical block stack (sections), so the container's grid
+    // is switched off here; each tile group uses its own nested .lp-tier-row.
     t3Html = renderAcControllersTier3();
     t3.style.gridTemplateColumns = '';
+    t3.style.display = 'block';
   } else {
     // Default: BRIVO_CATALOG subcategory leaves for currentACCategory.
     var subs = currentACCategory ? subcategoriesFor(currentACCategory) : [];
@@ -10937,9 +10959,10 @@ function _renderAcDrillDown(){
                 '</div>';
     });
     // Restore the default 3-col grid (from .lp-tier-row) when leaving
-    // credentials mode. Empty string clears the inline override so the
-    // CSS class rule takes over again.
+    // credentials/Controllers mode. Empty string clears the inline overrides
+    // so the CSS class rule takes over again.
     t3.style.gridTemplateColumns = '';
+    t3.style.display = '';
   }
   t3.innerHTML = t3Html;
   // Panel-cleanup P5: inline variant <select> rendering removed. The
