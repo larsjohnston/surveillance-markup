@@ -86,9 +86,9 @@ Existing v10→v34 migration chain becomes the one-time importer for the 5 legac
 
 Offline mode; concurrent multi-user editing; 2FA; regions beyond CA/US; full normalization of project JSON; native mobile; in-app price-book editing by tenants (discounts only).
 
-## 9. Open items for owner confirmation
+## 9. Open items — RESOLVED (owner confirmed 2026-06-11)
 
-1. "apple pay" in Q13 = **Sign in with Apple** (auth) — correct? (Apple Pay as a payment method comes free with Stripe either way.)
-2. "move to reach asap" = **React** — correct?
-3. Aggregate-pool consent: OK to make it a standard ToS term (opt-out for enterprise tenants), or opt-in?
-4. Platform name/brand for the SaaS itself (the tool needs a product name independent of SMART/Calgary Lock & Safe for white-labeling).
+1. ~~"apple pay" in Q13~~ → **Sign in with Apple** confirmed.
+2. ~~"move to reach asap"~~ → **React** confirmed.
+3. Aggregate-pool consent → **standard ToS term** confirmed.
+4. Product name → shortlist delivered (PlanQuote, SiteQuote, QuoteCanvas, SpecDraft, SpecWise, PlanPilot); owner to pick. Trademark (CIPO/USPTO) + domain clearance required before committing. Does not block Phase 1.
