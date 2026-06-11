@@ -21795,9 +21795,18 @@ function buildTakeOffData(){
 // Pass D: user-driven BOM config inputs route through this so we can mark
 // the project dirty without touching the many internal recalcBom callers
 // (applyProjectState, saveTabEdit, etc., which mustn't dirty the file).
+// Perf: the full-table recalc is debounced — these fire per keystroke
+// (stor-days / stor-fps / bom-margin-pct) and recalcBom rebuilds the whole
+// BOM via innerHTML, which froze typing on large projects. markDirty stays
+// immediate; the rebuild coalesces to one run 250ms after typing stops.
+var _recalcBomTimer = null;
+function recalcBomDebounced(){
+  if(_recalcBomTimer) clearTimeout(_recalcBomTimer);
+  _recalcBomTimer = setTimeout(function(){ _recalcBomTimer = null; recalcBom(); }, 250);
+}
 function bomConfigChanged(){
   markDirty();
-  recalcBom();
+  recalcBomDebounced();
 }
 
 // SQ + DHW polish — Tax % canonical setter. Wired to #bom-tax-pct's
