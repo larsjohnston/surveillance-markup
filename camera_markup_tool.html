@@ -2972,7 +2972,7 @@ input[type="number"]::-webkit-outer-spin-button {
         <div class="rp-field">
           <label class="rp-label">Quantity</label>
           <div class="rp-slot">
-            <input type="number" id="inp-credential-qty" min="1" step="1" value="1" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono);">
+            <input type="number" id="inp-credential-qty" min="0" step="1" value="1" style="width:80px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono);">
           </div>
         </div>
         <div style="margin-top:12px;">
@@ -10663,8 +10663,7 @@ function updateRightPanelDisplayForCredential(sku){
   // canonical "how many are on the quote" readout for this credential).
   // Button label flips: "Add to Quote" while qty=0, "Update" once a row
   // exists. addCredentialToBom REPLACES the stored qty (input value = what
-  // lands on the quote). qty<1 still clamps to 1 in the Add path so an
-  // accidental Add at 0 produces a real row.
+  // lands on the quote); entering 0 removes the credential from the quote.
   var qtyInp  = document.getElementById('inp-credential-qty');
   var btnAdd  = document.getElementById('btn-credential-add');
   var current = (projectInfo.credentials && projectInfo.credentials.brivoSkus &&
@@ -10680,7 +10679,7 @@ function addCredentialToBom(){
   var qtyInp = document.getElementById('inp-credential-qty');
   var raw = qtyInp ? (qtyInp.value || '').trim() : '';
   var qty = raw === '' ? 1 : parseInt(raw, 10);
-  if(!isFinite(qty) || qty < 1) qty = 1;
+  if(!isFinite(qty)) qty = 1;
   if(!projectInfo.credentials || typeof projectInfo.credentials !== 'object'){
     projectInfo.credentials = {};
   }
@@ -10688,9 +10687,16 @@ function addCredentialToBom(){
     projectInfo.credentials.brivoSkus = {};
   }
   // Credentials-wiring v26 follow-up: REPLACE the stored qty (was: increment).
-  // The right panel now prefills the input with the current stored qty so the
-  // user sees what they're editing; Add/Update writes the input value as-is.
-  projectInfo.credentials.brivoSkus[sku] = qty;
+  // The right panel prefills the input with the current stored qty so the user
+  // sees what they're editing; Add/Update writes the input value as-is.
+  // Qty 0 (or negative) REMOVES the credential from the quote — with replace
+  // semantics, 0 is the natural "take it off" gesture (blank still means 1 so
+  // a bare Add produces a real row).
+  if(qty <= 0){
+    delete projectInfo.credentials.brivoSkus[sku];
+  } else {
+    projectInfo.credentials.brivoSkus[sku] = qty;
+  }
   markDirty();
   recalcBom();
   closeRightPanel();
