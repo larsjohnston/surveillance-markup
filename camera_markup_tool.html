@@ -2669,13 +2669,7 @@ input[type="number"]::-webkit-outer-spin-button {
              dropdown was removed. New AC devices default per
              DEFAULT_AC_DEFAULTS (Dual-tech for the Reader subcategories);
              per-device overrides live on the right panel. -->
-        <!-- Task 2.2: Elevator control toggle. Sits beneath the tier-1
-             Readers/Controllers/Credentials row. ON seeds a default cabs/floors
-             (full cars/floors modal is a later task); OFF clears the config. -->
-        <div id="ac-elev-toggle-row" style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
-          <span style="font:600 12px var(--font-ui);">Elevator control</span>
-          <label class="switch" style="cursor:pointer;"><input type="checkbox" id="ac-elev-toggle" onchange="onElevatorToggle(this.checked)"></label>
-        </div>
+        <!-- Elevator control moved into Accessories › Elevator (inline cars/floors inputs). -->
       </div>
       <!-- Panel-cleanup P4: per-page placed-AC list removed; updateAcList()
            is null-safe so call sites stay valid no-ops. -->
@@ -10738,22 +10732,21 @@ function _renderCredentialsTier3(){
 // save shape (unused at placement time post-P5; DEFAULT_AC_DEFAULTS is
 // the new placement default source).
 
-// Elevator control toggle. The precise cars/floors modal is a later task; for
-// now ON seeds a sensible default (1 car, building floor count) and OFF clears.
-function onElevatorToggle(on){
+// Accessories › Elevator Control: set cars/floors inline. Setting cars auto-
+// pulls the floor count from the floorplan (the integrator can adjust); the
+// counts drive the elevator I/O boards (acElevBoards → Controllers).
+function acSetElevator(field, value){
   if(!projectInfo.elevatorControl || typeof projectInfo.elevatorControl !== 'object') projectInfo.elevatorControl = { cabs:0, floors:0 };
-  if(on){
-    if(!(projectInfo.elevatorControl.cabs > 0)){
-      projectInfo.elevatorControl.cabs = 1;
-      projectInfo.elevatorControl.floors = buildingFloorCount();
-    }
-  } else {
-    projectInfo.elevatorControl.cabs = 0;
-    projectInfo.elevatorControl.floors = 0;
+  var n = parseInt(value, 10); if(!isFinite(n) || n < 0) n = 0;
+  if(field === 'cabs'){
+    projectInfo.elevatorControl.cabs = n;
+    if(n > 0 && !(projectInfo.elevatorControl.floors > 0)) projectInfo.elevatorControl.floors = buildingFloorCount();
+  } else if(field === 'floors'){
+    projectInfo.elevatorControl.floors = n;
   }
   markDirty();
   recalcBom();
-  renderLeftPaneDrillDown('ac');  // refresh Controllers view so the elevator I/O board appears/clears in "Boards in use"
+  renderLeftPaneDrillDown('ac');
 }
 
 // ─── Controllers drill-down (Tasks 3.2-UI + 3.3) ───────────────────────────────
@@ -10849,7 +10842,24 @@ function renderAccessoriesTier3(){
   if(sub === 'credentials'){
     html += '<div class="lp-tier-row">' + _renderCredentialsTier3() + '</div>';   // wrap in its own grid so family labels span correctly inside the block container
   } else if(sub === 'elevator'){
-    html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Elevator control inputs — coming in the next build.</div>';
+    var ev = (projectInfo.elevatorControl && typeof projectInfo.elevatorControl === 'object') ? projectInfo.elevatorControl : { cabs:0, floors:0 };
+    var cabsVal   = (typeof ev.cabs   === 'number' && ev.cabs   > 0) ? ev.cabs   : 0;
+    var floorsVal = (typeof ev.floors === 'number' && ev.floors > 0) ? ev.floors : buildingFloorCount();
+    var ioN = acElevBoards();
+    var inStyle  = 'width:72px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono); text-align:right;';
+    var rowStyle = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;';
+    html += '<div style="padding:6px 2px 2px;">'
+          +   '<div style="font:500 11px var(--font-ui); color:var(--text-muted); margin-bottom:10px;">Confirm the elevator details &mdash; floors are pulled from the floorplan; adjust if needed.</div>'
+          +   '<div style="' + rowStyle + '"><label style="font:600 11px var(--font-ui);">Elevator cars</label>'
+          +     '<input type="number" min="0" step="1" id="ac-elev-cabs" value="' + cabsVal + '" onchange="acSetElevator(\'cabs\', this.value)" style="' + inStyle + '"></div>'
+          +   '<div style="' + rowStyle + ' margin-bottom:0;"><label style="font:600 11px var(--font-ui);">Controlled floors</label>'
+          +     '<input type="number" min="0" step="1" id="ac-elev-floors" value="' + floorsVal + '" onchange="acSetElevator(\'floors\', this.value)" style="' + inStyle + '"></div>'
+          +   '<div style="font:500 10px var(--font-ui); color:var(--text-muted); margin-top:10px;">'
+          +     (cabsVal > 0
+                   ? (ioN + ' I/O board' + (ioN === 1 ? '' : 's') + ' &middot; ' + cabsVal + ' car' + (cabsVal === 1 ? '' : 's') + ' &times; &lceil;' + floorsVal + ' &divide; 8&rceil; &mdash; shown under Controllers &rsaquo; Boards in use')
+                   : 'Set cars above to enable elevator control.')
+          +   '</div>'
+          + '</div>';
   } else if(sub === 'overhead'){
     html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Overhead-door controllers — coming in the next build.</div>';
   } else {
@@ -11068,9 +11078,6 @@ function _renderAcDrillDown(){
   // right-panel variant control (updateReaderVariant) is now the only
   // surface for changing a Brivo device's Technology / Form factor.
 
-  // Task 2.2: reflect elevator-control state on the toggle checkbox.
-  var _elevToggle = document.getElementById('ac-elev-toggle');
-  if(_elevToggle){ _elevToggle.checked = !!(projectInfo.elevatorControl && projectInfo.elevatorControl.cabs > 0); }
 }
 
 // ─── PDF Import ───────────────────────────────────────────────────────────────
