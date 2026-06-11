@@ -10883,20 +10883,43 @@ function renderAccessoriesTier3(){
     var ohD = (typeof cr.ohDoors === 'number' && cr.ohDoors > 0) ? cr.ohDoors : 0;
     var ohT = (typeof cr.ohTransmitters === 'number' && cr.ohTransmitters > 0) ? cr.ohTransmitters : 0;
     var ohRx = (ohT > 0) ? Math.max(ohD, 1) : ohD;
-    var ohIn  = 'width:72px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono); text-align:right;';
-    var ohRow = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;';
+    var ohIn   = 'width:72px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; font:600 12px var(--font-mono); text-align:right;';
+    var ohRow  = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;';
+    var ohLBL  = 'font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:12px 0 4px;';
+    var ohTILE = 'min-height:48px; padding:5px 3px; gap:2px;';
+    var ohICN  = 'width:16px; height:16px;';
+    var ohLBLF = 'white-space:normal; overflow:visible; text-overflow:clip; line-height:1.15; font-size:8px;';
     html += '<div style="padding:6px 2px 2px;">'
-          +   '<div style="font:500 11px var(--font-ui); color:var(--text-muted); margin-bottom:10px;">Each overhead door gets one ACS300 controller (place it under Controllers) plus a receiver; transmitters are handed to users.</div>'
+          +   '<div style="font:500 11px var(--font-ui); color:var(--text-muted); margin-bottom:10px;">Each overhead door gets one ACS300 controller (placed below, on the canvas) plus a receiver; transmitters are handed to users.</div>'
           +   '<div style="' + ohRow + '"><label style="font:600 11px var(--font-ui);">Overhead doors</label>'
           +     '<input type="number" min="0" step="1" id="ac-oh-doors" value="' + ohD + '" onchange="acSetOverhead(\'doors\', this.value)" style="' + ohIn + '"></div>'
           +   '<div style="' + ohRow + ' margin-bottom:0;"><label style="font:600 11px var(--font-ui);">Transmitters (remotes)</label>'
           +     '<input type="number" min="0" step="1" id="ac-oh-tx" value="' + ohT + '" onchange="acSetOverhead(\'transmitters\', this.value)" style="' + ohIn + '"></div>'
           +   '<div style="font:500 10px var(--font-ui); color:var(--text-muted); margin-top:10px;">'
           +     (ohD > 0
-                   ? ('Adds ' + ohD + ' ACS300 &middot; ' + ohRx + ' receiver' + (ohRx === 1 ? '' : 's') + ' &middot; ' + ohT + ' transmitter' + (ohT === 1 ? '' : 's') + ' to &sect;2.2; place the ACS300 under Controllers.')
+                   ? ('Adds ' + ohD + ' ACS300 &middot; ' + ohRx + ' receiver' + (ohRx === 1 ? '' : 's') + ' &middot; ' + ohT + ' transmitter' + (ohT === 1 ? '' : 's') + ' to &sect;2.2.')
                    : (ohT > 0 ? 'Transmitters require at least one overhead door (1 receiver will be added).' : 'Enter the number of overhead doors.'))
-          +   '</div>'
-          + '</div>';
+          +   '</div>';
+    // ACS300 to-place tiles — placed from here, flagged overhead (one per door)
+    if(ohD > 0){
+      var ohPlaced = acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers' && d.overheadDoor && d.sku === 'B-ACS300-E-B'; }).length;
+      var ohRemain = ohD - ohPlaced;
+      html += '<div style="' + ohLBL + '">Controllers to place</div>';
+      if(ohRemain > 0){
+        html += '<div class="lp-tier-row">';
+        for(var _o = 0; _o < ohRemain; _o++){
+          var ohArmed = (currentReaderModel === 'B-ACS300-E-B' && currentACOverhead) ? ' active' : '';
+          html += '<div class="tier2-tile' + ohArmed + '" style="' + ohTILE + '" onclick="armAcSku(\'B-ACS300-E-B\', true)" title="Place overhead-door ACS300 on the canvas">'
+                +   '<div class="ts-icon" style="' + ohICN + '">' + _acCtrlIcon('B-ACS300-E-B') + '</div>'
+                +   '<span class="t2-label" style="' + ohLBLF + '">ACS300</span>'
+                + '</div>';
+        }
+        html += '</div>';
+      } else {
+        html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px;">&#10003; All ' + ohD + ' ACS300' + (ohD === 1 ? '' : 's') + ' placed on canvas</div>';
+      }
+    }
+    html += '</div>';
   } else {
     html += '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px 2px;">Choose a category above.</div>';
   }
@@ -10945,33 +10968,13 @@ function renderAcControllersTier3(){
     });
     html += '</div>';
   }
-  // Overhead-door controllers: one ACS300 per overhead door (count from
-  // Accessories › Overhead). Placed overhead controllers (overheadDoor:true)
-  // check these off; arming passes overhead=true so the placed box is flagged.
-  var ohDoorsN = (projectInfo.credentials && typeof projectInfo.credentials.ohDoors === 'number') ? projectInfo.credentials.ohDoors : 0;
-  if(ohDoorsN > 0){
-    var ohPlaced = acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers' && d.overheadDoor && (d.sku === 'B-ACS300-E-B'); }).length;
-    var ohRemain = ohDoorsN - ohPlaced;
-    html += '<div style="' + LBL + '">Overhead door controllers</div>';
-    if(ohRemain > 0){
-      html += '<div class="lp-tier-row">';
-      for(var _o = 0; _o < ohRemain; _o++){
-        var ohArmed = (currentReaderModel === 'B-ACS300-E-B' && currentACOverhead) ? ' active' : '';
-        html += '<div class="tier2-tile' + ohArmed + '" style="' + TILE + '" onclick="armAcSku(\'B-ACS300-E-B\', true)" title="Place overhead-door ACS300">'
-              +   '<div class="ts-icon" style="' + ICN + '">' + _acCtrlIcon('B-ACS300-E-B') + '</div>'
-              +   '<span class="t2-label" style="' + LBLF + '">ACS300 &middot; OH</span>'
-              + '</div>';
-      }
-      html += '</div>';
-    } else {
-      html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px;">&#10003; All ' + ohDoorsN + ' overhead controller' + (ohDoorsN === 1 ? '' : 's') + ' placed</div>';
-    }
-  }
+  // (Overhead-door controllers live under Accessories › Overhead and are placed
+  // from there — deliberately kept out of this main-chassis Controllers view.)
   // placed chassis (visual confirmation) — every controller physically on the
   // canvas, grouped by SKU, shown even if it doesn't match the current
   // auto-spec, so loaded/placed controllers never silently disappear.
   var placedGroups = {};
-  acDevices.forEach(function(d){ if(acCategoryOf(d) === 'Controllers'){ var s = d.sku || '(unknown)'; placedGroups[s] = (placedGroups[s] || 0) + 1; } });
+  acDevices.forEach(function(d){ if(acCategoryOf(d) === 'Controllers' && !d.overheadDoor){ var s = d.sku || '(unknown)'; placedGroups[s] = (placedGroups[s] || 0) + 1; } });
   var placedSkus = Object.keys(placedGroups);
   if(placedSkus.length){
     html += '<div style="' + LBL + '">Placed &#10003;</div><div class="lp-tier-row">';
