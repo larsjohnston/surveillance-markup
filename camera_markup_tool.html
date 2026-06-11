@@ -16854,11 +16854,28 @@ function buildLiteSaveData(){
 // so we never capture a half-finished placement. localStorage failures
 // (quota, private mode) flip autoSaveAvailable=false for the rest of the
 // session and surface a one-shot toast — manual Save Project still works.
+// Perf: run fn at browser idle (requestIdleCallback, 5s ceiling) with a
+// setTimeout fallback, so the heavy autosave snapshot never lands
+// mid-keystroke or mid-drag.
+var _autoSavePending = false;
+function _idleCallback(fn){
+  if(typeof requestIdleCallback === 'function') requestIdleCallback(fn, { timeout: 5000 });
+  else setTimeout(fn, 250);
+}
 function autoSaveTick(){
   // Always refresh indicator — relative time may have crossed a minute boundary.
   updateSaveIndicator();
   if(!isDirty) return;
   if(!pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
+  // Perf: the snapshot (buildLiteSaveData + JSON.stringify + localStorage
+  // write) can stall the main thread on large projects. Defer it to idle
+  // time; the gates re-check and state is read at write time, so the
+  // freshest state is what gets saved.
+  if(_autoSavePending) return;
+  _autoSavePending = true;
+  _idleCallback(function(){
+  _autoSavePending = false;
+  if(!isDirty || !pdfLoaded || calibMode || headendMode || !autoSaveAvailable) return;
   try {
     var entry = {
       version: 34,             // generation tag — v34 AC-Hardware-Autospec-M1: projectInfo.acHardwareConfig {mode,powerMode} drives a new computeAutoRows AC emitter (Brivo panel + expansion boards + optional LSP/Altronix PSU sized to door count). Default mode='off' so older saves render identically. powerMode default='internal' (free PSB in EXP chassis). v33 Credentials-M2: Farpointe FP-WRR22 (receiver) + FP-WRT2B (transmitter) added to BRIVO_CRED_CATALOG as new tier2_family 'Overhead Doors' with section:'2.2'. brivoSkus emitter routes per cat.section (falls back to '2.1' for legacy families). Legacy ohTransmitters/ohReceiver fields migrated to brivoSkus on load + zeroed (idempotent). v32 DoorBird-M1: smartApartment intercom devices gain optional surfaceMount + pedestal booleans (drive §2.3 accessory auto-rows for backbox + pedestal). applyProjectState defaults both to false on older saves. v31 SecHw-M1: dev.secHw {strike,rex,dps} per-Reader bundle drives §2.4 Security Hardware emitter. Undefined = unseeded; M2 right-panel seeds new placements; M3 prompt bulk-seeds older saves. v30 SUB-M2: projectInfo.cameraStorageRetention ('30'|'60'|'90'|'180'|'365'|'730') drives Eagle Eye EN-PR1-D{ret}-{1|12} subscription qty=camCount. applyProjectState defaults '30' on older saves. v29: subscriptionTerm ('monthly'|'annual') + subscriptionOverrides map (Brivo AC subscriptions SUB-M1b). applyProjectState defaults subscriptionTerm='monthly', subscriptionOverrides={} on older saves. v28 DHW B-lite: per-mode project labour rate buckets; legacy labour fields (hourlyRate, lineInstallHours) removed; projectLabourRule + lineLabourRule are the sole labour shape. dhwNormalizeState defaults missing fields cleanly on older saves. v26 adds projectInfo.credentials.brivoSkus map (Credentials-wiring). Older saves migrate to {} default in applyProjectState. v25: headends ARRAY [{id,page,x,y,sku,label}] (was page-keyed map in v24). Multi-per-page CMVR support.
@@ -16877,6 +16894,7 @@ function autoSaveTick(){
     autoSaveAvailable = false;
     showOneShotToast('Auto-save unavailable. Use Save (Ctrl+S) regularly.');
   }
+  });
   checkReminderToast();
 }
 
