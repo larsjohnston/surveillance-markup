@@ -10764,8 +10764,10 @@ function _acCtrlIcon(sku){
 }
 // Short label for a controller to-place tile (fits the small square tile).
 function _acCtrlTileLabel(sku){
-  if(sku === 'B-ACS6100R-E') return 'ACS6100 R';
-  if(sku === 'B-ACS6100L-E') return 'ACS6100 L';
+  if(sku === 'B-ACS6100R-E')   return 'ACS6100 R';
+  if(sku === 'B-ACS6100L-E')   return 'ACS6100 L';
+  if(sku === 'B-ACS6100R-EXP') return 'ACS6100 R-EXP';
+  if(sku === 'B-ACS6100L-EXP') return 'ACS6100 L-EXP';
   if(sku.indexOf('ACS300') !== -1) return 'ACS300';
   if(sku.indexOf('ACS100') !== -1) return 'ACS100';
   return _acShortName(sku);
@@ -10776,9 +10778,9 @@ function _acShortBoardName(n){ return (n || '').replace(/^Brivo\s+/, '').replace
 function armAcSku(sku){
   var row = null;
   for(var i = 0; i < BRIVO_CATALOG.length; i++){ if(BRIVO_CATALOG[i].sku === sku){ row = BRIVO_CATALOG[i]; break; } }
-  if(!row) return;  // not placeable (e.g. EXP chassis) — not offered as a to-place tile
+  // EXP chassis aren't catalog rows but are still placeable physical boxes.
   _cancelAllPlacement();
-  currentACBrand = 'brivo'; currentACCategory = 'Controllers'; currentACSubcategory = row.subcategory;
+  currentACBrand = 'brivo'; currentACCategory = 'Controllers'; currentACSubcategory = row ? row.subcategory : null;
   currentReaderModel = sku;
   renderLeftPaneDrillDown('ac');
 }
@@ -10790,36 +10792,47 @@ function acSetPowerMode(pm){
 }
 // Build the Controllers drill-down HTML (rendered into #lp-ac-tier3).
 function renderAcControllersTier3(){
-  var plan    = _acControllerPlanNow();
-  var mains   = plan.controllers.filter(function(c){ return c.sku.indexOf('-EXP') === -1; });
-  var chassis = plan.controllers.filter(function(c){ return c.sku.indexOf('-EXP') !== -1; });
+  var plan = _acControllerPlanNow();
   if(plan.controllers.length === 0 && plan.warnings.length === 0){
     return '<div style="font:500 11px var(--font-ui); color:var(--text-muted); padding:8px;">Place readers to auto-spec controllers.</div>';
   }
   var LBL  = 'font:700 9px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin:10px 0 4px;';
   var WRAP = 'white-space:normal; overflow:visible; text-overflow:clip; line-height:1.15;';  // override .t2-label ellipsis so short labels wrap instead of truncating
-  var required = mains.reduce(function(s,c){ return s + c.qty; }, 0);
-  var placed   = placedControllerCount();
   var html = '';
-  // placement flag (full-width banner)
-  if(required > 0 && placed < required){
-    html += '<div style="font:600 11px var(--font-ui); color:#92400e; background:#fef3c7; border-radius:6px; padding:7px 10px; margin-bottom:4px;">&#9888; ' + placed + ' of ' + required + ' placed — place the rest on the canvas</div>';
-  } else if(required > 0){
-    html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px; margin-bottom:4px;">&#10003; all ' + required + ' controller' + (required > 1 ? 's' : '') + ' placed</div>';
+  // Chassis = the physical enclosures the integrator locates on the canvas
+  // (main controller + any expansion chassis). DB/IO boards mount inside them
+  // and power supplies aren't placed — those go in the read-only list below.
+  // The "to place" list is required-minus-placed, matched by SKU (raw count: a
+  // chassis is one physical box, not multiplied per typical floor), so a placed
+  // chassis drops off the list and a deleted one reappears.
+  function _placedChassis(sku){
+    return acDevices.filter(function(d){ return acCategoryOf(d) === 'Controllers' && d.sku === sku; }).length;
   }
-  // to-place tiles
-  html += '<div style="' + LBL + ' margin-top:2px;">To place</div><div class="lp-tier-row">';
-  mains.forEach(function(c){
-    var armed = (currentReaderModel === c.sku) ? ' active' : '';
-    html += '<div class="tier2-tile' + armed + '" onclick="armAcSku(\'' + c.sku + '\')" title="Place ' + escapeHtml(c.name) + '">'
-          +   '<div class="ts-icon">' + _acCtrlIcon(c.sku) + '</div>'
-          +   '<span class="t2-label" style="' + WRAP + '">' + escapeHtml(_acCtrlTileLabel(c.sku)) + (c.qty > 1 ? (' &times;' + c.qty) : '') + '</span>'
-          + '</div>';
+  var totalRequired = plan.controllers.reduce(function(s,c){ return s + c.qty; }, 0);
+  var toPlace = [];
+  plan.controllers.forEach(function(c){
+    var rem = c.qty - _placedChassis(c.sku);
+    if(rem > 0) toPlace.push({ sku:c.sku, name:c.name, qty:rem });
   });
-  html += '</div>';
-  // read-only board list: EXP chassis + DB boards + elevator I/O + power
+  // banner — green only when every required chassis is placed
+  if(totalRequired > 0 && toPlace.length === 0){
+    html += '<div style="font:600 11px var(--font-ui); color:#065f46; background:#d1fae5; border-radius:6px; padding:7px 10px; margin-bottom:4px;">&#10003; All chassis placed</div>';
+  }
+  // to-place tiles (unplaced chassis only)
+  if(toPlace.length){
+    html += '<div style="' + LBL + ' margin-top:2px;">To place &mdash; locate each chassis on the canvas</div><div class="lp-tier-row">';
+    toPlace.forEach(function(c){
+      var armed = (currentReaderModel === c.sku) ? ' active' : '';
+      html += '<div class="tier2-tile' + armed + '" onclick="armAcSku(\'' + c.sku + '\')" title="Place ' + escapeHtml(c.name) + '">'
+            +   '<div class="ts-icon">' + _acCtrlIcon(c.sku) + '</div>'
+            +   '<span class="t2-label" style="' + WRAP + '">' + escapeHtml(_acCtrlTileLabel(c.sku)) + (c.qty > 1 ? (' &times;' + c.qty) : '') + '</span>'
+            + '</div>';
+    });
+    html += '</div>';
+  }
+  // read-only board list: DB boards + elevator I/O + power (chassis are placed, not listed)
   var io = acElevBoards();
-  var boards = chassis.concat(plan.dbBoards);
+  var boards = plan.dbBoards.slice();
   if(io > 0) boards.push({ sku:'B-ACS6100-IO', name:'Elevator I/O Board', qty: io });
   boards = boards.concat(plan.power);
   if(boards.length){
@@ -13883,6 +13896,7 @@ function placeReader(cssX, cssY){
   // update still needed; routed via the lightweight non-selecting path.
   redraw();
   updateAcList();
+  renderLeftPaneDrillDown('ac');  // refresh Controllers "to place" list — the just-placed chassis drops off
 }
 
 function selectReader(id, opts){
@@ -13936,6 +13950,7 @@ function selectReader(id, opts){
 function deleteReader(id){
   acDevices = acDevices.filter(function(d){return d.id !== id;});
   markDirty();
+  renderLeftPaneDrillDown('ac');  // refresh Controllers "to place" list — a deleted chassis reappears
   // Pass A.8: if the deleted reader was selected, close the right panel
   // (mirrors deleteSelected's behavior for cameras).
   if(acSelectedId === id){
