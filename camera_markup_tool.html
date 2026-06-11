@@ -20727,10 +20727,12 @@ function computeAutoRows(){
   // with the (existing) credentials helper keys impossible.
   acDevices.forEach(function(d){
     var cat = acCategoryOf(d);
-    // AC respec: controllers are billed via the auto-spec (acControllerPlan)
-    // now — placed controllers are visual/riser instances only, so skip them
-    // here to avoid double-counting. Readers still emit normally.
-    if(cat === 'Controllers') return;
+    // AC respec: regular-door controllers are billed via the auto-spec
+    // (acControllerPlan), so a placed regular controller is a visual/riser
+    // instance only — skip it here to avoid double-counting. OVERHEAD-door
+    // controllers are NOT covered by the auto-spec (they're separate, §2.2),
+    // so a placed overhead controller still bills via the §2.2 routing below.
+    if(cat === 'Controllers' && !d.overheadDoor) return;
     if(cat !== 'Readers' && cat !== 'Controllers') return;
     var sku = d.sku || d.model;
     if(!sku) return;
