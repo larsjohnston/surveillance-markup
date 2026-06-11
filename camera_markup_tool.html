@@ -10725,6 +10725,7 @@ function onElevatorToggle(on){
   }
   markDirty();
   recalcBom();
+  renderLeftPaneDrillDown('ac');  // refresh Controllers view so the elevator I/O board appears/clears in "Boards in use"
 }
 
 // ─── Controllers drill-down (Tasks 3.2-UI + 3.3) ───────────────────────────────
