@@ -13069,6 +13069,20 @@ function closeEyeDropdown(){
 }
 
 // ─── Draw ─────────────────────────────────────────────────────────────────────
+// Perf: rAF-batched redraw for high-frequency callers (the canvas mousemove
+// drag paths). Mousemove can fire 100+ times/sec; each direct redraw() is a
+// full-canvas re-render. scheduleRedraw() coalesces them to one render per
+// animation frame — the render reads the latest dragged positions, so
+// nothing is lost. Low-frequency callers keep calling redraw() directly.
+var _redrawQueued = false;
+function scheduleRedraw(){
+  if(_redrawQueued) return;
+  _redrawQueued = true;
+  requestAnimationFrame(function(){
+    _redrawQueued = false;
+    redraw();
+  });
+}
 function redraw(){
   if(!pages.length) return;
   var pg=pages[currentPage];
@@ -13699,7 +13713,7 @@ cv.addEventListener('mousemove',function(e){
   var p=canvasXY(e);
   if(calibMode){
     calibCursor=[p.cx/viewScale, p.cy/viewScale];
-    if(calibPoints.length===1) redraw();
+    if(calibPoints.length===1) scheduleRedraw();
     return;
   }
   if(!dragging){
@@ -13728,20 +13742,20 @@ cv.addEventListener('mousemove',function(e){
   if(dragging.type==='head-end-move'){
     // v25 array: lookup by dragging.id (mirror switch-move).
     var he = headends.find(function(x){return x.id === dragging.id;});
-    if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; redraw(); }
+    if(he){ he.x = p.cx/viewScale; he.y = p.cy/viewScale; scheduleRedraw(); }
     return;
   }
   if(dragging.type==='switch-move'){
     // Phase 2a M6 — same drag-end-only markDirty as head-end-move.
     var sw = switches.find(function(x){return x.id === dragging.id;});
-    if(sw){ sw.x = p.cx/viewScale; sw.y = p.cy/viewScale; redraw(); }
+    if(sw){ sw.x = p.cx/viewScale; sw.y = p.cy/viewScale; scheduleRedraw(); }
     return;
   }
   if(dragging.type==='reader-move'){
     var dev = acDevices.find(function(d){return d.id===dragging.id;});
     if(!dev) return;
     dev.x = p.cx/viewScale; dev.y = p.cy/viewScale;
-    markDirty(); redraw();
+    markDirty(); scheduleRedraw();
     return;
   }
   // Pass N+1 M3: smart-apartment drag types. All three look up in
@@ -13750,7 +13764,7 @@ cv.addEventListener('mousemove',function(e){
     var sdev = smartApartment.find(function(d){return d.id===dragging.id;});
     if(!sdev) return;
     sdev.x = p.cx/viewScale; sdev.y = p.cy/viewScale;
-    markDirty(); redraw();
+    markDirty(); scheduleRedraw();
     return;
   }
   // Pass N+1 M6: suite drag (label-pill move). Looks up in suites[].
@@ -13758,7 +13772,7 @@ cv.addEventListener('mousemove',function(e){
     var stdev = suites.find(function(s){return s.id===dragging.id;});
     if(!stdev) return;
     stdev.x = p.cx/viewScale; stdev.y = p.cy/viewScale;
-    markDirty(); redraw();
+    markDirty(); scheduleRedraw();
     return;
   }
   var cam=cameras.find(function(c){return c.id===dragging.id;});
@@ -13769,7 +13783,7 @@ cv.addEventListener('mousemove',function(e){
     document.getElementById('inp-angle').value=cam.angle; syncLabels(); updateDoriInfo();
   } else {cam.x=p.cx/viewScale; cam.y=p.cy/viewScale;}
   markDirty();
-  redraw();
+  scheduleRedraw();
 });
 cv.addEventListener('mouseup', function(){
   // Phase 2a M6 — drag-end-only markDirty for the two new drag types.
