@@ -14181,16 +14181,31 @@ function updateAcList(){
     listEl.innerHTML = '<div style="padding:10px 13px;color:#9ca3af;font-size:9px;font-style:italic">No AC devices on this page.</div>';
     return;
   }
+  // Perf: items carry data-id; clicks are handled by ONE delegated listener
+  // (bound once below) instead of per-item inline onclick strings re-parsed
+  // on every render.
   listEl.innerHTML = devOnPage.map(function(d){
     var sel = (d.id === acSelectedId) ? ' sel' : '';
-    return '<div class="ac-item'+sel+'" onclick="selectReader(\''+d.id+'\')">'+
+    return '<div class="ac-item'+sel+'" data-id="'+escapeHtml(d.id)+'">'+
            '<div class="dot dot-reader"></div>'+
            '<div class="clabel">'+escapeHtml(d.label)+'</div>'+
            '<div class="cmeta">'+escapeHtml(d.model||'')+'</div>'+
-           '<div class="cdel" onclick="event.stopPropagation();deleteReader(\''+d.id+'\')">&times;</div>'+
+           '<div class="cdel" title="Delete">&times;</div>'+
            '</div>';
   }).join('');
 }
+// Delegated click handler for #ac-list (bound once at startup): select on
+// item click, delete on the × — replaces the per-item inline onclick strings.
+(function(){
+  var listEl = document.getElementById('ac-list');
+  if(!listEl) return;
+  listEl.addEventListener('click', function(e){
+    var item = e.target.closest('.ac-item');
+    if(!item || !item.dataset.id) return;
+    if(e.target.closest('.cdel')){ deleteReader(item.dataset.id); return; }
+    selectReader(item.dataset.id);
+  });
+})();
 
 // Reader hit-test in CSS pixels (matches drawReader bounds)
 function readerAt(cssX, cssY){
