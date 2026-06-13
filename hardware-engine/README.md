@@ -30,12 +30,24 @@ const { sets, openingToSet, profiles } = generateHardwareSets(openings, { catalo
 Pipeline: `Opening → deriveRequirements (NBC/Alberta overlays) → resolveItems (catalog) →
 groupIntoSets (dedup)`.
 
+Optional price join (E3) — pure, takes an injected price book (real data comes from the
+platform pricing service later):
+
+```ts
+import { priceSets, type PriceBook } from './src/index.ts';
+const book: PriceBook = { 'ND50PD RHO': { cost: 210, list: 350 }, /* … */ };
+const priced = priceSets(result, book, { rule: { mode: 'discount', value: 15 } });
+// priced.sets[].items[] carry unitCost/unitList/unitSell/extSell + a `priced` flag;
+// unpriced lines are flagged (never zeroed); grandCost/grandSell roll up per-opening.
+```
+
 ## Pieces
 
 - `src/types.ts` — domain model (`Opening`, `RequirementProfile`, `HardwareItem`, `HardwareSet`).
 - `src/jurisdiction/nbc-alberta.ts` — DRAFT code thresholds (every value tagged `// VERIFY:`).
 - `src/engine/` — `requirements` (derive) · `resolve` · `sets` (group).
-- `src/catalog/` — `allegion` (seeded) · `assa-abloy` (skeleton) · registry.
+- `src/catalog/` — `allegion` (seeded) · `assa-abloy` (seeded) · registry.
+- `src/pricing/price.ts` — `priceSets` price-book join (cost/list/sell, unpriced flagging).
 
 ## Test / typecheck
 

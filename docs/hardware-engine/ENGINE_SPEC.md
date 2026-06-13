@@ -92,8 +92,9 @@ thresholds are now **sourced** (E2) and cite their NBC article; they remain tagg
 because the official NBC/ABC text is authoritative and paywalled:
 
 - **Panic hardware** — NBC 3.4.6.16: occupant load **> 100** (assembly occupancies + exit-
-  stair-shaft doors; high-hazard industrial). Latch-release force ≤ **90 N** in egress travel.
-  *(SCOPE: the MVP applies the threshold on raw occupant load — no occupancy-class model yet.)*
+  stair-shaft doors; high-hazard industrial F1). Latch-release force ≤ **90 N** in egress travel.
+  *(E3: occupancy-class aware — `Opening.occupancyGroup` selects the precise rule (a)/(b)/(c);
+  omit it and the engine falls back to a conservative raw-load trigger that may over-spec.)*
 - **Barrier-free opening force** — NBC 3.8.3.6: **22 N** interior / **38 N** exterior; closer
   closing period **≥ 3 s**.
 
@@ -144,9 +145,9 @@ unit-tested output.
 **Out (flagged for later):** keying/master-key schedules; electrified hardware spec (ties to
 the AC module — engine only *flags* `accessControlled`); cylinder/core specifics; spring
 hinges / continuous hinges / pivots selection nuance; door & frame (steel gauge, prep) spec;
-price resolution (the existing price-book layer does that); floor-plan/door-schedule *parsing*
-(a separate ingestion concern — the engine consumes structured `Opening[]`); versioning &
-owner-review diffing (a SaaS/DB concern, not engine logic).
+SKU↔price-book reconciliation (E3 ships the *join*; the live `pricing_items` wiring + SKU
+matching is E4); floor-plan/door-schedule *parsing* (a separate ingestion concern — the engine
+consumes structured `Opening[]`); versioning & owner-review diffing (a SaaS/DB concern).
 
 ## 8. Roadmap
 
@@ -155,9 +156,11 @@ owner-review diffing (a SaaS/DB concern, not engine logic).
   3.8.3.6 force 22/38 N + 3 s); Schlage L-series mortise upgrade path; full ASSA ABLOY seed.
   20 tests. *Still open for owner: confirm thresholds against official NBC text; occupancy-
   class model for panic scope (deferred to E3).*
-- **E3:** occupancy-class model for panic scope; price-book join (reuse the platform pricing
-  service) → priced hardware sets.
-- **E4:** ingestion adapters (door-schedule CSV/Overtur → `Opening[]`).
+- **E3 (done):** occupancy-class model for panic scope (`occupancyGroup`, NBC 3.4.6.16 a/b/c);
+  pure pluggable price-book join (`priceSets`) → priced sets with cost/list/sell, discount or
+  markup rule, unpriced-line flagging, per-opening grand totals. 28 tests.
+- **E4:** ingestion adapters (door-schedule CSV/Overtur → `Opening[]`); wire the price join to
+  the platform pricing service (real `pricing_items`; SKU reconciliation).
 - **E5:** SaaS surface — generate → owner edits openings → re-derive → keep prior version
   (the review/versioning workflow). This is DB/UI, built on the stable engine.
 

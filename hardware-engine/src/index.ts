@@ -12,7 +12,9 @@ export { generateHardwareSets, deriveRequirements, resolveItems, groupIntoSets }
 export type { GenerateOptions } from './engine/index.ts';
 export { DEFAULT_FINISH } from './engine/resolve.ts';
 export type { FinishPolicy, ResolveOptions } from './engine/resolve.ts';
-export { NBC_ALBERTA } from './jurisdiction/nbc-alberta.ts';
-export type { Jurisdiction } from './jurisdiction/nbc-alberta.ts';
+export { NBC_ALBERTA, needsPanicHardware } from './jurisdiction/nbc-alberta.ts';
+export type { Jurisdiction, PanicDecision } from './jurisdiction/nbc-alberta.ts';
+export { priceSets, deriveSell, DEFAULT_PRICING_RULE } from './pricing/price.ts';
+export type { PriceOptions } from './pricing/price.ts';
 export { CATALOGS, getCatalog, ALLEGION, ASSA_ABLOY } from './catalog/index.ts';
 export type { CatalogLine, CatalogEntry } from './catalog/types.ts';

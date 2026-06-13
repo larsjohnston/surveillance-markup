@@ -43,6 +43,20 @@ export interface FunctionPreset {
 /** Common rated values (minutes). 0 = non-rated. */
 export type FireRatingMinutes = 0 | 20 | 45 | 60 | 90 | 120 | 180;
 
+/**
+ * NBC major occupancy classification of the floor area the opening serves. Drives the precise
+ * panic-hardware scope (NBC 3.4.6.16 ties it to assembly + high-hazard industrial). Omit it
+ * and the engine falls back to a conservative raw-occupant-load trigger.
+ *   A* Assembly · B* Care/Detention · C Residential · D Business · E Mercantile · F* Industrial
+ */
+export type OccupancyGroup =
+  | 'A1' | 'A2' | 'A3' | 'A4'
+  | 'B1' | 'B2' | 'B3'
+  | 'C'
+  | 'D'
+  | 'E'
+  | 'F1' | 'F2' | 'F3';
+
 export interface Opening {
   /** Schedule mark, e.g. "101A". Unique within a project. */
   number: string;
@@ -55,6 +69,8 @@ export interface Opening {
   exterior: boolean;
   /** Occupant load served by the opening (drives panic-hardware threshold). Optional. */
   occupantLoad?: number;
+  /** NBC major occupancy of the served floor area; refines the panic-hardware scope. Optional. */
+  occupancyGroup?: OccupancyGroup;
   /** Door leaf height (mm) — drives hinge count. Defaults applied if absent. */
   leafHeightMm?: number;
   /** Single-leaf width (mm). Reserved for future plate sizing. */
@@ -198,4 +214,54 @@ export interface GenerateResult {
   openingToSet: Record<string, string>;
   /** Per-opening derived requirement profiles, for inspection / UI editing. */
   profiles: RequirementProfile[];
+}
+
+// ─── Pricing join (E3) ───
+//
+// The engine stays pure: it consumes an injected price book (sku -> cost/list). Real data
+// comes from the platform pricing service (pricing_items; unit_cost server-only) — this layer
+// just joins and rolls up. Unpriced items are FLAGGED, never silently zeroed.
+
+export interface PriceEntry {
+  /** Supplier/replacement cost (margin basis). */
+  cost?: number;
+  /** List / MSRP (discount basis). */
+  list?: number;
+}
+
+export type PriceBook = Record<string, PriceEntry>;
+
+/** Sell derivation. discount = off list (platform default); markup = on cost. */
+export interface PricingRule {
+  mode: 'markup' | 'discount';
+  /** Percent. markup 40 => cost x1.40; discount 25 => list x0.75. */
+  value: number;
+}
+
+export interface PricedItem extends HardwareItem {
+  unitCost: number | null;
+  unitList: number | null;
+  unitSell: number | null;
+  extCost: number | null;   // unitCost x qty
+  extSell: number | null;   // unitSell x qty
+  /** True when a customer sell price could be derived. */
+  priced: boolean;
+}
+
+export interface PricedSet {
+  id: string;
+  openingNumbers: string[];
+  signature: string;
+  items: PricedItem[];
+  setCost: number;          // sum of known extCost
+  setSell: number;          // sum of known extSell
+  unpricedCount: number;    // items with priced === false
+}
+
+export interface PricedResult {
+  sets: PricedSet[];
+  openingToSet: Record<string, string>;
+  grandCost: number;
+  grandSell: number;
+  unpricedCount: number;
 }

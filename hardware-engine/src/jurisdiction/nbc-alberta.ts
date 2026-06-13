@@ -73,11 +73,41 @@ export function isRated(o: { fireRatingMinutes: number }): boolean {
   return o.fireRatingMinutes > 0;
 }
 
+export interface PanicScopeInput {
+  occupantLoad?: number;
+  occupancyGroup?: string;        // NBC group, e.g. 'A2', 'F1'
+  function?: string;              // opening function, e.g. 'stairwell-exit'
+}
+
+export interface PanicDecision {
+  required: boolean;
+  reason: string;
+}
+
 /**
- * Panic / fire-exit hardware is required by occupant load (NBC 3.4.6.16: "more than 100").
- * SCOPE: NBC further restricts this to assembly occupancies + exit-stair-shaft doors; the MVP
- * has no occupancy-class model, so it applies the threshold on raw occupant load. Refine in E3.
+ * Panic / fire-exit hardware scope per NBC 3.4.6.16:
+ *  (a) exit doors from a floor area containing an ASSEMBLY occupancy, load > 100;
+ *  (b) exit-stair-shaft doors in a building with load > 100;
+ *  (c) exit doors from a floor area containing a HIGH-HAZARD INDUSTRIAL occupancy (F1).
+ * When occupancyGroup is omitted, fall back to a CONSERVATIVE raw-load trigger (> 100) — it may
+ * over-spec, which is the safe error direction for egress. Provide the group to get the precise rule.
  */
-export function needsPanicHardware(j: Jurisdiction, occupantLoad: number | undefined): boolean {
-  return typeof occupantLoad === 'number' && occupantLoad > j.panicHardwareOccupantLoad;
+export function needsPanicHardware(j: Jurisdiction, o: PanicScopeInput): PanicDecision {
+  const load = o.occupantLoad;
+  const over = typeof load === 'number' && load > j.panicHardwareOccupantLoad;
+  const g = o.occupancyGroup;
+
+  if (g === 'F1') {
+    return { required: true, reason: 'NBC 3.4.6.16(c): high-hazard industrial (F1) occupancy' };
+  }
+  if (g && g[0] === 'A' && over) {
+    return { required: true, reason: `NBC 3.4.6.16(a): assembly occupancy, load ${load} > ${j.panicHardwareOccupantLoad}` };
+  }
+  if (o.function === 'stairwell-exit' && over) {
+    return { required: true, reason: `NBC 3.4.6.16(b): exit-stair-shaft door, building load ${load} > ${j.panicHardwareOccupantLoad}` };
+  }
+  if (!g && over) {
+    return { required: true, reason: `occupant load ${load} > ${j.panicHardwareOccupantLoad} (occupancy class unspecified — conservative)` };
+  }
+  return { required: false, reason: '' };
 }

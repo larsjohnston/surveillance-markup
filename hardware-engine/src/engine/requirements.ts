@@ -185,27 +185,20 @@ export function deriveRequirements(opening: Opening, j: Jurisdiction): Requireme
     }
   }
 
-  // ── Overlay: egress occupant load -> panic / fire-exit hardware ──
-  if (needsPanicHardware(j, opening.occupantLoad)) {
+  // ── Overlay: egress -> panic / fire-exit hardware (NBC 3.4.6.16, occupancy-aware) ──
+  const panic = needsPanicHardware(j, {
+    occupantLoad: opening.occupantLoad,
+    occupancyGroup: opening.occupancyGroup,
+    function: opening.function,
+  });
+  if (panic.required) {
     if (latching.kind === 'lockset') {
       const outsideTrim = opening.function === 'exit-only' ? 'none' : 'key-lever';
-      latching = {
-        kind: 'exit-device',
-        device: 'rim',
-        outsideTrim,
-        fireExit: rated,
-        reasons: [`NBC: occupant load ${opening.occupantLoad} > NBC 3.4.6.16 threshold — panic hardware required`],
-      };
+      latching = { kind: 'exit-device', device: 'rim', outsideTrim, fireExit: rated, reasons: [panic.reason] };
     } else if (latching.kind === 'push-pull') {
-      latching = {
-        kind: 'exit-device',
-        device: 'rim',
-        outsideTrim: 'none',
-        fireExit: rated,
-        reasons: [`NBC: occupant load ${opening.occupantLoad} > NBC 3.4.6.16 threshold — panic hardware required`],
-      };
+      latching = { kind: 'exit-device', device: 'rim', outsideTrim: 'none', fireExit: rated, reasons: [panic.reason] };
     } else {
-      latching.reasons.push(`NBC: occupant load ${opening.occupantLoad} > NBC 3.4.6.16 threshold`);
+      latching.reasons.push(panic.reason);
     }
   }
 
