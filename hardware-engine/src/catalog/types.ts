@@ -5,7 +5,7 @@
 // Returning `null` means "this line does not (yet) seed this item" — the resolver emits a
 // loud TBD placeholder rather than silently dropping the requirement.
 
-import type { HardwareCategory, LockFunction, ExitDeviceType } from '../types.ts';
+import type { HardwareCategory, LockFunction, ExitDeviceType, LockStyle } from '../types.ts';
 
 export interface CatalogEntry {
   category: HardwareCategory;
@@ -28,7 +28,7 @@ export interface CatalogLine {
   /** Manufacturer family label, e.g. "Allegion", "ASSA ABLOY". */
   manufacturer: string;
 
-  lockset(fn: LockFunction): CatalogEntry | null;
+  lockset(fn: LockFunction, opts?: { style?: LockStyle }): CatalogEntry | null;
   /** May return device + separate outside-trim entries. */
   exitDevice(ctx: ExitDeviceCtx): CatalogEntry[];
   closer(opts: { barrierFree: boolean; faReleased: boolean }): CatalogEntry | null;

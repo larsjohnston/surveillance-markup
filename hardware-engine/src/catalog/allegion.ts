@@ -8,7 +8,7 @@
 
 import type { CatalogLine, CatalogEntry } from './types.ts';
 import { entry } from './types.ts';
-import type { LockFunction } from '../types.ts';
+import type { LockFunction, LockStyle } from '../types.ts';
 
 // Schlage ND-series (Grade 1 cylindrical) function -> catalog number. DRAFT.
 const ND_BY_FUNCTION: Record<LockFunction, { sku: string; desc: string } | null> = {
@@ -22,13 +22,25 @@ const ND_BY_FUNCTION: Record<LockFunction, { sku: string; desc: string } | null>
   dummy:          { sku: 'ND170 RHO', desc: 'Schlage ND170 single dummy trim, Rhodes lever' },
 };
 
+// Schlage L-series (Grade 1 mortise) function -> catalog number — the upgrade path. DRAFT.
+const L_BY_FUNCTION: Record<LockFunction, { sku: string; desc: string } | null> = {
+  passage:        { sku: 'L9010 06A', desc: 'Schlage L9010 mortise passage latch, 06A lever' },
+  privacy:        { sku: 'L9040 06A', desc: 'Schlage L9040 mortise privacy lock, 06A lever' },
+  office:         { sku: 'L9050 06A', desc: 'Schlage L9050 mortise entrance/office lock, 06A lever' },
+  storeroom:      { sku: 'L9080 06A', desc: 'Schlage L9080 mortise storeroom lock, 06A lever' },
+  classroom:      { sku: 'L9070 06A', desc: 'Schlage L9070 mortise classroom lock, 06A lever' },
+  institution:    { sku: 'L9082 06A', desc: 'Schlage L9082 mortise institution lock, 06A lever' },
+  'exit-only-trim': null,
+  dummy:          { sku: 'L9170 06A', desc: 'Schlage L9170 mortise single dummy trim, 06A lever' },
+};
+
 export const ALLEGION: CatalogLine = {
   id: 'allegion',
   label: 'Allegion (Schlage / Von Duprin / LCN / Ives / Glynn-Johnson / Zero)',
   manufacturer: 'Allegion',
 
-  lockset(fn: LockFunction): CatalogEntry | null {
-    const e = ND_BY_FUNCTION[fn];
+  lockset(fn: LockFunction, opts?: { style?: LockStyle }): CatalogEntry | null {
+    const e = (opts?.style === 'mortise' ? L_BY_FUNCTION : ND_BY_FUNCTION)[fn];
     if (!e) return null;
     return entry('lockset', e.sku, e.desc, 'Schlage');
   },

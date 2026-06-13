@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateHardwareSets, type Opening, type HardwareItem } from '../src/index.ts';
+import {
+  generateHardwareSets,
+  deriveRequirements,
+  resolveItems,
+  NBC_ALBERTA,
+  ALLEGION,
+  type Opening,
+  type HardwareItem,
+  type CatalogLine,
+} from '../src/index.ts';
 
 function opening(over: Partial<Opening> & Pick<Opening, 'number' | 'function'>): Opening {
   return {
@@ -87,16 +96,52 @@ test('identical openings collapse into one hardware set; distinct ones do not', 
   assert.deepEqual(sets[0]!.openingNumbers, ['401', '402']);
 });
 
-test('ASSA ABLOY skeleton emits loud TBD placeholders for unseeded items, never silent drops', () => {
+test('ASSA ABLOY line is fully seeded: a restroom resolves to real Rockwood/Sargent SKUs', () => {
   const { sets } = generateHardwareSets([
     opening({ number: '501', function: 'restroom-single', material: 'hollow-metal' }),
   ], { catalog: 'assa-abloy' });
   const items = sets[0]!.items;
-  // restroom-single defaults a kick plate, which ASSA ABLOY does not seed -> TBD, not missing.
-  const plate = cat(items, 'protection-plate');
-  assert.ok(plate, 'kick plate requirement still present');
-  assert.equal(plate!.sku, 'TBD');
-  assert.match(plate!.description, /not yet seeded|UNSEEDED|VERIFY/);
+  assert.equal(cat(items, 'protection-plate')?.line, 'Rockwood');
+  assert.match(cat(items, 'protection-plate')!.sku, /K1050/);
+  assert.equal(cat(items, 'lockset')?.line, 'Sargent');
+  assert.equal(cat(items, 'lockset')?.sku, '10G44 LL');     // Sargent privacy
+});
+
+test('mortise lock style swaps Schlage ND-series for the L-series upgrade', () => {
+  const cyl = generateHardwareSets([opening({ number: '1', function: 'storeroom' })]).sets[0]!.items;
+  const mort = generateHardwareSets([opening({ number: '1', function: 'storeroom' })], { lockStyle: 'mortise' }).sets[0]!.items;
+  assert.equal(cat(cyl, 'lockset')?.sku, 'ND80PD RHO');
+  assert.equal(cat(mort, 'lockset')?.sku, 'L9080 06A');
+});
+
+test('per-opening lockStyle overrides the project default', () => {
+  const { sets, openingToSet } = generateHardwareSets(
+    [
+      opening({ number: '1', function: 'office' }),
+      opening({ number: '2', function: 'office', lockStyle: 'mortise' }),
+    ],
+    { lockStyle: 'cylindrical' },
+  );
+  assert.notEqual(openingToSet['1'], openingToSet['2'], 'different lock style => different set');
+  const s2 = sets.find((s) => s.openingNumbers.includes('2'))!;
+  assert.equal(cat(s2.items, 'lockset')?.sku, 'L9050 06A');
+});
+
+test('functionPreset (architect-assigned) flows through to the resolved lockset', () => {
+  const { sets } = generateHardwareSets([
+    opening({ number: '1', function: 'communicating', functionPreset: { lockFunction: 'classroom' } }),
+  ]);
+  assert.equal(cat(sets[0]!.items, 'lockset')?.sku, 'ND70PD RHO'); // classroom, not passage
+});
+
+test('resolver emits a loud TBD placeholder (never a silent drop) when a catalog returns null', () => {
+  // Stub: Allegion with lockset() deliberately unseeded.
+  const gapped: CatalogLine = { ...ALLEGION, lockset: () => null };
+  const profile = deriveRequirements(opening({ number: '1', function: 'office' }), NBC_ALBERTA);
+  const items = resolveItems(profile, gapped);
+  const lock = items.find((i) => i.category === 'lockset')!;
+  assert.equal(lock.sku, 'TBD');
+  assert.match(lock.description, /UNSEEDED/);
 });
 
 test('access-controlled opening raises an AC-handoff advisory (engine does not spec electrified hw)', () => {

@@ -1,7 +1,12 @@
 // ─── resolve: RequirementProfile + CatalogLine -> HardwareItem[] ───
 
-import type { RequirementProfile, HardwareItem, HardwareCategory } from '../types.ts';
+import type { RequirementProfile, HardwareItem, HardwareCategory, LockStyle } from '../types.ts';
 import type { CatalogLine, CatalogEntry } from '../catalog/types.ts';
+
+export interface ResolveOptions {
+  /** Latchset construction for this opening. Default: 'cylindrical'. */
+  lockStyle?: LockStyle;
+}
 
 /** BHMA finish codes by category and environment. DRAFT defaults; override per project. */
 export interface FinishPolicy {
@@ -81,6 +86,7 @@ export function resolveItems(
   profile: RequirementProfile,
   catalog: CatalogLine,
   policy: FinishPolicy = DEFAULT_FINISH,
+  resolveOpts: ResolveOptions = {},
 ): HardwareItem[] {
   const items: HardwareItem[] = [];
   const exterior = profile.opening.exterior;
@@ -101,7 +107,7 @@ export function resolveItems(
 
   // Latching.
   if (profile.latching.kind === 'lockset') {
-    push(catalog.lockset(profile.latching.lockFunction), 1, profile.latching.reasons, 'lockset', `${profile.latching.lockFunction} lockset`);
+    push(catalog.lockset(profile.latching.lockFunction, { style: resolveOpts.lockStyle }), 1, profile.latching.reasons, 'lockset', `${profile.latching.lockFunction} lockset`);
   } else if (profile.latching.kind === 'exit-device') {
     const evItems = catalog.exitDevice({
       device: profile.latching.device,

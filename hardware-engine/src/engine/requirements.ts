@@ -9,6 +9,7 @@ import type {
   RequirementProfile,
   LatchingRequirement,
   LockFunction,
+  FunctionPreset,
 } from '../types.ts';
 import {
   type Jurisdiction,
@@ -47,7 +48,20 @@ const FUNCTION_DEFAULTS: Record<OpeningFunction, FunctionDefault> = {
   'exit-only':             { exitDevice: true, outsideTrim: 'none',     closer: true,  kickPlate: false, stopHolder: 'wall' },
 };
 
-function baseLatching(def: FunctionDefault): LatchingRequirement {
+function baseLatching(def: FunctionDefault, preset?: FunctionPreset): LatchingRequirement {
+  // Architect/AHC pre-assigned intent wins over the room-use default (code overlays apply later).
+  if (preset?.exitDevice) {
+    return {
+      kind: 'exit-device',
+      device: 'rim',
+      outsideTrim: def.outsideTrim ?? 'key-lever',
+      fireExit: false,
+      reasons: ['pre-assigned: exit device'],
+    };
+  }
+  if (preset?.lockFunction) {
+    return { kind: 'lockset', lockFunction: preset.lockFunction, reasons: [`pre-assigned: ${preset.lockFunction} function`] };
+  }
   if (def.pushPull) return { kind: 'push-pull', reasons: ['function default: no locking required'] };
   if (def.exitDevice) {
     return {
@@ -71,7 +85,7 @@ export function deriveRequirements(opening: Opening, j: Jurisdiction): Requireme
   const heightMm = opening.leafHeightMm ?? j.defaultLeafHeightMm;
   const advisories: string[] = [];
 
-  let latching = baseLatching(def);
+  let latching = baseLatching(def, opening.functionPreset);
 
   const closer = {
     required: def.closer,
@@ -164,7 +178,8 @@ export function deriveRequirements(opening: Opening, j: Jurisdiction): Requireme
   if (opening.barrierFree) {
     closer.required = true;
     closer.barrierFreeAdjust = true;
-    closer.reasons.push('NBC 3.8: bounded opening force + timed sweep/latch');
+    const maxForce = opening.exterior ? j.barrierFreeMaxOpeningForceExteriorN : j.barrierFreeMaxOpeningForceInteriorN;
+    closer.reasons.push(`NBC 3.8.3.6: max ${maxForce} N opening force, >= ${j.barrierFreeMinSweepSeconds}s closing period`);
     if (latching.kind === 'lockset') {
       latching.reasons.push('barrier-free: lever operation (no knob)');
     }
@@ -179,7 +194,7 @@ export function deriveRequirements(opening: Opening, j: Jurisdiction): Requireme
         device: 'rim',
         outsideTrim,
         fireExit: rated,
-        reasons: [`NBC: occupant load ${opening.occupantLoad} >= panic threshold — panic hardware required`],
+        reasons: [`NBC: occupant load ${opening.occupantLoad} > NBC 3.4.6.16 threshold — panic hardware required`],
       };
     } else if (latching.kind === 'push-pull') {
       latching = {
@@ -187,10 +202,10 @@ export function deriveRequirements(opening: Opening, j: Jurisdiction): Requireme
         device: 'rim',
         outsideTrim: 'none',
         fireExit: rated,
-        reasons: [`NBC: occupant load ${opening.occupantLoad} >= panic threshold — panic hardware required`],
+        reasons: [`NBC: occupant load ${opening.occupantLoad} > NBC 3.4.6.16 threshold — panic hardware required`],
       };
     } else {
-      latching.reasons.push(`NBC: occupant load ${opening.occupantLoad} >= panic threshold`);
+      latching.reasons.push(`NBC: occupant load ${opening.occupantLoad} > NBC 3.4.6.16 threshold`);
     }
   }
 

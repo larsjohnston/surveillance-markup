@@ -11,7 +11,7 @@ export * from './types.ts';
 export { generateHardwareSets, deriveRequirements, resolveItems, groupIntoSets } from './engine/index.ts';
 export type { GenerateOptions } from './engine/index.ts';
 export { DEFAULT_FINISH } from './engine/resolve.ts';
-export type { FinishPolicy } from './engine/resolve.ts';
+export type { FinishPolicy, ResolveOptions } from './engine/resolve.ts';
 export { NBC_ALBERTA } from './jurisdiction/nbc-alberta.ts';
 export type { Jurisdiction } from './jurisdiction/nbc-alberta.ts';
 export { CATALOGS, getCatalog, ALLEGION, ASSA_ABLOY } from './catalog/index.ts';

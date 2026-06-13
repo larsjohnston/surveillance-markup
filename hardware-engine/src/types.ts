@@ -27,6 +27,19 @@ export type DoorMaterial = 'hollow-metal' | 'wood' | 'aluminum' | 'glass';
 
 export type Handing = 'LH' | 'RH' | 'LHR' | 'RHR';
 
+/** Latchset construction style. Cylindrical (bored) is the commercial default; mortise is the upgrade. */
+export type LockStyle = 'cylindrical' | 'mortise';
+
+/**
+ * Architect/AHC pre-assigned hardware intent, injected per opening to OVERRIDE the room-use
+ * default. Code overlays (fire, egress, barrier-free) still layer on top — the preset only
+ * seeds the base latching choice, it does not bypass safety.
+ */
+export interface FunctionPreset {
+  lockFunction?: LockFunction;
+  exitDevice?: boolean;
+}
+
 /** Common rated values (minutes). 0 = non-rated. */
 export type FireRatingMinutes = 0 | 20 | 45 | 60 | 90 | 120 | 180;
 
@@ -50,6 +63,10 @@ export interface Opening {
   handing?: Handing;
   /** Electrified / on the access-control system. Engine only FLAGS this (ties to AC module). */
   accessControlled?: boolean;
+  /** Latchset style override for this opening (else the project default). */
+  lockStyle?: LockStyle;
+  /** Pre-assigned hardware intent that overrides the room-use default (code overlays still apply). */
+  functionPreset?: FunctionPreset;
   /** Free-text label for the opening / room, carried through to output for context. */
   label?: string;
 }

@@ -79,16 +79,25 @@ mechanical-electrical · utility-closet · exterior-service · exit-only`
 
 Each maps to a default lock/latch function and a default hardware skeleton. This taxonomy is
 where your AHC judgment matters most — it should match how you actually read schedules.
-Open question for you: do you spec from **room use** (above) or from a **hardware-function
-code** the architect already wrote in the schedule (e.g. ANSI F-series / "HW-12")? The engine
-supports both — room-use derives a function; a pre-written function code can be injected
-directly — but the MVP defaults assume room-use.
+
+**Injection path (E2, implemented):** room-use is the primary input, but an opening may carry
+`functionPreset` (`{ lockFunction?, exitDevice? }`) to override the room-use default with an
+architect/AHC pre-assignment. The preset only seeds the base latching choice — code overlays
+(fire, egress, barrier-free) still layer on top, so a preset can never bypass life-safety.
 
 ## 5. Code ruleset — Alberta / NBC (DRAFT, NEEDS VERIFICATION)
 
-`src/jurisdiction/nbc-alberta.ts` encodes the overlays as data + small functions. **Every
-rule is marked `draft` and must be verified against the actual NBC 2020 / Alberta Building
-Code / CAN-ULC text before any output is quoted or stamped.** First-cut overlays:
+`src/jurisdiction/nbc-alberta.ts` encodes the overlays as data + small functions. Key
+thresholds are now **sourced** (E2) and cite their NBC article; they remain tagged `VERIFY:`
+because the official NBC/ABC text is authoritative and paywalled:
+
+- **Panic hardware** — NBC 3.4.6.16: occupant load **> 100** (assembly occupancies + exit-
+  stair-shaft doors; high-hazard industrial). Latch-release force ≤ **90 N** in egress travel.
+  *(SCOPE: the MVP applies the threshold on raw occupant load — no occupancy-class model yet.)*
+- **Barrier-free opening force** — NBC 3.8.3.6: **22 N** interior / **38 N** exterior; closer
+  closing period **≥ 3 s**.
+
+Overlays:
 
 - **Fire** (`fireRatingMinutes > 0`): force self-closer; force positive-latching (kills
   passage/dummy latch → upgrade to latching function); ban mechanical hold-open (allow only
@@ -111,11 +120,16 @@ constants in that file with `// VERIFY:` tags.
 `src/catalog/`. A `CatalogLine` interface maps requirement tokens → catalog numbers + finish.
 
 - **Allegion** (`allegion.ts`) — seeded across the common commercial functions: Schlage
-  ND-series (Grade 1 cylindrical) lock functions, Von Duprin 99 exit devices, LCN 4040XP
-  closers, Ives hinges/plates/stops, Glynn-Johnson overhead holders, Zero seals/thresholds.
-- **ASSA ABLOY** (`assa-abloy.ts`) — scaffolded with the structural map (Sargent / Norton /
-  McKinney / Pemko / Rockwood) but only partially seeded, to prove the two-manufacturer
-  abstraction without fabricating a full second catalog this pass.
+  ND-series (cylindrical) **and L-series (mortise) upgrade path**, Von Duprin 99 exit devices,
+  LCN 4040XP closers, Ives hinges/plates/stops/bolts/coordinators, Glynn-Johnson overhead
+  holders, Zero seals/thresholds.
+- **ASSA ABLOY** (`assa-abloy.ts`) — **fully seeded** (E2): Sargent 10-line (cylindrical) +
+  8200 (mortise), Norton 7500 closers, McKinney hinges, Rockwood plates/stops/bolts/
+  coordinators, Rixson overhead stops, Pemko seals/sweeps/thresholds. Uncertain function codes
+  carry an inline `(VERIFY)` marker.
+
+Lock style is chosen project-wide (`generateHardwareSets(.., { lockStyle })`) with a
+per-opening `lockStyle` override; default `cylindrical`.
 
 SKUs, finish codes (BHMA 626/630/689…), and handing suffixes are **illustrative**. They use
 real, well-known product *series/functions* but exact catalog numbers must be reconciled
@@ -136,10 +150,13 @@ owner-review diffing (a SaaS/DB concern, not engine logic).
 
 ## 8. Roadmap
 
-- **E1 (this pass):** types + pipeline + Allegion seed + NBC/Alberta overlays + dedup + tests.
-- **E2:** ratify the function taxonomy + verify the NBC overlays against code text; expand
-  Allegion to mortise (L-series) upgrade path; finish ASSA ABLOY seed.
-- **E3:** price-book join (reuse the platform pricing service) → priced hardware sets.
+- **E1 (done):** types + pipeline + Allegion seed + NBC/Alberta overlays + dedup + tests.
+- **E2 (done):** function-preset injection path; sourced NBC thresholds (3.4.6.16 panic > 100;
+  3.8.3.6 force 22/38 N + 3 s); Schlage L-series mortise upgrade path; full ASSA ABLOY seed.
+  20 tests. *Still open for owner: confirm thresholds against official NBC text; occupancy-
+  class model for panic scope (deferred to E3).*
+- **E3:** occupancy-class model for panic scope; price-book join (reuse the platform pricing
+  service) → priced hardware sets.
 - **E4:** ingestion adapters (door-schedule CSV/Overtur → `Opening[]`).
 - **E5:** SaaS surface — generate → owner edits openings → re-derive → keep prior version
   (the review/versioning workflow). This is DB/UI, built on the stable engine.

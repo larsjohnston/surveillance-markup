@@ -1,6 +1,6 @@
 // ─── Engine entry: Opening[] -> HardwareSet[] ───
 
-import type { Opening, GenerateResult, RequirementProfile } from '../types.ts';
+import type { Opening, GenerateResult, RequirementProfile, LockStyle } from '../types.ts';
 import type { CatalogLine } from '../catalog/types.ts';
 import { type Jurisdiction, NBC_ALBERTA } from '../jurisdiction/nbc-alberta.ts';
 import { getCatalog } from '../catalog/index.ts';
@@ -13,6 +13,8 @@ export interface GenerateOptions {
   catalog?: string | CatalogLine;
   jurisdiction?: Jurisdiction;
   finishPolicy?: FinishPolicy;
+  /** Project-wide latchset style. Per-opening `lockStyle` overrides this. Default: 'cylindrical'. */
+  lockStyle?: LockStyle;
 }
 
 function resolveCatalog(c: GenerateOptions['catalog']): CatalogLine {
@@ -29,7 +31,8 @@ export function generateHardwareSets(openings: Opening[], opts: GenerateOptions 
   const resolved = openings.map((o) => {
     const profile = deriveRequirements(o, j);
     profiles.push(profile);
-    return { openingNumber: o.number, items: resolveItems(profile, catalog, policy) };
+    const lockStyle = o.lockStyle ?? opts.lockStyle ?? 'cylindrical';
+    return { openingNumber: o.number, items: resolveItems(profile, catalog, policy, { lockStyle }) };
   });
 
   const { sets, openingToSet } = groupIntoSets(resolved);

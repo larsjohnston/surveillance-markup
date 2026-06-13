@@ -9,11 +9,20 @@
 export interface Jurisdiction {
   id: string;
   label: string;
-  /** Occupant load at/above which a door in the means of egress needs panic/fire-exit hardware. */
+  /**
+   * Occupant load ABOVE which an exit door needs panic/fire-exit hardware.
+   * NBC 3.4.6.16: > 100 for a floor area containing an assembly occupancy, doors to/from
+   * exit stair shafts in buildings > 100, and high-hazard industrial. NOTE: NBC ties this to
+   * OCCUPANCY CLASS (assembly), which the MVP does not yet model — see needsPanicHardware.
+   */
   panicHardwareOccupantLoad: number;
-  /** Max barrier-free opening force note (N) — carried as advisory text, not yet a calc. */
-  barrierFreeMaxOpeningForceN: number;
-  /** Min closer sweep time note (s) from 70deg to 3deg, barrier-free. */
+  /** Max barrier-free opening force, INTERIOR doors (N). NBC 3.8.3.6. */
+  barrierFreeMaxOpeningForceInteriorN: number;
+  /** Max barrier-free opening force, EXTERIOR doors (N). NBC 3.8.3.6. */
+  barrierFreeMaxOpeningForceExteriorN: number;
+  /** Max latch-release force in the direction of egress travel (N). NBC 3.4.6.16. */
+  latchReleaseForceN: number;
+  /** Min closer closing period (s), barrier-free. NBC 3.8.3.6. */
   barrierFreeMinSweepSeconds: number;
   /** Hinge-count breakpoints by leaf height (mm): [maxHeight, hingeCount]. Ascending. */
   hingeBreakpointsMm: ReadonlyArray<readonly [number, number]>;
@@ -25,13 +34,16 @@ export interface Jurisdiction {
 
 export const NBC_ALBERTA: Jurisdiction = {
   id: 'ca-ab-nbc2020',
-  label: 'Alberta / NBC 2020 (DRAFT)',
-  // VERIFY: assembly/high-occupancy panic threshold. Common North-American figure is 50;
-  // confirm the NBC/ABC value and the occupancy classes it applies to.
-  panicHardwareOccupantLoad: 50,
-  // VERIFY: barrier-free opening force for interior doors (CSA B651 / NBC 3.8). Placeholder.
-  barrierFreeMaxOpeningForceN: 38,
-  // VERIFY: closer sweep timing requirement.
+  label: 'Alberta / NBC 2020 (sourced; VERIFY against official code text)',
+  // NBC 3.4.6.16 — assembly-occupancy floor areas + exit-stair-shaft doors > 100. The MVP
+  // applies this on raw occupant load (no occupancy-class model yet) — SCOPE: refine in E3.
+  panicHardwareOccupantLoad: 100,
+  // NBC 3.8.3.6 — barrier-free manual opening force.
+  barrierFreeMaxOpeningForceInteriorN: 22,
+  barrierFreeMaxOpeningForceExteriorN: 38,
+  // NBC 3.4.6.16 — latch-release force in direction of egress travel.
+  latchReleaseForceN: 90,
+  // NBC 3.8.3.6 — minimum closing period.
   barrierFreeMinSweepSeconds: 3,
   // VERIFY: hinge counts. Convention: 2 to ~1525mm, 3 to ~2286mm, +1 per additional ~762mm.
   hingeBreakpointsMm: [
@@ -61,7 +73,11 @@ export function isRated(o: { fireRatingMinutes: number }): boolean {
   return o.fireRatingMinutes > 0;
 }
 
-/** Panic / fire-exit hardware is required by occupant load. */
+/**
+ * Panic / fire-exit hardware is required by occupant load (NBC 3.4.6.16: "more than 100").
+ * SCOPE: NBC further restricts this to assembly occupancies + exit-stair-shaft doors; the MVP
+ * has no occupancy-class model, so it applies the threshold on raw occupant load. Refine in E3.
+ */
 export function needsPanicHardware(j: Jurisdiction, occupantLoad: number | undefined): boolean {
-  return typeof occupantLoad === 'number' && occupantLoad >= j.panicHardwareOccupantLoad;
+  return typeof occupantLoad === 'number' && occupantLoad > j.panicHardwareOccupantLoad;
 }
