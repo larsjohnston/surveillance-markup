@@ -26,3 +26,5 @@ export { renderHardwareSchedule, renderTakeoff, renderPricedSummary, renderRevie
 export type { ReportOptions } from './report/spec.ts';
 export { createRevision, diffRevisions, hashInput, RevisionStore } from './versioning/revisions.ts';
 export type { ProjectInput, Revision, RevisionDiff, OpeningDiff, OpeningStatus, OpeningFieldChange, CreateRevisionMeta } from './versioning/revisions.ts';
+export { revisionToRow, rowToRevision, serializeRevision, deserializeRevision, dumpStore, loadStore } from './versioning/serialize.ts';
+export type { RevisionRow } from './versioning/serialize.ts';

@@ -187,6 +187,11 @@ export class RevisionStore {
     return rev;
   }
 
+  /** Append a pre-built revision (e.g. when rehydrating from storage). Bypasses re-generation. */
+  append(rev: Revision): void {
+    this.revisions.push(rev);
+  }
+
   head(): Revision | null {
     return this.revisions.length ? this.revisions[this.revisions.length - 1]! : null;
   }

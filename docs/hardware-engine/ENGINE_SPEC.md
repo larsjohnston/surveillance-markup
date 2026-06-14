@@ -166,9 +166,10 @@ consumes structured `Opening[]`); versioning & owner-review diffing (a SaaS/DB c
 - **E5 core (done):** versioning + diff (`src/versioning/revisions.ts`) — `RevisionStore`
   (history retained, parent-linked, no-op-safe re-commit), `createRevision`, `diffRevisions`
   (opening add/remove/modify + per-opening hardware deltas). This is the "owner edits openings →
-  re-derive → keep prior version" workflow as pure logic. **Remaining E5 (needs the
-  `proposal-platform` repo):** persist revisions to Postgres + the Next.js review UI on top of
-  this exact API.
+  re-derive → keep prior version" workflow as pure logic. Persistence boundary done too:
+  `src/versioning/serialize.ts` (`RevisionRow` + `dumpStore`/`loadStore`, round-trip tested)
+  maps 1:1 onto the SaaS table. **Remaining E5 (needs the `proposal-platform` repo):** the
+  Postgres migration + Next.js review UI — written out in full in `E5_PLATFORM_HANDOFF.md`.
 
 ## 9. Verification
 
