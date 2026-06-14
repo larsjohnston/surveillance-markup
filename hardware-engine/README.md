@@ -48,6 +48,10 @@ const priced = priceSets(result, book, { rule: { mode: 'discount', value: 15 } }
 - `src/engine/` — `requirements` (derive) · `resolve` · `sets` (group).
 - `src/catalog/` — `allegion` (seeded) · `assa-abloy` (seeded) · registry.
 - `src/pricing/price.ts` — `priceSets` price-book join (cost/list/sell, unpriced flagging).
+- `src/ingest/` — `door-schedule` (rows → openings, function inference, room labels) · `csv`
+  (`parseScheduleCsv`).
+- `src/report/spec.ts` — `renderHardwareSchedule` / `renderTakeoff` / `renderPricedSummary` /
+  `renderReviewFlags` (the human-readable AHC schedule).
 
 ## Test / typecheck
 

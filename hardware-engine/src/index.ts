@@ -22,3 +22,5 @@ export { rowsToOpenings, inferFunction, functionFromRoomLabel, widthToInches } f
 export type { ScheduleRow, IngestResult, InferenceConfidence } from './ingest/door-schedule.ts';
 export { parseScheduleCsv, parseCsv, detectColumns, parseFireLabel } from './ingest/csv.ts';
 export type { ColumnMap, ParseScheduleOptions, ParseScheduleResult } from './ingest/csv.ts';
+export { renderHardwareSchedule, renderTakeoff, renderPricedSummary, renderReviewFlags } from './report/spec.ts';
+export type { ReportOptions } from './report/spec.ts';
