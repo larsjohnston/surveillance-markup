@@ -161,8 +161,14 @@ consumes structured `Opening[]`); versioning & owner-review diffing (a SaaS/DB c
   markup rule, unpriced-line flagging, per-opening grand totals. 28 tests.
 - **E4:** ingestion adapters (door-schedule CSV/Overtur → `Opening[]`); wire the price join to
   the platform pricing service (real `pricing_items`; SKU reconciliation).
-- **E5:** SaaS surface — generate → owner edits openings → re-derive → keep prior version
-  (the review/versioning workflow). This is DB/UI, built on the stable engine.
+- **E4b–d (done):** `LH` commodity catalog (priced end-to-end); room-label inference + CSV
+  importer; reporting layer (hardware schedule / take-off / priced summary / review flags).
+- **E5 core (done):** versioning + diff (`src/versioning/revisions.ts`) — `RevisionStore`
+  (history retained, parent-linked, no-op-safe re-commit), `createRevision`, `diffRevisions`
+  (opening add/remove/modify + per-opening hardware deltas). This is the "owner edits openings →
+  re-derive → keep prior version" workflow as pure logic. **Remaining E5 (needs the
+  `proposal-platform` repo):** persist revisions to Postgres + the Next.js review UI on top of
+  this exact API.
 
 ## 9. Verification
 

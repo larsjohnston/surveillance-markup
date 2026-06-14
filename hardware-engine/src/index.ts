@@ -24,3 +24,5 @@ export { parseScheduleCsv, parseCsv, detectColumns, parseFireLabel } from './ing
 export type { ColumnMap, ParseScheduleOptions, ParseScheduleResult } from './ingest/csv.ts';
 export { renderHardwareSchedule, renderTakeoff, renderPricedSummary, renderReviewFlags } from './report/spec.ts';
 export type { ReportOptions } from './report/spec.ts';
+export { createRevision, diffRevisions, hashInput, RevisionStore } from './versioning/revisions.ts';
+export type { ProjectInput, Revision, RevisionDiff, OpeningDiff, OpeningStatus, OpeningFieldChange, CreateRevisionMeta } from './versioning/revisions.ts';
