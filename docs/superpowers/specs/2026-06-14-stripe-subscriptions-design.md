@@ -1,7 +1,7 @@
 # Sid i/o — Stripe Payments & Subscriptions — Design Spec
 
 - **Date:** 2026-06-14
-- **Status:** Draft for owner review
+- **Status:** Approved for planning (all open items resolved 2026-06-14)
 - **Repo (implementation):** `larsjohnston/spec-writer` — Next.js 16 (App Router, src/proxy.ts), React 19, TS, Tailwind v4, shadcn/ui (Base UI), Supabase ca-central-1 (ref `oxatqehxeogxtsugofxq`). Product "Sid i/o", `sidio.ca`, Vercel `spec-writer-ten.vercel.app`.
 - **Inputs:** SaaS platform design spec (`docs/superpowers/specs/2026-06-11-saas-platform-design.md`) + commercialization audit + owner's eight billing decisions (2026-06-13/14).
 - **Pending task this closes:** "P3-4: Module entitlements + Stripe scaffold."
@@ -69,13 +69,13 @@ A code constant (e.g. `src/lib/billing/entitlements.ts`), the single source of t
 ```
 MODULES_BY_PLAN = {
   camera: ['cameras'],
-  ac:     ['access_control', 'door_hardware'],            // see OPEN ITEM 1
+  ac:     ['access_control'],                             // AC-only = access control, nothing else
   all:    ['cameras', 'access_control', 'door_hardware',
            'smart_apartment', 'intercom', 'parcel', 'mailbox', 'iot', 'elevator'],
 }
 ```
 
-- **During trial:** grant **all** modules (best evaluation experience). See OPEN ITEM 2.
+- **During trial:** grant **all** modules (best evaluation experience) — confirmed.
 - **Effective status (lazy trial expiry, no cron needed):**
   `effective = (status === 'trialing' && trial_end < now()) ? 'expired' : status`.
   Entitled iff `effective ∈ {trialing, active}`. Otherwise → full lockout.
@@ -123,7 +123,7 @@ MODULES_BY_PLAN = {
 - 3 Products: "Sid i/o — Access Control", "Sid i/o — Cameras", "Sid i/o — Multifamily (All)".
 - 6 Prices (USD, recurring, per-seat): each product × {monthly, annual}; annual = 12×monthly × 0.85.
 - Price IDs wired via env (config, not secret): `STRIPE_PRICE_AC_MONTH`, `STRIPE_PRICE_AC_YEAR`, `STRIPE_PRICE_CAMERA_MONTH`, `STRIPE_PRICE_CAMERA_YEAR`, `STRIPE_PRICE_ALL_MONTH`, `STRIPE_PRICE_ALL_YEAR`. A `(plan,interval)→priceId` map + its reverse live in `src/lib/billing/`.
-- **Stripe Tax** enabled (GST/HST + US sales tax) via `automatic_tax` on Checkout + subscriptions; collect customer address in Checkout. See OPEN ITEM 4.
+- **Stripe Tax** enabled from day one (GST/HST + US sales tax) via `automatic_tax` on Checkout + subscriptions; collect customer address in Checkout — confirmed.
 - Customer Portal configured: allow plan/interval switch among the 3 tiers, card update, invoice history, cancel.
 
 ## 11. Secrets & env (server-only, `.env.local`, never committed / never on a command line)
@@ -147,12 +147,12 @@ Billing, seats, plan, and Stripe Portal access = **Owner-Admin only**. Estimator
 
 À la carte module composition; Stripe Entitlements feature; Elements/embedded card UI; proration-grace on `past_due` (full lockout per decision 7); usage/metered billing; multiple subscriptions per tenant; in-app invoice rendering (Portal handles it); dunning-email customization beyond Stripe defaults.
 
-## 15. Open items (owner confirm)
+## 15. Resolved items (owner, 2026-06-14)
 
-1. **AC-only module membership.** Does the `ac` plan include door-hardware, intercom, smart-apartment, elevator, parcel, mailbox — or only access-control + readers? `MODULES_BY_PLAN.ac` above is a guess (access_control + door_hardware). Needs your call before the entitlement constant is final.
-2. **Trial access scope.** Trial grants **all** modules (recommended, best evaluation) vs. force plan selection up front. Spec assumes all-modules.
-3. **Customer-link lockout (flag, non-blocking).** Decision 7 (full lockout) darkens already-issued `/p/<token>` proposal links during any lapse — including a transient `past_due` from one failed charge. Stripe dunning retries over days before `unpaid/canceled`, so a single failure won't instantly lock; recording a short `past_due` grace as a future tunable if you want live customer links protected during dunning.
-4. **Stripe Tax now or at launch.** Enable `automatic_tax` from day one (needs address collection in Checkout) vs. defer to launch hardening.
+1. **AC-only module membership** → `ac` plan unlocks **access control only** (no door-hardware/intercom/smart-apt/elevator/parcel/mailbox). `MODULES_BY_PLAN.ac = ['access_control']`.
+2. **Trial access scope** → trial grants **all** modules.
+3. **Stripe Tax** → enable `automatic_tax` from **day one** (address collected in Checkout).
+4. **Customer-link lockout** → **as recommended**: full lockout per decision 7 darkens live `/p/<token>` links during any lapse (incl. transient `past_due`); a short `past_due` grace is recorded as a future tunable, not built in v1.
 
 ## 16. Implementation outline (for the follow-up plan, in the spec-writer repo)
 
