@@ -27,7 +27,34 @@ export interface ScheduleRow {
   fireLabelMin?: number;
   /** Location band: 'Parkade', 'Ground', 'L2'…'L6', or 'Suite A'… */
   group: string;
+  /** Room the door serves, from the floor plan (e.g. "Ensuite", "Bedroom 2", "Electrical").
+   *  When present it drives a HIGH-confidence function — this is what resolves the suite
+   *  passage-vs-privacy ambiguity that material+width alone cannot. */
+  room?: string;
   notes?: string;
+}
+
+// Room-name → function keywords. Order matters: more specific rules first (bath before bedroom;
+// ensuite matches bath, not the suite-entry rule).
+const ROOM_RULES: { re: RegExp; function: OpeningFunction; exterior?: boolean }[] = [
+  { re: /\b(bath|washroom|w\.?c\.?|en-?suite|powder|restroom|toilet)\b/i, function: 'restroom-single' },
+  { re: /\b(stair|stairwell)\b/i, function: 'stairwell-exit' },
+  { re: /(mech|mechanical|electrical|\belec\b|sprinkler|riser|telecom|comms?|server|\bit\b)/i, function: 'mechanical-electrical' },
+  { re: /(janitor|storage|store-?\s?room|garbage|refuse|recycl|chute)/i, function: 'storeroom' },
+  { re: /(closet|wardrobe|pantry|linen)/i, function: 'communicating' },
+  { re: /(suite|unit|apartment|\bapt\b|dwelling).{0,12}(entry|entrance)|(entry|entrance).{0,12}(suite|unit)/i, function: 'entrance-staff' },
+  { re: /(corridor|hallway|\bhall\b)/i, function: 'corridor-cross' },
+  { re: /(vestibule|lobby|foyer|entrance|entry)/i, function: 'entrance-public' },
+  { re: /(office|leasing|management|\bmgmt\b|amenity)/i, function: 'office' },
+  { re: /(bed-?\s?room|bdrm|\bbr\b|\bden\b|study)/i, function: 'communicating' },
+  { re: /(patio|balcony|terrace|deck)/i, function: 'exterior-service', exterior: true },
+  { re: /(parkade|parking|garage)/i, function: 'storeroom' },
+];
+
+/** Map a floor-plan room label to a function, or null if no keyword matches. */
+export function functionFromRoomLabel(label: string): { function: OpeningFunction; exterior: boolean } | null {
+  for (const r of ROOM_RULES) if (r.re.test(label)) return { function: r.function, exterior: !!r.exterior };
+  return null;
 }
 
 export type InferenceConfidence = 'high' | 'medium' | 'low';
@@ -92,6 +119,16 @@ export function inferFunction(row: ScheduleRow): {
 
   // Overhead coiling/sectional doors are not an architectural hardware set.
   if (mat === 'OHI' || mat === 'OH') return null;
+
+  // Floor-plan room label, when present, wins — HIGH confidence. This is what resolves the
+  // suite passage-vs-privacy ambiguity that material+width cannot.
+  if (row.room && row.room.trim()) {
+    const fr = functionFromRoomLabel(row.room);
+    if (fr) {
+      const exterior = fr.exterior || mat === 'AL' || mat === 'HMI';
+      return { function: fr.function, exterior, confidence: 'high', notes: `room "${row.room.trim()}" → ${fr.function}` };
+    }
+  }
 
   // Aluminum storefront = public entrance/vestibule.
   if (mat === 'AL') {

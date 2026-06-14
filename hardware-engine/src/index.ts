@@ -18,5 +18,7 @@ export { priceSets, deriveSell, DEFAULT_PRICING_RULE } from './pricing/price.ts'
 export type { PriceOptions } from './pricing/price.ts';
 export { CATALOGS, getCatalog, ALLEGION, ASSA_ABLOY, LH_COMMODITY } from './catalog/index.ts';
 export type { CatalogLine, CatalogEntry } from './catalog/types.ts';
-export { rowsToOpenings, inferFunction, widthToInches } from './ingest/door-schedule.ts';
+export { rowsToOpenings, inferFunction, functionFromRoomLabel, widthToInches } from './ingest/door-schedule.ts';
 export type { ScheduleRow, IngestResult, InferenceConfidence } from './ingest/door-schedule.ts';
+export { parseScheduleCsv, parseCsv, detectColumns, parseFireLabel } from './ingest/csv.ts';
+export type { ColumnMap, ParseScheduleOptions, ParseScheduleResult } from './ingest/csv.ts';

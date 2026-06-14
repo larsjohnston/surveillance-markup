@@ -86,8 +86,11 @@ entrance · 4 exterior-service · 3 stair · 2 cross-corridor.
    (the integrator's private book; prices stay out of git). Items the residential line doesn't
    stock (storefront exit hardware, kick plates, coordinators, silencers) surface as flagged
    unpriced lines, never zeroed.
-2. **Function from the floor plan** — room-label input (or `HDW CODE` when present) to replace
-   inference on the low-confidence suite rows; keep inference as the fallback with review flags.
-3. **Schedule CSV importer** — `ScheduleRow[]` from an exported schedule (this fixture was
-   hand-transcribed from the drawing image; a CSV/Excel path mirrors the legacy DHW importer).
-4. Switch the seed's wall stop `441` → `409` to match this distributor.
+2. ✅ **Function from the floor plan** — `ScheduleRow.room` drives a HIGH-confidence function
+   (`functionFromRoomLabel`), resolving the suite passage-vs-privacy ambiguity that material+width
+   cannot; the material/width heuristic stays as the fallback with review flags.
+3. ✅ **Schedule CSV importer** (`src/ingest/csv.ts`, `parseScheduleCsv`) — handles quoted inch
+   marks, repeated per-section headers, section/band rows, double TYPE/MAT/FIN columns, and
+   em-dash fire labels. CSV → `ScheduleRow[]` → openings → sets, end-to-end.
+4. Switch the ASSA ABLOY seed's wall stop `441` → `409` to match this distributor (minor).
+5. **E5** — SaaS surface (generate → owner edits → re-derive → keep prior version).
