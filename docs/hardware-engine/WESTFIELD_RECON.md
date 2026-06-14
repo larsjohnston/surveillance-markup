@@ -81,9 +81,11 @@ entrance · 4 exterior-service · 3 stair · 2 cross-corridor.
 
 ## Next (E4b)
 
-1. **`LH` commodity catalog line** keyed to the quote SKUs above, so schedule → sets → **priced**
-   runs end-to-end against the integrator's private price book (the join + rule exist from E3;
-   prices stay out of git).
+1. ✅ **`LH` commodity catalog line** (`src/catalog/lh-commodity.ts`, id `lh`) keyed to the quote
+   SKUs above — schedule → sets → **priced** now runs end-to-end against an injected price book
+   (the integrator's private book; prices stay out of git). Items the residential line doesn't
+   stock (storefront exit hardware, kick plates, coordinators, silencers) surface as flagged
+   unpriced lines, never zeroed.
 2. **Function from the floor plan** — room-label input (or `HDW CODE` when present) to replace
    inference on the low-confidence suite rows; keep inference as the fallback with review flags.
 3. **Schedule CSV importer** — `ScheduleRow[]` from an exported schedule (this fixture was

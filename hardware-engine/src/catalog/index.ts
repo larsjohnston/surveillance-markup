@@ -3,10 +3,12 @@
 import type { CatalogLine } from './types.ts';
 import { ALLEGION } from './allegion.ts';
 import { ASSA_ABLOY } from './assa-abloy.ts';
+import { LH_COMMODITY } from './lh-commodity.ts';
 
 export const CATALOGS: Record<string, CatalogLine> = {
   [ALLEGION.id]: ALLEGION,
   [ASSA_ABLOY.id]: ASSA_ABLOY,
+  [LH_COMMODITY.id]: LH_COMMODITY,
 };
 
 export function getCatalog(id: string): CatalogLine {
@@ -15,5 +17,5 @@ export function getCatalog(id: string): CatalogLine {
   return c;
 }
 
-export { ALLEGION, ASSA_ABLOY };
+export { ALLEGION, ASSA_ABLOY, LH_COMMODITY };
 export type { CatalogLine, CatalogEntry } from './types.ts';
